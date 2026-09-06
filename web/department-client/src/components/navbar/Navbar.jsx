@@ -73,6 +73,12 @@ export function Navbar() {
         <a href="#portals" onClick={(e) => handleScroll(e, 'portals')} className="text-sm font-semibold tracking-wide text-slate-500 hover:text-indigo-600 transition-colors cursor-pointer">
           Portals
         </a>
+        <a href="#notices" onClick={(e) => handleScroll(e, 'notices')} className="text-sm font-semibold tracking-wide text-slate-500 hover:text-indigo-600 transition-colors cursor-pointer">
+          Notices
+        </a>
+        <a href="#support" onClick={(e) => handleScroll(e, 'support')} className="text-sm font-semibold tracking-wide text-slate-500 hover:text-indigo-600 transition-colors cursor-pointer">
+          Support
+        </a>
         <Button
           as={Link}
           href="/student/login"

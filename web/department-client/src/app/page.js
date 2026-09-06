@@ -14,7 +14,7 @@ import { CoreFeatures } from "@/components/landing/CoreFeatures";
 import { PortalsPreview } from "@/components/landing/PortalsPreview";
 import { AiIntelligence } from "@/components/landing/AiIntelligence";
 import { EventsNotices } from "@/components/landing/EventsNotices";
-import { CTA } from "@/components/landing/CTA";
+import { HelpSupport } from "@/components/landing/HelpSupport";
 
 // Register ScrollTrigger
 gsap.registerPlugin(ScrollTrigger);
@@ -138,7 +138,7 @@ export default function LandingPage() {
           <PortalsPreview portalCardsRef={portalCardsRef} />
           <AiIntelligence />
           <EventsNotices />
-          <CTA />
+          <HelpSupport />
           
         </section>
 

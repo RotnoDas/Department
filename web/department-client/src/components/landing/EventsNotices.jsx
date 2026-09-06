@@ -24,7 +24,7 @@ const NOTICES = [
 
 export function EventsNotices() {
   return (
-    <div className="py-24 relative z-10 max-w-7xl mx-auto px-6 lg:px-8">
+    <div id="notices" className="py-24 relative z-10 max-w-7xl mx-auto px-6 lg:px-8">
       {/* Section Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
         <div>
