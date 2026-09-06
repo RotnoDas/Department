@@ -11,10 +11,8 @@ import { HeroSection } from "@/components/landing/HeroSection";
 import { NoticeMarquee } from "@/components/landing/NoticeMarquee";
 import { KeyStatistics } from "@/components/landing/KeyStatistics";
 import { CoreFeatures } from "@/components/landing/CoreFeatures";
-import { HowItWorks } from "@/components/landing/HowItWorks";
 import { PortalsPreview } from "@/components/landing/PortalsPreview";
 import { AiIntelligence } from "@/components/landing/AiIntelligence";
-import { AcademicServices } from "@/components/landing/AcademicServices";
 import { EventsNotices } from "@/components/landing/EventsNotices";
 import { CTA } from "@/components/landing/CTA";
 
@@ -137,10 +135,8 @@ export default function LandingPage() {
 
           <KeyStatistics />
           <CoreFeatures />
-          <HowItWorks />
           <PortalsPreview portalCardsRef={portalCardsRef} />
           <AiIntelligence />
-          <AcademicServices />
           <EventsNotices />
           <CTA />
           
