@@ -1,0 +1,138 @@
+"use client";
+
+import { useEffect, useRef } from "react";
+import gsap from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
+
+// Import Modular Components
+import { Navbar } from "@/components/navbar/Navbar";
+import { Footer } from "@/components/footer/Footer";
+import { HeroSection } from "@/components/landing/HeroSection";
+import { KeyStatistics } from "@/components/landing/KeyStatistics";
+import { CoreFeatures } from "@/components/landing/CoreFeatures";
+import { HowItWorks } from "@/components/landing/HowItWorks";
+import { PortalsPreview } from "@/components/landing/PortalsPreview";
+import { AiIntelligence } from "@/components/landing/AiIntelligence";
+import { AcademicServices } from "@/components/landing/AcademicServices";
+import { EventsNotices } from "@/components/landing/EventsNotices";
+import { CTA } from "@/components/landing/CTA";
+
+// Register ScrollTrigger
+gsap.registerPlugin(ScrollTrigger);
+
+export default function LandingPage() {
+  const containerRef = useRef(null);
+  const portalCardsRef = useRef([]);
+
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      // 1. Initial Load Animations (Hero)
+      const tl = gsap.timeline();
+      
+      tl.fromTo(
+        ".gsap-nav",
+        { y: -40, opacity: 0 },
+        { y: 0, opacity: 1, duration: 1, ease: "expo.out" }
+      )
+      .fromTo(
+        ".gsap-hero-item",
+        { y: 60, opacity: 0, rotateX: -15 },
+        { y: 0, opacity: 1, rotateX: 0, duration: 1.2, stagger: 0.15, ease: "power4.out", transformPerspective: 1000 },
+        "-=0.6"
+      );
+
+      // 2. Premium Parallax Backgrounds (Scrubbed)
+      gsap.to(".bg-orb-1", {
+        yPercent: 50,
+        xPercent: -20,
+        rotation: 45,
+        ease: "none",
+        scrollTrigger: { trigger: containerRef.current, start: "top top", end: "bottom top", scrub: 1.5 }
+      });
+      gsap.to(".bg-orb-2", {
+        yPercent: -40,
+        xPercent: 30,
+        rotation: -45,
+        ease: "none",
+        scrollTrigger: { trigger: containerRef.current, start: "top top", end: "bottom top", scrub: 2 }
+      });
+
+      // 3. Staggered Fade-Up with scale for all sections
+      const sections = [".gsap-stat-card", ".gsap-feature-card"];
+      sections.forEach(selector => {
+        gsap.fromTo(
+          selector,
+          { y: 80, opacity: 0, scale: 0.9 },
+          {
+            y: 0, opacity: 1, scale: 1, duration: 1, stagger: 0.15, ease: "back.out(1.5)",
+            scrollTrigger: { trigger: selector, start: "top 85%", toggleActions: "play none none reverse" }
+          }
+        );
+      });
+
+      // 4. Portals Advanced Stagger
+      gsap.fromTo(
+        ".gsap-portal-header",
+        { y: 50, opacity: 0, scale: 0.95 },
+        { y: 0, opacity: 1, scale: 1, duration: 1, ease: "power4.out", scrollTrigger: { trigger: "#portals", start: "top 80%", toggleActions: "play none none reverse" } }
+      );
+
+      portalCardsRef.current.forEach((card, i) => {
+        if(card) {
+          gsap.fromTo(
+            card,
+            { y: 100, opacity: 0, rotationY: 15 },
+            {
+              y: 0, opacity: 1, rotationY: 0, duration: 1.2, ease: "expo.out",
+              transformPerspective: 1000,
+              delay: i * 0.15,
+              scrollTrigger: { trigger: card, start: "top 85%", toggleActions: "play none none reverse" }
+            }
+          );
+        }
+      });
+      
+      // 5. Global smooth scrub for specific elements (if any component uses .gsap-scrub)
+      gsap.utils.toArray('.gsap-scrub').forEach(el => {
+        gsap.to(el, {
+          y: -80,
+          ease: "none",
+          scrollTrigger: { trigger: el, start: "top bottom", end: "bottom top", scrub: 1 }
+        });
+      });
+
+    }, containerRef);
+
+    return () => ctx.revert();
+  }, []);
+
+  return (
+    <main ref={containerRef} className="min-h-screen bg-[#F8FAFC] overflow-x-hidden font-sans selection:bg-indigo-100 selection:text-indigo-900 relative">
+      {/* Background Dynamic Blur Gradients (Glassmorphism effect) */}
+      <div className="pointer-events-none fixed inset-0 z-0">
+        <div className="bg-orb-1 absolute -top-[10%] -left-[10%] h-[60%] w-[60%] rounded-full bg-indigo-200/30 blur-[140px]"></div>
+        <div className="bg-orb-2 absolute top-[20%] -right-[5%] h-[50%] w-[50%] rounded-full bg-sky-200/30 blur-[120px]"></div>
+        <div className="absolute -bottom-[10%] left-[20%] h-[55%] w-[55%] rounded-full bg-purple-200/20 blur-[130px]"></div>
+      </div>
+
+      <div className="relative z-10 flex flex-col min-h-screen">
+        <section className="mx-auto max-w-[1400px] px-6 pt-8 pb-20 lg:px-10 flex-1 w-full flex flex-col gap-12">
+          
+          <Navbar />
+          <HeroSection />
+          <KeyStatistics />
+          <CoreFeatures />
+          <HowItWorks />
+          <PortalsPreview portalCardsRef={portalCardsRef} />
+          <AiIntelligence />
+          <AcademicServices />
+          <EventsNotices />
+          <CTA />
+          
+        </section>
+
+        <Footer />
+      </div>
+    </main>
+  );
+}
