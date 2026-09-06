@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, BrainCircuit, Sparkles, Activity } from "lucide-react";
+import { ArrowRight, Terminal, Bell, Code2, Database } from "lucide-react";
 import { Button } from "@heroui/react";
 import gsap from "gsap";
 import { ScrollToPlugin } from "gsap/ScrollToPlugin";
@@ -22,8 +22,8 @@ export function HeroSection() {
 
   return (
     <div className="mb-32 grid grid-cols-1 items-center gap-16 lg:grid-cols-2 relative z-10 pt-44">
-      <div className="space-y-10">
-        <h1 className="gsap-hero-item text-6xl leading-[1.08] font-extrabold tracking-tight text-slate-900 sm:text-7xl xl:text-[5.5rem]">
+      <div className="space-y-10 relative">
+        <h1 className="gsap-hero-item text-6xl leading-[1.08] font-extrabold tracking-tight text-slate-900 sm:text-7xl xl:text-[5.5rem] relative z-10">
           Computer Science <br/>
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-500">& Engineering</span>
         </h1>
@@ -80,66 +80,105 @@ export function HeroSection() {
         </div>
       </div>
       
-      {/* Unique Animated Glassmorphic Composition */}
+      {/* Relevant CSE Dashboard Mockup Composition */}
       <div className="relative hidden lg:flex justify-center items-center h-[600px] gsap-hero-item gsap-scrub perspective-1000">
         
-        {/* Main Floating Glass Panel */}
-        <div className="relative z-20 w-[400px] h-[480px] rounded-[3rem] bg-white/40 backdrop-blur-2xl border border-white/60 shadow-[0_20px_60px_-15px_rgba(79,70,229,0.2)] p-8 flex flex-col justify-between transform -rotate-y-12 rotate-x-6 hover:rotate-0 transition-transform duration-700">
+        {/* Main Dashboard Window */}
+        <div className="relative z-20 w-[500px] h-[340px] rounded-[2rem] bg-white/70 backdrop-blur-3xl border border-white/80 shadow-[0_30px_60px_-15px_rgba(79,70,229,0.3)] flex flex-col overflow-hidden transform -rotate-y-12 rotate-x-6 hover:rotate-0 transition-transform duration-700">
           
-          <div className="flex justify-between items-start">
-            <div className="h-14 w-14 rounded-2xl bg-indigo-500/10 flex items-center justify-center">
-              <BrainCircuit className="h-7 w-7 text-indigo-600 animate-pulse" />
+          {/* Window Header */}
+          <div className="h-12 bg-white/50 border-b border-white/50 flex items-center px-5 gap-3">
+            <div className="flex gap-2">
+              <div className="w-3 h-3 rounded-full bg-rose-400"></div>
+              <div className="w-3 h-3 rounded-full bg-amber-400"></div>
+              <div className="w-3 h-3 rounded-full bg-emerald-400"></div>
             </div>
-            <div className="px-4 py-1.5 rounded-full bg-white/60 text-[10px] font-black tracking-widest text-indigo-600 uppercase shadow-sm">
-              Live AI Sync
+            <div className="mx-auto bg-white/80 px-4 py-1.5 rounded-full text-[10px] font-black text-slate-500 uppercase tracking-widest shadow-sm">
+              portal.cse.edu
             </div>
+            <div className="w-12"></div> {/* Spacer for centering */}
           </div>
 
-          <div className="space-y-4">
-            <div className="h-2.5 w-1/3 rounded-full bg-slate-200/50"></div>
-            <div className="h-2.5 w-3/4 rounded-full bg-slate-200/50"></div>
-            <div className="h-2.5 w-1/2 rounded-full bg-slate-200/50"></div>
-          </div>
-          
-          {/* Central Glowing Orb inside the glass */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-400 blur-2xl opacity-60 mix-blend-multiply animate-spin-slow"></div>
-          
-          <div className="relative z-10 w-full h-32 rounded-2xl bg-white/50 border border-white/50 flex items-end p-4 gap-2">
-            {[40, 70, 45, 90, 65].map((height, i) => (
-              <div key={i} className="flex-1 bg-indigo-500/20 rounded-t-sm relative group">
-                 <div className="absolute bottom-0 left-0 right-0 bg-indigo-500 rounded-t-md transition-all duration-1000" style={{ height: `${height}%` }}></div>
-              </div>
-            ))}
+          {/* Dashboard Body */}
+          <div className="flex flex-1 p-5 gap-5">
+             {/* Sidebar */}
+             <div className="w-1/3 flex flex-col gap-3">
+               <div className="w-full h-28 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex flex-col items-center justify-center p-3 shadow-inner">
+                 <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 mb-3 flex items-center justify-center text-white text-sm font-black shadow-md">JD</div>
+                 <div className="w-16 h-2 bg-indigo-500/30 rounded-full"></div>
+                 <div className="w-10 h-2 bg-indigo-500/20 rounded-full mt-1.5"></div>
+               </div>
+               <div className="w-full h-8 rounded-xl bg-slate-200/50 mt-2"></div>
+               <div className="w-full h-8 rounded-xl bg-slate-200/50"></div>
+               <div className="w-full h-8 rounded-xl bg-slate-200/50"></div>
+             </div>
+
+             {/* Main Content */}
+             <div className="flex-1 flex flex-col gap-4">
+               <div className="flex gap-3">
+                 <div className="flex-1 h-24 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 p-4 flex flex-col justify-center">
+                    <span className="text-[10px] font-extrabold text-emerald-600 uppercase tracking-wider mb-1">Current CGPA</span>
+                    <span className="text-3xl font-black text-emerald-900">3.92</span>
+                 </div>
+                 <div className="flex-1 h-24 rounded-2xl bg-purple-500/10 border border-purple-500/20 p-4 flex flex-col justify-center">
+                    <span className="text-[10px] font-extrabold text-purple-600 uppercase tracking-wider mb-1">Credits</span>
+                    <span className="text-3xl font-black text-purple-900">112</span>
+                 </div>
+               </div>
+               
+               <div className="flex-1 rounded-2xl bg-white/60 border border-white shadow-sm p-4 flex flex-col gap-3">
+                 <div className="w-24 h-3 bg-slate-300 rounded-full mb-1"></div>
+                 <div className="w-full h-8 rounded-lg bg-slate-200/60"></div>
+                 <div className="w-full h-8 rounded-lg bg-slate-200/60"></div>
+               </div>
+             </div>
           </div>
         </div>
 
-        {/* Floating Overlapping Elements */}
-        <div className="absolute z-30 -right-4 top-20 w-48 rounded-2xl bg-white/70 backdrop-blur-xl p-4 shadow-2xl border border-white/80 animate-float">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
-              <Sparkles className="h-5 w-5 text-green-600" />
+        {/* Floating Attendance Chart */}
+        <div className="absolute z-30 -right-6 bottom-16 w-56 rounded-2xl bg-white/95 backdrop-blur-xl p-4 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.15)] border border-white animate-float" style={{ animationDelay: '1s' }}>
+           <div className="flex items-center justify-between mb-4">
+             <div className="flex items-center gap-2">
+               <div className="h-7 w-7 rounded-lg bg-emerald-100 flex items-center justify-center">
+                 <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+               </div>
+               <span className="text-[11px] font-extrabold text-slate-800 uppercase tracking-widest">Attendance</span>
+             </div>
+             <span className="text-xs font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">92%</span>
+           </div>
+           
+           <div className="flex items-end justify-between gap-1.5 h-12 mt-2">
+             {[60, 80, 100, 45, 90, 75, 100].map((h, i) => (
+               <div key={i} className="w-full h-full bg-slate-100 rounded-sm relative group overflow-hidden">
+                 <div className={`absolute bottom-0 left-0 right-0 rounded-sm transition-all duration-1000 ${h < 50 ? 'bg-rose-400' : 'bg-emerald-400'}`} style={{ height: `${h}%` }}></div>
+               </div>
+             ))}
+           </div>
+           <div className="flex justify-between mt-1.5 px-1 text-[9px] font-black text-slate-400">
+             <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+           </div>
+        </div>
+
+        {/* Floating Notification */}
+        <div className="absolute z-30 -left-12 top-28 w-56 rounded-2xl bg-white/90 backdrop-blur-xl p-4 shadow-2xl border border-white animate-float">
+          <div className="flex items-center gap-4">
+            <div className="h-10 w-10 rounded-full bg-rose-100 flex items-center justify-center shrink-0">
+              <Bell className="h-5 w-5 text-rose-500 animate-bounce" />
             </div>
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Accuracy</p>
-              <p className="text-lg font-black text-slate-800">99.8%</p>
+              <p className="text-[11px] font-black text-slate-800 uppercase tracking-wide">Class Rescheduled</p>
+              <p className="text-[10px] font-medium text-slate-500 mt-0.5">Data Structures at 2 PM</p>
             </div>
           </div>
         </div>
-
-        <div className="absolute z-30 -left-12 bottom-32 w-56 rounded-2xl bg-slate-900/80 backdrop-blur-xl p-4 shadow-2xl border border-slate-700 animate-float" style={{ animationDelay: '1.5s' }}>
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-sky-500/20 flex items-center justify-center">
-              <Activity className="h-5 w-5 text-sky-400" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-sky-300 uppercase tracking-widest">System Status</p>
-              <p className="text-sm font-black text-white">Optimal Load</p>
-            </div>
-          </div>
+        
+        {/* Floating Database Icon */}
+        <div className="absolute z-30 right-10 top-16 w-14 h-14 rounded-2xl bg-sky-500/10 backdrop-blur-md border border-sky-500/30 flex items-center justify-center shadow-lg animate-float" style={{ animationDelay: '2s' }}>
+          <Database className="h-6 w-6 text-sky-500" />
         </div>
 
         {/* Ambient Backlight */}
-        <div className="absolute top-1/2 left-1/2 w-full h-full -translate-x-1/2 -translate-y-1/2 bg-gradient-to-br from-indigo-300/30 via-purple-300/20 to-transparent rounded-full blur-[100px] -z-10"></div>
+        <div className="absolute top-1/2 left-1/2 w-full h-full -translate-x-1/2 -translate-y-1/2 bg-gradient-to-br from-indigo-400/30 via-purple-400/20 to-transparent rounded-full blur-[100px] -z-10"></div>
       </div>
     </div>
   );
