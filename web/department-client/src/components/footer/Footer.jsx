@@ -1,16 +1,73 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { GraduationCap, Sparkles, MapPin, Phone, Mail, Globe, MessageCircle, Share2, Video, Heart } from "lucide-react";
 import Link from "next/link";
+import gsap from "gsap";
 
 export function Footer() {
+  const containerRef = useRef(null);
+  const leftBeam = useRef(null);
+  const rightBeam = useRef(null);
+  const centerPulse = useRef(null);
+  const sweeper = useRef(null);
+
+  useEffect(() => {
+    let ctx = gsap.context(() => {
+      const tl = gsap.timeline({ repeat: -1, repeatDelay: 1 });
+
+      // Initial states
+      gsap.set(leftBeam.current, { scaleX: 0, opacity: 1, xPercent: 0 });
+      gsap.set(rightBeam.current, { scaleX: 0, opacity: 1, xPercent: 0 });
+      gsap.set(centerPulse.current, { scale: 0, opacity: 0 });
+      gsap.set(sweeper.current, { x: "-50vw", opacity: 0 });
+
+      tl.to(centerPulse.current, { scale: 1, opacity: 1, duration: 0.5, ease: "back.out(2)" })
+        .to(centerPulse.current, { scale: 0.6, duration: 0.2 })
+        .to([leftBeam.current, rightBeam.current], {
+          scaleX: 1,
+          duration: 1.2,
+          ease: "expo.out"
+        }, "-=0.2")
+        .to(leftBeam.current, { xPercent: -100, opacity: 0, duration: 0.8, ease: "power2.in" }, "+=0.3")
+        .to(rightBeam.current, { xPercent: 100, opacity: 0, duration: 0.8, ease: "power2.in" }, "<")
+        .to(centerPulse.current, { scale: 0, opacity: 0, duration: 0.5 }, "<")
+        .to(sweeper.current, { opacity: 1, duration: 0.3 })
+        .to(sweeper.current, {
+          x: "100vw",
+          duration: 2.5,
+          ease: "power1.inOut"
+        }, "<")
+        .to(sweeper.current, { opacity: 0, duration: 0.5 }, "-=0.5");
+    }, containerRef);
+
+    return () => ctx.revert();
+  }, []);
+
   return (
-    <footer className="relative w-full bg-white/40 dark:bg-slate-900/40 backdrop-blur-2xl pt-24 pb-10 overflow-hidden mt-20 transition-colors duration-500 shadow-[0_-20px_50px_rgba(0,0,0,0.02)]">
-      {/* Impressive Premium Glowing Top Divider */}
-      <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-indigo-500/50 to-transparent"></div>
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-[2px] bg-gradient-to-r from-transparent via-indigo-400 to-transparent blur-[2px]"></div>
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/3 h-[2px] bg-gradient-to-r from-transparent via-cyan-300 to-transparent shadow-[0_0_15px_rgba(34,211,238,0.8)]"></div>
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-[3px] bg-white blur-[1px] rounded-full shadow-[0_0_20px_rgba(255,255,255,1)]"></div>
+    <footer ref={containerRef} className="relative w-full bg-white/40 dark:bg-slate-900/40 backdrop-blur-2xl pt-24 pb-10 overflow-hidden mt-20 transition-colors duration-500 shadow-[0_-20px_50px_rgba(0,0,0,0.02)]">
+      
+      {/* GSAP Animated Premium Divider Container */}
+      <div className="absolute top-0 left-0 w-full h-[4px] overflow-hidden pointer-events-none z-20">
+        {/* Base ultra-thin line */}
+        <div className="absolute top-[1px] left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-slate-300 dark:via-slate-700 to-transparent opacity-50"></div>
+        
+        {/* Sweeper (large soft light sweeping across) */}
+        <div ref={sweeper} className="absolute top-0 h-[3px] w-[50vw] flex items-center justify-center">
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-indigo-500/80 to-transparent blur-[3px]"></div>
+          <div className="absolute h-[2px] w-1/2 bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_20px_rgba(34,211,238,1)]"></div>
+          <div className="absolute h-[3px] w-16 bg-white rounded-full shadow-[0_0_30px_rgba(255,255,255,1)]"></div>
+        </div>
+
+        {/* Left Expanding Beam */}
+        <div ref={leftBeam} className="absolute top-[1px] right-1/2 w-1/2 h-[2px] bg-gradient-to-r from-transparent via-indigo-400 to-cyan-300 shadow-[0_0_15px_rgba(34,211,238,0.8)] origin-right"></div>
+        
+        {/* Right Expanding Beam */}
+        <div ref={rightBeam} className="absolute top-[1px] left-1/2 w-1/2 h-[2px] bg-gradient-to-l from-transparent via-indigo-400 to-cyan-300 shadow-[0_0_15px_rgba(34,211,238,0.8)] origin-left"></div>
+
+        {/* Center Impact Pulse */}
+        <div ref={centerPulse} className="absolute top-[1px] left-1/2 -translate-x-1/2 -translate-y-1/2 h-[4px] w-24 bg-white rounded-full shadow-[0_0_20px_rgba(255,255,255,1),0_0_30px_rgba(34,211,238,0.8)] blur-[0.5px]"></div>
+      </div>
       
       <div className="relative z-10 mx-auto max-w-7xl px-6 lg:px-8">
         
