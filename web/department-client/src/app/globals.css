@@ -9,8 +9,44 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-sans);
   --font-mono: var(--font-geist-mono);
+  
+  --animate-blob: blob 15s infinite alternate ease-in-out;
+
+  @keyframes spin-slow {
+    from {
+      transform: translate(-50%, -50%) rotate(0deg);
+    }
+    to {
+      transform: translate(-50%, -50%) rotate(360deg);
+    }
+  }
+
+  @keyframes float {
+    0% { transform: translateY(0px); }
+    50% { transform: translateY(-15px); }
+    100% { transform: translateY(0px); }
+  }
+
+  @keyframes blob {
+    0% { transform: translate(0px, 0px) scale(1) rotate(0deg); border-radius: 100%; }
+    25% { transform: translate(150px, -50px) scale(1.2) rotate(45deg); border-radius: 80% 120% 100% 90%; }
+    50% { transform: translate(50px, 150px) scale(0.9) rotate(90deg); border-radius: 110% 90% 120% 80%; }
+    75% { transform: translate(-100px, 50px) scale(1.1) rotate(135deg); border-radius: 90% 110% 80% 120%; }
+    100% { transform: translate(0px, 0px) scale(1) rotate(180deg); border-radius: 100%; }
+  }
+}
+
+/* Custom utility for animation delays since tailwind doesn't have it built-in natively without plugins */
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+.animation-delay-4000 {
+  animation-delay: 4s;
+}
+.animation-delay-6000 {
+  animation-delay: 6s;
 }
 
 @media (prefers-color-scheme: dark) {

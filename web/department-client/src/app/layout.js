@@ -21,7 +21,7 @@ export default function RootLayout({ children }) {
   return (
     <html
       lang="en"
-      className={`${outfit.variable} ${geistMono.variable} h-full antialiased font-sans`}
+      className={`${outfit.variable} ${geistMono.variable} h-full antialiased font-sans scroll-smooth`}
     >
       <body className="min-h-full flex flex-col">
         <Providers>{children}</Providers>
