@@ -15,6 +15,7 @@ import { PortalsPreview } from "@/components/landing/PortalsPreview";
 import { AiIntelligence } from "@/components/landing/AiIntelligence";
 import { EventsNotices } from "@/components/landing/EventsNotices";
 import { HelpSupport } from "@/components/landing/HelpSupport";
+import { FloatingActions } from "@/components/landing/FloatingActions";
 
 // Register ScrollTrigger
 gsap.registerPlugin(ScrollTrigger);
@@ -143,6 +144,7 @@ export default function LandingPage() {
         </section>
 
         <Footer />
+        <FloatingActions />
       </div>
     </main>
   );
