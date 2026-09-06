@@ -8,6 +8,7 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Navbar } from "@/components/navbar/Navbar";
 import { Footer } from "@/components/footer/Footer";
 import { HeroSection } from "@/components/landing/HeroSection";
+import { NoticeMarquee } from "@/components/landing/NoticeMarquee";
 import { KeyStatistics } from "@/components/landing/KeyStatistics";
 import { CoreFeatures } from "@/components/landing/CoreFeatures";
 import { HowItWorks } from "@/components/landing/HowItWorks";
@@ -129,6 +130,11 @@ export default function LandingPage() {
           
           <Navbar />
           <HeroSection />
+          
+          <div className="px-6 lg:px-0">
+            <NoticeMarquee />
+          </div>
+
           <KeyStatistics />
           <CoreFeatures />
           <HowItWorks />

@@ -13,6 +13,12 @@
   --font-mono: var(--font-geist-mono);
   
   --animate-blob: blob 15s infinite alternate ease-in-out;
+  --animate-marquee: marquee 40s linear infinite;
+
+  @keyframes marquee {
+    0% { transform: translateX(0%); }
+    100% { transform: translateX(-50%); }
+  }
 
   @keyframes spin-slow {
     from {
