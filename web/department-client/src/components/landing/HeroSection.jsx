@@ -36,23 +36,13 @@ export function HeroSection() {
         <div className="gsap-hero-item flex flex-wrap gap-5 pt-4">
           <Button 
             as={Link} 
-            href="/student/signup" 
+            href="/register" 
             color="primary" 
             size="lg" 
             className="font-bold text-sm tracking-wide h-14 px-8 shadow-xl shadow-indigo-200/50 bg-indigo-600 hover:bg-indigo-700 rounded-2xl"
             endContent={<ArrowRight className="h-4 w-4" />}
           >
-            Join as Student
-          </Button>
-          <Button 
-            as="a" 
-            href="#portals" 
-            onClick={(e) => handleScroll(e, 'portals')}
-            variant="bordered" 
-            size="lg" 
-            className="font-bold text-sm tracking-wide h-14 px-8 bg-white/60 backdrop-blur-md border-slate-200 text-slate-700 hover:bg-white rounded-2xl cursor-pointer"
-          >
-            Explore Portals
+            Get Started
           </Button>
         </div>
 
