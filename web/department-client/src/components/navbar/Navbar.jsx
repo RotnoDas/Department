@@ -79,14 +79,12 @@ export function Navbar() {
         <a href="#support" onClick={(e) => handleScroll(e, 'support')} className="text-sm font-semibold tracking-wide text-slate-500 hover:text-indigo-600 transition-colors cursor-pointer">
           Support
         </a>
-        <Button
-          as={Link}
-          href="/student/login"
-          color="primary"
-          className="font-bold text-sm tracking-wide bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200/50 px-7 h-11 rounded-xl"
+        <Link
+          href="/login"
+          className="inline-flex items-center justify-center font-bold text-sm tracking-wide text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200/50 px-7 h-11 rounded-xl transition-colors"
         >
           Sign In
-        </Button>
+        </Link>
       </div>
     </header>
     </>

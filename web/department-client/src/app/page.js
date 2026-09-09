@@ -11,7 +11,7 @@ import { HeroSection } from "@/components/landing/HeroSection";
 import { NoticeMarquee } from "@/components/landing/NoticeMarquee";
 import { KeyStatistics } from "@/components/landing/KeyStatistics";
 import { CoreFeatures } from "@/components/landing/CoreFeatures";
-import { PortalsPreview } from "@/components/landing/PortalsPreview";
+
 import { AiIntelligence } from "@/components/landing/AiIntelligence";
 import { EventsNotices } from "@/components/landing/EventsNotices";
 import { HelpSupport } from "@/components/landing/HelpSupport";
@@ -22,7 +22,6 @@ gsap.registerPlugin(ScrollTrigger);
 
 export default function LandingPage() {
   const containerRef = useRef(null);
-  const portalCardsRef = useRef([]);
 
   useEffect(() => {
     const ctx = gsap.context(() => {
@@ -70,27 +69,7 @@ export default function LandingPage() {
         );
       });
 
-      // 4. Portals Advanced Stagger
-      gsap.fromTo(
-        ".gsap-portal-header",
-        { y: 50, opacity: 0, scale: 0.95 },
-        { y: 0, opacity: 1, scale: 1, duration: 1, ease: "power4.out", scrollTrigger: { trigger: "#portals", start: "top 80%", toggleActions: "play none none reverse" } }
-      );
 
-      portalCardsRef.current.forEach((card, i) => {
-        if(card) {
-          gsap.fromTo(
-            card,
-            { y: 100, opacity: 0, rotationY: 15 },
-            {
-              y: 0, opacity: 1, rotationY: 0, duration: 1.2, ease: "expo.out",
-              transformPerspective: 1000,
-              delay: i * 0.15,
-              scrollTrigger: { trigger: card, start: "top 85%", toggleActions: "play none none reverse" }
-            }
-          );
-        }
-      });
       
       // 5. Global smooth scrub for specific elements (if any component uses .gsap-scrub)
       gsap.utils.toArray('.gsap-scrub').forEach(el => {
@@ -136,7 +115,7 @@ export default function LandingPage() {
 
           <KeyStatistics />
           <CoreFeatures />
-          <PortalsPreview portalCardsRef={portalCardsRef} />
+
           <AiIntelligence />
           <EventsNotices />
           <HelpSupport />

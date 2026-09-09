@@ -10,8 +10,8 @@ const PANELS = [
     title: "Student Portal",
     description: "Access lecture notes, submit assignments, track attendance, and manage your academic profile.",
     icon: <GraduationCap className="h-8 w-8 text-indigo-600" />,
-    loginPath: "/student/login",
-    signupPath: "/student/signup",
+    loginPath: "/login",
+    signupPath: "/register",
     badgeColor: "text-indigo-600 bg-indigo-50 ring-indigo-200",
   },
   {
@@ -19,8 +19,8 @@ const PANELS = [
     title: "Faculty Hub",
     description: "Manage course distributions, publish study materials, and review student assignment submissions.",
     icon: <Presentation className="h-8 w-8 text-sky-600" />,
-    loginPath: "/teacher/login",
-    signupPath: "/teacher/signup",
+    loginPath: "/login",
+    signupPath: "/register",
     badgeColor: "text-sky-600 bg-sky-50 ring-sky-200",
   },
   {
@@ -28,8 +28,8 @@ const PANELS = [
     title: "Admin Control",
     description: "Full oversight of the department portal, user approvals, course assignments, and routine management.",
     icon: <ShieldCheck className="h-8 w-8 text-purple-600" />,
-    loginPath: "/admin/login",
-    signupPath: "/admin/signup",
+    loginPath: "/login",
+    signupPath: "/register",
     badgeColor: "text-purple-600 bg-purple-50 ring-purple-200",
   },
 ];

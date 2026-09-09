@@ -34,16 +34,12 @@ export function HeroSection() {
         </p>
 
         <div className="gsap-hero-item flex flex-wrap gap-5 pt-4">
-          <Button 
-            as={Link} 
+          <Link 
             href="/register" 
-            color="primary" 
-            size="lg" 
-            className="font-bold text-sm tracking-wide h-14 px-8 shadow-xl shadow-indigo-200/50 bg-indigo-600 hover:bg-indigo-700 rounded-2xl"
-            endContent={<ArrowRight className="h-4 w-4" />}
+            className="inline-flex items-center justify-center font-bold text-sm tracking-wide h-14 px-8 shadow-xl shadow-indigo-200/50 bg-indigo-600 hover:bg-indigo-700 rounded-2xl text-white transition-colors"
           >
-            Get Started
-          </Button>
+            Get Started <ArrowRight className="h-4 w-4 ml-2" />
+          </Link>
         </div>
 
         <div className="gsap-hero-item inline-flex items-center gap-5 pt-4 mt-2 rounded-full bg-white/40 backdrop-blur-md p-2 pr-6 shadow-sm ring-1 ring-slate-200/50">

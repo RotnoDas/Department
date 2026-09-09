@@ -7,6 +7,20 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
   },
+  user: {
+    additionalFields: {
+      studentId: { type: "string", required: false },
+      phone: { type: "string", required: false },
+      batch: { type: "string", required: false },
+      semester: { type: "string", required: false },
+      bloodGroup: { type: "string", required: false },
+      address: { type: "string", required: false },
+      teacherId: { type: "string", required: false },
+      designation: { type: "string", required: false },
+      specialization: { type: "string", required: false },
+      officeRoom: { type: "string", required: false },
+    }
+  },
   databaseHooks: {
     user: {
       create: {
