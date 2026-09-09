@@ -1,14 +1,17 @@
 "use client";
 
-import { Button, Input, Form } from '@heroui/react';
+import { Button } from '@heroui/react';
 import Link from 'next/link';
 import React, { useState } from 'react';
 import { authClient } from '@/lib/auth-client';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Lock, Mail } from 'lucide-react';
+import { Lock, Mail, KeyRound, Eye, EyeOff, ArrowRight } from 'lucide-react';
 
 const LoginPage = () => {
     const [isLoading, setIsLoading] = useState(false);
+    const [isVisible, setIsVisible] = useState(false);
+
+    const toggleVisibility = () => setIsVisible(!isVisible);
 
     const onSubmit = async (e) => {
         e.preventDefault();
@@ -32,80 +35,88 @@ const LoginPage = () => {
     };
 
     return (
-        <div className="flex min-h-screen bg-white font-sans">
-            {/* Left Panel - High-End CSE Showcase */}
-            <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden items-center justify-center bg-slate-900">
-                <div className="absolute inset-0 z-0">
-                    <img
-                        src="https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=2670&auto=format&fit=crop"
-                        alt="Computer Science Tech"
-                        className="w-full h-full object-cover opacity-30 transition-transform duration-[20s] hover:scale-110"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/60 to-transparent"></div>
+        <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans selection:bg-indigo-100 selection:text-indigo-900">
+            {/* Background Dynamic Blur Gradients matching Landing Page */}
+            <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden bg-slate-50/50 backdrop-blur-[2px]">
+                <div className="absolute -top-[20%] -left-[10%] h-[70%] w-[70%] opacity-40">
+                    <div className="w-full h-full rounded-full bg-indigo-200 blur-[150px] animate-blob"></div>
                 </div>
-
-                <div className="relative z-10 p-12 xl:p-20 flex flex-col items-center text-center mt-auto mb-16 xl:mb-24">
-                    <div className="backdrop-blur-xl bg-black/20 p-8 xl:p-12 rounded-[2rem] xl:rounded-[3rem] border border-white/10 shadow-2xl">
-                        <h2 className="text-4xl xl:text-5xl font-black text-white tracking-tight leading-tight">
-                            Welcome <br /> 
-                            <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-sky-400 italic">Back</span>
-                        </h2>
-                        <p className="mt-5 xl:mt-8 text-slate-300 max-w-md xl:max-w-lg text-lg font-medium leading-relaxed">
-                            Sign in to access your portal, check your routine, and stay updated with the department.
-                        </p>
-                    </div>
+                <div className="absolute top-[10%] -right-[10%] h-[60%] w-[60%] opacity-40">
+                    <div className="w-full h-full rounded-full bg-sky-200 blur-[150px] animate-blob" style={{animationDelay: '2s'}}></div>
+                </div>
+                <div className="absolute -bottom-[20%] left-[10%] h-[70%] w-[70%] opacity-30">
+                    <div className="w-full h-full rounded-full bg-purple-200 blur-[150px] animate-blob" style={{animationDelay: '4s'}}></div>
                 </div>
             </div>
 
-            {/* Right Panel - Login Form */}
-            <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-12 lg:p-16 xl:p-24 relative">
-                <Link href="/" className="absolute top-8 left-8 flex items-center gap-2 text-xs font-black tracking-widest text-slate-400 uppercase hover:text-indigo-600 transition-colors">
-                    <ArrowLeft className="h-4 w-4" /> Back to Home
-                </Link>
-
-                <div className="w-full max-w-sm mt-16 lg:mt-0">
-                    <div className="mb-10">
-                        <h1 className="text-3xl font-black tracking-tight text-slate-800">Sign In</h1>
-                        <p className="text-slate-500 mt-2 text-sm font-medium">Enter your credentials to access your account.</p>
+            <div className="w-full max-w-md relative z-10 animate-in fade-in slide-in-from-bottom-8 duration-700 py-10">
+                
+                {/* Logo / Icon Area */}
+                <div className="text-center mb-10">
+                    <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-white text-indigo-600 shadow-[0_0_40px_-10px_rgba(79,70,229,0.3)] ring-1 ring-slate-100 transform transition-transform hover:scale-105 hover:rotate-3 duration-500">
+                        <KeyRound className="h-8 w-8" strokeWidth={2.5} />
                     </div>
+                    <h1 className="text-3xl font-extrabold tracking-tight">
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-500">Welcome Back</span>
+                    </h1>
+                    <p className="mt-2 text-sm font-medium text-slate-500">
+                        Sign in to continue to your workspace
+                    </p>
+                </div>
 
-                    <Form validationBehavior="native" onSubmit={onSubmit} className="space-y-6">
-                        <div className="w-full">
-                            <label className="flex items-center gap-2 text-[10px] font-black tracking-widest text-slate-500 uppercase mb-2">
-                                <Mail className="h-4 w-4 text-sky-500" /> Email Address
-                            </label>
-                            <Input 
-                                required name="email" type="email" placeholder="e.g. john@student.cse.edu" 
-                                variant="bordered" className="w-full" radius="md"
-                            />
+                {/* Form Card */}
+                <div className="bg-white/70 backdrop-blur-3xl p-8 sm:p-10 rounded-[2rem] border border-white/80 shadow-[0_30px_60px_-15px_rgba(79,70,229,0.3)]">
+                    <form onSubmit={onSubmit} className="flex flex-col gap-5">
+                        
+                        <div className="flex flex-col gap-1.5 w-full">
+                            <label className="font-semibold text-slate-700 text-sm">Email Address</label>
+                            <div className="relative">
+                                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                <input 
+                                    required name="email" type="email" placeholder="e.g. john@student.cse.edu" 
+                                    className="w-full h-12 bg-white border-2 border-slate-200 hover:border-indigo-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg shadow-sm !pl-11 !pr-4 text-slate-800 outline-none transition-all"
+                                />
+                            </div>
                         </div>
 
-                        <div className="w-full">
-                            <label className="flex items-center gap-2 text-[10px] font-black tracking-widest text-slate-500 uppercase mb-2">
-                                <Lock className="h-4 w-4 text-sky-500" /> Password
-                            </label>
-                            <Input 
-                                required name="password" type="password" placeholder="Enter your password" 
-                                variant="bordered" className="w-full" radius="md"
-                            />
+                        <div className="flex flex-col gap-1.5 w-full">
+                            <label className="font-semibold text-slate-700 text-sm">Password</label>
+                            <div className="relative">
+                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                <input 
+                                    required name="password" type={isVisible ? "text" : "password"} placeholder="Enter your password" 
+                                    className="w-full h-12 bg-white border-2 border-slate-200 hover:border-indigo-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg shadow-sm !pl-11 !pr-11 text-slate-800 outline-none transition-all"
+                                />
+                                <button className="absolute right-4 top-1/2 -translate-y-1/2 focus:outline-none z-10" type="button" onClick={toggleVisibility}>
+                                    {isVisible ? <EyeOff className="w-5 h-5 text-slate-400 hover:text-indigo-500 transition-colors" /> : <Eye className="w-5 h-5 text-slate-400 hover:text-indigo-500 transition-colors" />}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="flex w-full items-center justify-end -mt-2">
+                            <Link href="#" className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 hover:underline transition-all">
+                                Forgot password?
+                            </Link>
                         </div>
 
                         <Button
                             type="submit"
-                            className="w-full bg-slate-900 text-white font-black tracking-widest uppercase h-14 mt-6 transition-all hover:bg-sky-600 hover:shadow-xl hover:shadow-sky-200"
-                            radius="md"
+                            className="w-full inline-flex items-center justify-center font-bold text-sm tracking-wide h-14 px-8 shadow-xl shadow-indigo-200/50 bg-indigo-600 hover:bg-indigo-700 rounded-2xl text-white transition-colors mt-2"
                             isLoading={isLoading}
+                            endContent={!isLoading && <ArrowRight className="h-4 w-4 ml-1 opacity-90" />}
                         >
                             Sign In
                         </Button>
-                    </Form>
+                    </form>
 
-                    <p className="text-center text-xs font-bold text-slate-500 mt-8">
-                        Don't have an account?{" "}
-                        <Link href="/register" className="text-sky-600 hover:text-sky-700 transition-colors ml-1">
-                            Create Account
-                        </Link>
-                    </p>
+                    <div className="mt-8 pt-6 border-t border-slate-100 flex justify-center">
+                        <p className="text-sm font-medium text-slate-500">
+                            Don't have an account?{" "}
+                            <Link href="/register" className="text-indigo-600 font-semibold hover:text-indigo-700 hover:underline transition-all">
+                                Register now
+                            </Link>
+                        </p>
+                    </div>
                 </div>
             </div>
         </div>

@@ -1,15 +1,15 @@
 "use client";
 
-import { Button, Input, Form } from '@heroui/react';
+import { Button } from '@heroui/react';
 import Link from 'next/link';
 import React, { useState, useMemo } from 'react';
 import { authClient } from '@/lib/auth-client';
 import toast from 'react-hot-toast';
 import { 
-    ArrowLeft, ShieldCheck, Layers, Phone, Calendar, Sparkles, 
-    Droplet, MapPin, Briefcase, Microscope, DoorOpen, Lock, Mail, User
+    ShieldCheck, Layers, Phone, Calendar, Sparkles, 
+    Droplet, MapPin, Briefcase, Microscope, DoorOpen, Lock, Mail, User, GraduationCap, Presentation,
+    Eye, EyeOff, ArrowRight, UserPlus
 } from 'lucide-react';
-import Image from 'next/image';
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 
@@ -17,13 +17,19 @@ const RegisterPage = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [isVisible, setIsVisible] = useState(false);
+    const [isConfirmVisible, setIsConfirmVisible] = useState(false);
 
-    // Determine role dynamically based on email domain
+    const toggleVisibility = () => setIsVisible(!isVisible);
+    const toggleConfirmVisibility = () => setIsConfirmVisible(!isConfirmVisible);
+
     const derivedRole = useMemo(() => {
         if (!email) return null;
-        if (email.endsWith("@student.cse.edu")) return "student";
-        if (email.endsWith("@cse.edu") && email !== "admin@cse.edu") return "teacher";
-        return null; // Don't show extra fields for admin or invalid domains yet
+        const lowerEmail = email.toLowerCase();
+        if (lowerEmail.endsWith("@student.cse.edu")) return "student";
+        if (lowerEmail.endsWith("@teacher.cse.edu") || (lowerEmail.endsWith("@cse.edu") && !lowerEmail.includes("staff") && !lowerEmail.includes("admin"))) return "teacher";
+        if (lowerEmail.endsWith("@employee.cse.edu") || lowerEmail.endsWith("@staff.cse.edu")) return "employee";
+        return null;
     }, [email]);
 
     const onSubmit = async (e) => {
@@ -43,17 +49,20 @@ const RegisterPage = () => {
             email: data.email,
             password: data.password,
             name: data.name,
-            // Additional fields supported by better-auth config
             studentId: data.studentId,
             phone: data.phone,
             batch: data.batch,
             semester: data.semester,
+            session: data.session,
             bloodGroup: data.bloodGroup,
             address: data.address,
             teacherId: data.teacherId,
             designation: data.designation,
             specialization: data.specialization,
-            officeRoom: data.officeRoom,
+            joiningDate: data.joiningDate,
+            employeeId: data.employeeId,
+            department: data.department,
+            role: derivedRole || "user",
         });
 
         if (signUpError) {
@@ -65,193 +74,320 @@ const RegisterPage = () => {
         }
     };
 
-    return (
-        <div className="flex min-h-screen bg-white font-sans">
-            {/* Left Panel - High-End CSE Showcase */}
-            <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden items-center justify-center bg-slate-900">
-                <div className="absolute inset-0 z-0">
-                    <img
-                        src="https://images.unsplash.com/photo-1517694712202-14dd9538aa97?q=80&w=2670&auto=format&fit=crop"
-                        alt="Computer Science"
-                        className="w-full h-full object-cover opacity-30 transition-transform duration-[20s] hover:scale-110"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/60 to-transparent"></div>
-                </div>
+    const inputClassName = "w-full h-12 bg-white border-2 border-slate-200 hover:border-indigo-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg shadow-sm !pl-11 !pr-4 text-slate-800 outline-none transition-all";
 
-                <div className="relative z-10 p-12 xl:p-20 flex flex-col items-center text-center mt-auto mb-16 xl:mb-24">
-                    <div className="backdrop-blur-xl bg-black/20 p-8 xl:p-12 rounded-[2rem] xl:rounded-[3rem] border border-white/10 shadow-2xl">
-                        <h2 className="text-4xl xl:text-5xl font-black text-white tracking-tight leading-tight">
-                            Department of <br /> 
-                            <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-sky-400 italic">Computer Science</span>
-                        </h2>
-                        <p className="mt-5 xl:mt-8 text-slate-300 max-w-md xl:max-w-lg text-lg font-medium leading-relaxed">
-                            Join our unified digital ecosystem. Empowering students, faculty, and administrators with real-time academic tools.
-                        </p>
-                    </div>
+    return (
+        <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans selection:bg-indigo-100 selection:text-indigo-900">
+            {/* Background Dynamic Blur Gradients matching Landing Page */}
+            <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden bg-slate-50/50 backdrop-blur-[2px]">
+                <div className="absolute -top-[20%] -left-[10%] h-[70%] w-[70%] opacity-40">
+                    <div className="w-full h-full rounded-full bg-indigo-200 blur-[150px] animate-blob"></div>
+                </div>
+                <div className="absolute top-[10%] -right-[10%] h-[60%] w-[60%] opacity-40">
+                    <div className="w-full h-full rounded-full bg-sky-200 blur-[150px] animate-blob" style={{animationDelay: '2s'}}></div>
+                </div>
+                <div className="absolute -bottom-[20%] left-[10%] h-[70%] w-[70%] opacity-30">
+                    <div className="w-full h-full rounded-full bg-purple-200 blur-[150px] animate-blob" style={{animationDelay: '4s'}}></div>
                 </div>
             </div>
 
-            {/* Right Panel - Dynamic Form */}
-            <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-12 lg:p-16 xl:p-24 relative overflow-y-auto">
-                <Link href="/" className="absolute top-8 left-8 flex items-center gap-2 text-xs font-black tracking-widest text-slate-400 uppercase hover:text-indigo-600 transition-colors">
-                    <ArrowLeft className="h-4 w-4" /> Back to Home
-                </Link>
-
-                <div className="w-full max-w-md mt-16 lg:mt-0">
-                    <div className="mb-10">
-                        <h1 className="text-3xl font-black tracking-tight text-slate-800">Create an account</h1>
-                        <p className="text-slate-500 mt-2 text-sm font-medium">Your role is determined securely by your email domain.</p>
+            <div className="w-full max-w-2xl relative z-10 animate-in fade-in slide-in-from-bottom-8 duration-700 py-10">
+                
+                {/* Header Section */}
+                <div className="text-center mb-8">
+                    <div className={`mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-white shadow-[0_0_40px_-10px_rgba(79,70,229,0.3)] ring-1 ring-slate-100 transform transition-transform hover:scale-105 hover:rotate-3 duration-500 ${
+                        derivedRole === 'student' ? 'text-indigo-600' : 
+                        derivedRole === 'teacher' ? 'text-sky-500' : 
+                        derivedRole === 'employee' ? 'text-emerald-500' : 
+                        'text-slate-800'
+                    }`}>
+                        {derivedRole === 'student' ? <GraduationCap className="h-8 w-8 animate-in zoom-in" strokeWidth={2.5} /> :
+                         derivedRole === 'teacher' ? <Presentation className="h-8 w-8 animate-in zoom-in" strokeWidth={2.5} /> :
+                         derivedRole === 'employee' ? <Briefcase className="h-8 w-8 animate-in zoom-in" strokeWidth={2.5} /> :
+                         <UserPlus className="h-8 w-8 animate-in zoom-in" strokeWidth={2.5} />}
                     </div>
+                    <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-500">
+                            {derivedRole === 'student' ? "Student Registration" : 
+                             derivedRole === 'teacher' ? "Faculty Registration" : 
+                             derivedRole === 'employee' ? "Employee Registration" : 
+                             "Create an Account"}
+                        </span>
+                    </h1>
+                    <p className="mt-2 text-sm font-medium text-slate-500">
+                        {derivedRole ? `Complete your ${derivedRole} profile below` : "Enter your email to automatically determine your role"}
+                    </p>
+                </div>
 
-                    <Form validationBehavior="native" onSubmit={onSubmit} className="space-y-5">
+                <div className="bg-white/70 backdrop-blur-3xl p-8 sm:p-12 rounded-[2.5rem] border border-white/80 shadow-[0_30px_60px_-15px_rgba(79,70,229,0.3)]">
+                    <form onSubmit={onSubmit} className="flex flex-col gap-6">
                         
                         {/* BASE FIELDS */}
-                        <div className="w-full">
-                            <label className="flex items-center gap-2 text-[10px] font-black tracking-widest text-slate-500 uppercase mb-2">
-                                <User className="h-4 w-4 text-indigo-500" /> Full Name *
-                            </label>
-                            <Input 
-                                required name="name" placeholder="e.g. John Doe" 
-                                variant="bordered" className="w-full" radius="md"
-                            />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
+                            <div className="flex flex-col gap-1.5 w-full">
+                                <label className="font-semibold text-slate-700 text-sm">Full Name</label>
+                                <div className="relative">
+                                    <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                    <input required name="name" placeholder="e.g. John Doe" className={inputClassName} />
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col gap-1.5 w-full">
+                                <label className="font-semibold text-slate-700 text-sm">Email Address</label>
+                                <div className="relative">
+                                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                    <input 
+                                        required name="email" type="email" placeholder="john@student.cse.edu" 
+                                        className={inputClassName}
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                    />
+                                </div>
+                            </div>
                         </div>
 
-                        <div className="w-full">
-                            <label className="flex items-center gap-2 text-[10px] font-black tracking-widest text-slate-500 uppercase mb-2">
-                                <Mail className="h-4 w-4 text-indigo-500" /> Email Address *
-                            </label>
-                            <Input 
-                                required name="email" type="email"
-                                placeholder="john@student.cse.edu or teacher@cse.edu" 
-                                variant="bordered" className="w-full" radius="md"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                            />
-                        </div>
+                        {/* ROLE CONFIRMATION BADGE */}
+                        {derivedRole && (
+                            <div className="flex items-center gap-2 w-full mt-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                                <span className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider ${
+                                    derivedRole === 'student' ? 'bg-indigo-50 text-indigo-600 ring-1 ring-indigo-200' : 
+                                    derivedRole === 'teacher' ? 'bg-sky-50 text-sky-600 ring-1 ring-sky-200' : 
+                                    'bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200'
+                                }`}>
+                                    <Sparkles className="w-3.5 h-3.5" />
+                                    Register as {derivedRole}
+                                </span>
+                                <span className="text-xs font-medium text-slate-400">
+                                    Role automatically detected from email domain
+                                </span>
+                            </div>
+                        )}
 
                         {/* DYNAMIC STUDENT FIELDS */}
                         {derivedRole === "student" && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
-                                <div className="w-full">
-                                    <label className="flex items-center gap-2 text-[10px] font-black tracking-widest text-slate-500 uppercase mb-2">
-                                        <Layers className="h-3 w-3 text-sky-500" /> Student Roll
-                                    </label>
-                                    <Input name="studentId" placeholder="e.g. 220106" variant="bordered" radius="md" />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full animate-in fade-in zoom-in-95 duration-500 pt-6 border-t border-slate-100">
+                                
+                                <div className="flex flex-col gap-1.5 w-full">
+                                    <label className="font-semibold text-slate-700 text-sm">Student Roll</label>
+                                    <div className="relative">
+                                        <Layers className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <input name="studentId" placeholder="e.g. 220106" className={inputClassName} />
+                                    </div>
                                 </div>
-                                <div className="w-full">
-                                    <label className="flex items-center gap-2 text-[10px] font-black tracking-widest text-slate-500 uppercase mb-2">
-                                        <Phone className="h-3 w-3 text-emerald-500" /> Phone
-                                    </label>
-                                    <Input name="phone" placeholder="+880" variant="bordered" radius="md" />
+
+                                <div className="flex flex-col gap-1.5 w-full">
+                                    <label className="font-semibold text-slate-700 text-sm">Phone Number</label>
+                                    <div className="relative">
+                                        <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <input name="phone" placeholder="+880" className={inputClassName} />
+                                    </div>
                                 </div>
-                                <div className="w-full">
-                                    <label className="flex items-center gap-2 text-[10px] font-black tracking-widest text-slate-500 uppercase mb-2">
-                                        <Calendar className="h-3 w-3 text-amber-500" /> Batch
-                                    </label>
-                                    <Input name="batch" placeholder="e.g. 2024-2028" variant="bordered" radius="md" />
+
+                                <div className="flex flex-col gap-1.5 w-full">
+                                    <label className="font-semibold text-slate-700 text-sm">Batch</label>
+                                    <div className="relative">
+                                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <input name="batch" placeholder="e.g. 2024-2028" className={inputClassName} />
+                                    </div>
                                 </div>
-                                <div className="w-full">
-                                    <label className="flex items-center gap-2 text-[10px] font-black tracking-widest text-slate-500 uppercase mb-2">
-                                        <Sparkles className="h-3 w-3 text-indigo-500" /> Semester
-                                    </label>
-                                    <select name="semester" className="w-full h-10 px-3 bg-white border-2 border-slate-200 hover:border-slate-300 rounded-md text-sm text-slate-700 outline-none focus:border-slate-800 transition-colors" defaultValue="">
-                                        <option value="" disabled>Select</option>
-                                        {[1, 2, 3, 4, 5, 6, 7, 8].map(s => <option key={s} value={s.toString()}>Semester {s}</option>)}
-                                    </select>
+
+                                <div className="flex flex-col gap-1.5 w-full">
+                                    <label className="font-semibold text-slate-700 text-sm">Session</label>
+                                    <div className="relative">
+                                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <input name="session" placeholder="e.g. 2022-2023" className={inputClassName} />
+                                    </div>
                                 </div>
-                                <div className="w-full">
-                                    <label className="flex items-center gap-2 text-[10px] font-black tracking-widest text-slate-500 uppercase mb-2">
-                                        <Droplet className="h-3 w-3 text-rose-500" /> Blood Group
-                                    </label>
-                                    <select name="bloodGroup" className="w-full h-10 px-3 bg-white border-2 border-slate-200 hover:border-slate-300 rounded-md text-sm text-slate-700 outline-none focus:border-slate-800 transition-colors" defaultValue="">
-                                        <option value="" disabled>Select</option>
-                                        {BLOOD_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
-                                    </select>
+
+                                <div className="flex flex-col gap-1.5 w-full">
+                                    <label className="font-semibold text-slate-700 text-sm">Semester</label>
+                                    <div className="relative">
+                                        <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <select name="semester" className="w-full h-12 !pl-11 !pr-4 bg-white border-2 border-slate-200 hover:border-indigo-400 rounded-lg text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-sm appearance-none" defaultValue="">
+                                            <option value="" disabled>Select Semester</option>
+                                            {[1, 2, 3, 4, 5, 6, 7, 8].map(s => <option key={s} value={s.toString()}>Semester {s}</option>)}
+                                        </select>
+                                    </div>
                                 </div>
-                                <div className="w-full md:col-span-2">
-                                    <label className="flex items-center gap-2 text-[10px] font-black tracking-widest text-slate-500 uppercase mb-2">
-                                        <MapPin className="h-3 w-3 text-indigo-500" /> Address
-                                    </label>
-                                    <Input name="address" placeholder="City, District" variant="bordered" radius="md" />
+
+                                <div className="flex flex-col gap-1.5 w-full">
+                                    <label className="font-semibold text-slate-700 text-sm">Blood Group</label>
+                                    <div className="relative">
+                                        <Droplet className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <select name="bloodGroup" className="w-full h-12 !pl-11 !pr-4 bg-white border-2 border-slate-200 hover:border-indigo-400 rounded-lg text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-sm appearance-none" defaultValue="">
+                                            <option value="" disabled>Select Blood Group</option>
+                                            {BLOOD_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col gap-1.5 w-full md:col-span-2">
+                                    <label className="font-semibold text-slate-700 text-sm">Address</label>
+                                    <div className="relative">
+                                        <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <input name="address" placeholder="City, District" className={inputClassName} />
+                                    </div>
                                 </div>
                             </div>
                         )}
 
                         {/* DYNAMIC TEACHER FIELDS */}
                         {derivedRole === "teacher" && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
-                                <div className="w-full">
-                                    <label className="flex items-center gap-2 text-[10px] font-black tracking-widest text-slate-500 uppercase mb-2">
-                                        <Briefcase className="h-3 w-3 text-sky-500" /> Dept ID
-                                    </label>
-                                    <Input name="teacherId" placeholder="e.g. T-101" variant="bordered" radius="md" />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full animate-in fade-in zoom-in-95 duration-500 pt-6 border-t border-slate-100">
+                                
+                                <div className="flex flex-col gap-1.5 w-full">
+                                    <label className="font-semibold text-slate-700 text-sm">Dept ID</label>
+                                    <div className="relative">
+                                        <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <input name="teacherId" placeholder="e.g. T-101" className={inputClassName} />
+                                    </div>
                                 </div>
-                                <div className="w-full">
-                                    <label className="flex items-center gap-2 text-[10px] font-black tracking-widest text-slate-500 uppercase mb-2">
-                                        <Phone className="h-3 w-3 text-emerald-500" /> Phone
-                                    </label>
-                                    <Input name="phone" placeholder="+880" variant="bordered" radius="md" />
+
+                                <div className="flex flex-col gap-1.5 w-full">
+                                    <label className="font-semibold text-slate-700 text-sm">Phone Number</label>
+                                    <div className="relative">
+                                        <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <input name="phone" placeholder="+880" className={inputClassName} />
+                                    </div>
                                 </div>
-                                <div className="w-full">
-                                    <label className="flex items-center gap-2 text-[10px] font-black tracking-widest text-slate-500 uppercase mb-2">
-                                        <Sparkles className="h-3 w-3 text-amber-500" /> Designation
-                                    </label>
-                                    <Input name="designation" placeholder="e.g. Professor" variant="bordered" radius="md" />
+
+                                <div className="flex flex-col gap-1.5 w-full">
+                                    <label className="font-semibold text-slate-700 text-sm">Designation</label>
+                                    <div className="relative">
+                                        <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <input name="designation" placeholder="e.g. Professor" className={inputClassName} />
+                                    </div>
                                 </div>
-                                <div className="w-full">
-                                    <label className="flex items-center gap-2 text-[10px] font-black tracking-widest text-slate-500 uppercase mb-2">
-                                        <Microscope className="h-3 w-3 text-indigo-500" /> Spec.
-                                    </label>
-                                    <Input name="specialization" placeholder="e.g. AI & ML" variant="bordered" radius="md" />
+
+                                <div className="flex flex-col gap-1.5 w-full">
+                                    <label className="font-semibold text-slate-700 text-sm">Specialization</label>
+                                    <div className="relative">
+                                        <Microscope className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <input name="specialization" placeholder="e.g. AI & ML" className={inputClassName} />
+                                    </div>
                                 </div>
-                                <div className="w-full md:col-span-2">
-                                    <label className="flex items-center gap-2 text-[10px] font-black tracking-widest text-slate-500 uppercase mb-2">
-                                        <DoorOpen className="h-3 w-3 text-rose-500" /> Office Room
-                                    </label>
-                                    <Input name="officeRoom" placeholder="e.g. Room 402" variant="bordered" radius="md" />
+
+                                <div className="flex flex-col gap-1.5 w-full">
+                                    <label className="font-semibold text-slate-700 text-sm">Joining Date</label>
+                                    <div className="relative">
+                                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <input name="joiningDate" type="date" className={inputClassName} />
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col gap-1.5 w-full">
+                                    <label className="font-semibold text-slate-700 text-sm">Office Room</label>
+                                    <div className="relative">
+                                        <DoorOpen className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <input name="officeRoom" placeholder="e.g. Room 402" className={inputClassName} />
+                                    </div>
+                                </div>
+
+                            </div>
+                        )}
+
+                        {/* DYNAMIC EMPLOYEE FIELDS */}
+                        {derivedRole === "employee" && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full animate-in fade-in zoom-in-95 duration-500 pt-6 border-t border-slate-100">
+                                
+                                <div className="flex flex-col gap-1.5 w-full">
+                                    <label className="font-semibold text-slate-700 text-sm">Employee ID</label>
+                                    <div className="relative">
+                                        <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <input name="employeeId" placeholder="e.g. E-204" className={inputClassName} />
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col gap-1.5 w-full">
+                                    <label className="font-semibold text-slate-700 text-sm">Phone Number</label>
+                                    <div className="relative">
+                                        <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <input name="phone" placeholder="+880" className={inputClassName} />
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col gap-1.5 w-full">
+                                    <label className="font-semibold text-slate-700 text-sm">Department</label>
+                                    <div className="relative">
+                                        <Layers className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <input name="department" placeholder="e.g. IT Support" className={inputClassName} />
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col gap-1.5 w-full">
+                                    <label className="font-semibold text-slate-700 text-sm">Designation</label>
+                                    <div className="relative">
+                                        <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <input name="designation" placeholder="e.g. Lab Assistant" className={inputClassName} />
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col gap-1.5 w-full">
+                                    <label className="font-semibold text-slate-700 text-sm">Joining Date</label>
+                                    <div className="relative">
+                                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <input name="joiningDate" type="date" className={inputClassName} />
+                                    </div>
                                 </div>
                             </div>
                         )}
 
                         {/* PASSWORDS */}
-                        <div className="w-full">
-                            <label className="flex items-center gap-2 text-[10px] font-black tracking-widest text-slate-500 uppercase mb-2">
-                                <Lock className="h-4 w-4 text-indigo-500" /> Password *
-                            </label>
-                            <Input 
-                                required name="password" type="password" placeholder="Create a strong password" 
-                                variant="bordered" className="w-full" radius="md"
-                                onChange={(e) => setPassword(e.target.value)}
-                                minLength={6}
-                            />
-                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full pt-6 border-t border-slate-100">
+                            
+                            <div className="flex flex-col gap-1.5 w-full">
+                                <label className="font-semibold text-slate-700 text-sm">Password</label>
+                                <div className="relative">
+                                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                    <input 
+                                        required name="password" 
+                                        type={isVisible ? "text" : "password"} 
+                                        placeholder="Min 6 characters" 
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        minLength={6}
+                                        className={inputClassName.replace("!pr-4", "!pr-11")}
+                                    />
+                                    <button className="absolute right-4 top-1/2 -translate-y-1/2 focus:outline-none z-10" type="button" onClick={toggleVisibility}>
+                                        {isVisible ? <EyeOff className="w-5 h-5 text-slate-400 hover:text-indigo-500 transition-colors" /> : <Eye className="w-5 h-5 text-slate-400 hover:text-indigo-500 transition-colors" />}
+                                    </button>
+                                </div>
+                            </div>
 
-                        <div className="w-full">
-                            <label className="flex items-center gap-2 text-[10px] font-black tracking-widest text-slate-500 uppercase mb-2">
-                                <ShieldCheck className="h-4 w-4 text-indigo-500" /> Confirm Password *
-                            </label>
-                            <Input 
-                                required name="confirmPassword" type="password" placeholder="Re-enter your password" 
-                                variant="bordered" className="w-full" radius="md"
-                            />
+                            <div className="flex flex-col gap-1.5 w-full">
+                                <label className="font-semibold text-slate-700 text-sm">Confirm Password</label>
+                                <div className="relative">
+                                    <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                    <input 
+                                        required name="confirmPassword" 
+                                        type={isConfirmVisible ? "text" : "password"} 
+                                        placeholder="Repeat password" 
+                                        className={inputClassName.replace("!pr-4", "!pr-11")}
+                                    />
+                                    <button className="absolute right-4 top-1/2 -translate-y-1/2 focus:outline-none z-10" type="button" onClick={toggleConfirmVisibility}>
+                                        {isConfirmVisible ? <EyeOff className="w-5 h-5 text-slate-400 hover:text-indigo-500 transition-colors" /> : <Eye className="w-5 h-5 text-slate-400 hover:text-indigo-500 transition-colors" />}
+                                    </button>
+                                </div>
+                            </div>
                         </div>
 
                         <Button
                             type="submit"
-                            className="w-full bg-slate-900 text-white font-black tracking-widest uppercase h-14 mt-6 transition-all hover:bg-indigo-600 hover:shadow-xl hover:shadow-indigo-200"
-                            radius="md"
+                            className="w-full inline-flex items-center justify-center font-bold text-sm tracking-wide h-14 px-8 shadow-xl shadow-indigo-200/50 bg-indigo-600 hover:bg-indigo-700 rounded-2xl text-white transition-colors mt-2"
                             isLoading={isLoading}
+                            endContent={!isLoading && <ArrowRight className="h-4 w-4 ml-1 opacity-90" />}
                         >
                             Create Account
                         </Button>
-                    </Form>
+                    </form>
 
-                    <p className="text-center text-xs font-bold text-slate-500 mt-8">
-                        Already have an account?{" "}
-                        <Link href="/login" className="text-indigo-600 hover:text-indigo-700 transition-colors ml-1">
-                            Sign In Instead
-                        </Link>
-                    </p>
+                    <div className="mt-8 pt-6 border-t border-slate-100 flex justify-center">
+                        <p className="text-sm font-medium text-slate-500">
+                            Already registered?{" "}
+                            <Link href="/login" className="text-indigo-600 font-semibold hover:text-indigo-700 hover:underline transition-all">
+                                Sign In Instead
+                            </Link>
+                        </p>
+                    </div>
                 </div>
             </div>
         </div>
