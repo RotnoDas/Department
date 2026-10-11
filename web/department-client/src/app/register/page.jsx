@@ -39,6 +39,12 @@ const RegisterPage = () => {
         const formData = new FormData(e.currentTarget);
         const data = Object.fromEntries(formData);
 
+        if (!data.password || data.password.length < 6) {
+            toast.error("Password must be at least 6 characters long");
+            setIsLoading(false);
+            return;
+        }
+
         if (data.password !== data.confirmPassword) {
             toast.error("Passwords do not match");
             setIsLoading(false);
@@ -67,14 +73,24 @@ const RegisterPage = () => {
         if (data.employeeId) payload.employeeId = data.employeeId;
         if (data.department) payload.department = data.department;
 
-        const { data: signUpData, error: signUpError } = await authClient.signUp.email(payload);
+        try {
+            const { data: signUpData, error: signUpError } = await authClient.signUp.email(payload);
 
-        if (signUpError) {
-            toast.error(signUpError.message || "Registration failed. Please try again.");
-            setIsLoading(false);
-        } else {
+            if (signUpError) {
+                console.error("SignUp Error:", signUpError);
+                toast.error(signUpError.message || "Registration failed. Please try again.");
+                setIsLoading(false);
+                return;
+            }
+
             toast.success("Account created successfully!");
-            window.location.href = "/login";
+            setTimeout(() => {
+                window.location.href = "/login";
+            }, 800);
+        } catch (err) {
+            console.error("Unexpected error:", err);
+            toast.error(err.message || "Something went wrong. Please check your inputs.");
+            setIsLoading(false);
         }
     };
 

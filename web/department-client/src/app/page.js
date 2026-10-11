@@ -86,20 +86,20 @@ export default function LandingPage() {
   }, []);
 
   return (
-    <main ref={containerRef} className="min-h-screen bg-[#F8FAFC] overflow-x-hidden font-sans selection:bg-indigo-100 selection:text-indigo-900 relative">
+    <main ref={containerRef} className="min-h-screen bg-[#F8FAFC] dark:bg-[#030712] text-slate-900 dark:text-slate-100 overflow-x-hidden font-sans selection:bg-indigo-100 dark:selection:bg-indigo-900/40 selection:text-indigo-900 dark:selection:text-indigo-200 relative transition-colors duration-300">
       {/* Background Dynamic Blur Gradients (Glassmorphism effect) */}
-      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden bg-slate-50/50 backdrop-blur-[2px]">
-        <div className="bg-orb-1 absolute -top-[20%] -left-[10%] h-[70%] w-[70%] opacity-40">
-          <div className="w-full h-full rounded-full bg-indigo-200 blur-[150px] animate-blob"></div>
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden bg-slate-50/50 dark:bg-[#030712]/90 backdrop-blur-[2px] transition-colors duration-300">
+        <div className="bg-orb-1 absolute -top-[20%] -left-[10%] h-[70%] w-[70%] opacity-40 dark:opacity-20">
+          <div className="w-full h-full rounded-full bg-indigo-200 dark:bg-indigo-700 blur-[150px] animate-blob"></div>
         </div>
-        <div className="bg-orb-2 absolute top-[10%] -right-[10%] h-[60%] w-[60%] opacity-40">
-          <div className="w-full h-full rounded-full bg-sky-200 blur-[150px] animate-blob animation-delay-2000"></div>
+        <div className="bg-orb-2 absolute top-[10%] -right-[10%] h-[60%] w-[60%] opacity-40 dark:opacity-20">
+          <div className="w-full h-full rounded-full bg-sky-200 dark:bg-sky-800 blur-[150px] animate-blob animation-delay-2000"></div>
         </div>
-        <div className="absolute -bottom-[20%] left-[10%] h-[70%] w-[70%] opacity-30">
-          <div className="w-full h-full rounded-full bg-purple-200 blur-[150px] animate-blob animation-delay-4000"></div>
+        <div className="absolute -bottom-[20%] left-[10%] h-[70%] w-[70%] opacity-30 dark:opacity-15">
+          <div className="w-full h-full rounded-full bg-purple-200 dark:bg-purple-800 blur-[150px] animate-blob animation-delay-4000"></div>
         </div>
-        <div className="absolute top-[40%] left-[40%] h-[50%] w-[50%] opacity-30">
-          <div className="w-full h-full rounded-full bg-pink-200 blur-[150px] animate-blob animation-delay-6000"></div>
+        <div className="absolute top-[40%] left-[40%] h-[50%] w-[50%] opacity-30 dark:opacity-15">
+          <div className="w-full h-full rounded-full bg-pink-200 dark:bg-pink-800 blur-[150px] animate-blob animation-delay-6000"></div>
         </div>
       </div>
 

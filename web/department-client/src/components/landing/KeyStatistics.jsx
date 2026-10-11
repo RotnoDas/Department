@@ -43,18 +43,18 @@ export function KeyStatistics() {
             viewport={{ once: true, margin: "-50px" }}
             transition={{ duration: 0.6, delay: idx * 0.1, ease: "easeOut" }}
             whileHover={{ y: -10, scale: 1.02 }}
-            className="gsap-stat-card group flex flex-col items-center justify-center p-8 rounded-3xl bg-white/60 backdrop-blur-md shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/80 hover:shadow-[0_20px_40px_rgba(79,70,229,0.1)] transition-all duration-300 cursor-pointer overflow-hidden relative"
+            className="gsap-stat-card group flex flex-col items-center justify-center p-8 rounded-3xl bg-white/60 dark:bg-slate-900/60 backdrop-blur-md shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-none border border-white/80 dark:border-white/10 hover:shadow-[0_20px_40px_rgba(79,70,229,0.1)] dark:hover:border-indigo-500/30 transition-all duration-300 cursor-pointer overflow-hidden relative"
           >
             {/* Hover Gradient Overlay */}
-            <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
+            <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-purple-500/5 dark:from-indigo-500/10 dark:to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
             
-            <div className="h-14 w-14 rounded-2xl bg-white shadow-sm border border-slate-100 flex items-center justify-center mb-5 group-hover:scale-110 group-hover:rotate-6 transition-transform duration-300 relative z-10">
+            <div className="h-14 w-14 rounded-2xl bg-white dark:bg-slate-800 shadow-sm border border-slate-100 dark:border-slate-700 flex items-center justify-center mb-5 group-hover:scale-110 group-hover:rotate-6 transition-transform duration-300 relative z-10">
               {stat.icon}
             </div>
-            <h4 className="text-4xl font-extrabold text-slate-900 mb-1.5 tracking-tight relative z-10">
+            <h4 className="text-4xl font-extrabold text-slate-900 dark:text-white mb-1.5 tracking-tight relative z-10">
               <Counter from={0} to={stat.value} suffix={stat.suffix} />
             </h4>
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest text-center relative z-10 group-hover:text-indigo-600 transition-colors duration-300">
+            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest text-center relative z-10 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors duration-300">
               {stat.label}
             </p>
           </motion.div>

@@ -9,6 +9,7 @@ export const auth = betterAuth({
   }),
   emailAndPassword: {
     enabled: true,
+    minPasswordLength: 6,
   },
   user: {
     additionalFields: {
@@ -58,6 +59,109 @@ export const auth = betterAuth({
               status: user.status || status,
             },
           };
+        },
+        after: async (user) => {
+          try {
+            const role = user.role || "student";
+            const now = new Date();
+            const userId = (user.id || user._id)?.toString();
+
+            if (role === "student") {
+              const studentsCollection = db.collection("students");
+              await studentsCollection.updateOne(
+                { email: user.email },
+                {
+                  $set: {
+                    userId,
+                    name: user.name,
+                    email: user.email,
+                    studentId: user.studentId || "",
+                    batch: user.batch ? (isNaN(Number(user.batch)) ? user.batch : Number(user.batch)) : "",
+                    semester: user.semester || "",
+                    session: user.session || "",
+                    phone: user.phone || "",
+                    bloodGroup: user.bloodGroup || "",
+                    address: user.address || "",
+                    cgpa: 0.0,
+                    status: user.status || "pending",
+                    updatedAt: now,
+                  },
+                  $setOnInsert: {
+                    createdAt: now,
+                  },
+                },
+                { upsert: true }
+              );
+            } else if (role === "teacher") {
+              const teachersCollection = db.collection("teachers");
+              await teachersCollection.updateOne(
+                { email: user.email },
+                {
+                  $set: {
+                    userId,
+                    name: user.name,
+                    email: user.email,
+                    teacherId: user.teacherId || "",
+                    phone: user.phone || "",
+                    designation: user.designation || "",
+                    specialization: user.specialization || "",
+                    officeRoom: user.officeRoom || "",
+                    joiningDate: user.joiningDate || "",
+                    status: user.status || "approved",
+                    updatedAt: now,
+                  },
+                  $setOnInsert: {
+                    createdAt: now,
+                  },
+                },
+                { upsert: true }
+              );
+            } else if (role === "employee") {
+              const employeesCollection = db.collection("employees");
+              await employeesCollection.updateOne(
+                { email: user.email },
+                {
+                  $set: {
+                    userId,
+                    name: user.name,
+                    email: user.email,
+                    employeeId: user.employeeId || "",
+                    phone: user.phone || "",
+                    department: user.department || "",
+                    designation: user.designation || "",
+                    joiningDate: user.joiningDate || "",
+                    status: user.status || "approved",
+                    updatedAt: now,
+                  },
+                  $setOnInsert: {
+                    createdAt: now,
+                  },
+                },
+                { upsert: true }
+              );
+            } else if (role === "admin") {
+              const adminsCollection = db.collection("admins");
+              await adminsCollection.updateOne(
+                { email: user.email },
+                {
+                  $set: {
+                    userId,
+                    name: user.name,
+                    email: user.email,
+                    role: "admin",
+                    status: "approved",
+                    updatedAt: now,
+                  },
+                  $setOnInsert: {
+                    createdAt: now,
+                  },
+                },
+                { upsert: true }
+              );
+            }
+          } catch (hookError) {
+            console.error("Error saving user to role collection in MongoDB:", hookError);
+          }
         },
       },
     },

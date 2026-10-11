@@ -41,7 +41,7 @@ export function EventsNotices() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: 0.1 }}
-            className="text-3xl md:text-5xl font-extrabold tracking-tight text-slate-900"
+            className="text-3xl md:text-5xl font-extrabold tracking-tight text-slate-900 dark:text-white"
           >
             Notices & Events
           </motion.p>
@@ -56,7 +56,7 @@ export function EventsNotices() {
             href="/notices"
             variant="flat" 
             color="primary" 
-            className="font-bold rounded-xl bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors"
+            className="font-bold rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors"
             endContent={<ArrowRight className="h-4 w-4" />}
           >
             View All Board
@@ -131,12 +131,12 @@ export function EventsNotices() {
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true, margin: "-50px" }}
               transition={{ duration: 0.4, delay: idx * 0.1 }}
-              className="group flex gap-5 p-5 rounded-3xl bg-white/60 backdrop-blur-lg border border-slate-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] hover:shadow-[0_10px_40px_rgba(79,70,229,0.08)] hover:-translate-y-1 transition-all duration-300 cursor-pointer relative overflow-hidden"
+              className="group flex gap-5 p-5 rounded-3xl bg-white/60 dark:bg-slate-900/60 backdrop-blur-lg border border-slate-100 dark:border-white/10 shadow-[0_4px_20px_rgb(0,0,0,0.03)] hover:shadow-[0_10px_40px_rgba(79,70,229,0.08)] hover:-translate-y-1 transition-all duration-300 cursor-pointer relative overflow-hidden"
             >
               {/* Subtle hover gradient */}
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent to-indigo-50/50 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent to-indigo-50/50 dark:to-indigo-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
               
-              <div className="relative z-10 flex flex-col items-center justify-center shrink-0 w-16 h-16 rounded-2xl bg-slate-50 border border-slate-100 text-slate-700 group-hover:bg-indigo-500 group-hover:text-white group-hover:border-indigo-500 transition-colors duration-300 shadow-sm">
+              <div className="relative z-10 flex flex-col items-center justify-center shrink-0 w-16 h-16 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 text-slate-700 dark:text-slate-200 group-hover:bg-indigo-500 group-hover:text-white group-hover:border-indigo-500 transition-colors duration-300 shadow-sm">
                 <span className="text-xl font-black leading-none">{notice.date}</span>
                 <span className="text-[9px] font-bold uppercase tracking-widest mt-1 opacity-80">{notice.month}</span>
               </div>
@@ -147,7 +147,7 @@ export function EventsNotices() {
                     {notice.type}
                   </span>
                 </div>
-                <h3 className="text-sm font-bold text-slate-800 leading-snug group-hover:text-indigo-700 transition-colors line-clamp-2">
+                <h3 className="text-sm font-bold text-slate-800 dark:text-white leading-snug group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-2">
                   {notice.title}
                 </h3>
               </div>
@@ -169,7 +169,7 @@ export function EventsNotices() {
               as={Link}
               href="/notices"
               variant="light" 
-              className="text-xs font-bold text-slate-500 hover:text-indigo-600 transition-colors uppercase tracking-widest"
+              className="text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors uppercase tracking-widest"
             >
               Explore Archive
             </Button>

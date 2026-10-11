@@ -32,16 +32,16 @@ const FEATURES = [
     title: "Live Notice Board",
     description: "Instant push notifications for urgent announcements.",
     icon: <Bell className="h-5 w-5 text-rose-500" />,
-    iconWrapper: "bg-rose-50 border-rose-100",
+    iconWrapper: "bg-rose-50 dark:bg-rose-950/60 border-rose-100 dark:border-rose-900/40",
     colSpan: "md:col-span-1 lg:col-span-1",
-    bgClass: "bg-white/80",
-    textClass: "text-slate-800",
-    descClass: "text-slate-500",
-    borderClass: "border-white",
+    bgClass: "bg-white/80 dark:bg-slate-900/80",
+    textClass: "text-slate-800 dark:text-white",
+    descClass: "text-slate-500 dark:text-slate-400",
+    borderClass: "border-white dark:border-white/10",
     visual: (
       <div className="mt-4 flex flex-col gap-1.5 opacity-80">
-        <div className="w-full h-2 rounded-full bg-rose-200"></div>
-        <div className="w-3/4 h-2 rounded-full bg-rose-200/60"></div>
+        <div className="w-full h-2 rounded-full bg-rose-200 dark:bg-rose-800"></div>
+        <div className="w-3/4 h-2 rounded-full bg-rose-200/60 dark:bg-rose-800/60"></div>
       </div>
     )
   },
@@ -49,16 +49,16 @@ const FEATURES = [
     title: "Dynamic Routine",
     description: "Conflict-free scheduling with real-time tracking.",
     icon: <Clock className="h-5 w-5 text-sky-500" />,
-    iconWrapper: "bg-sky-50 border-sky-100",
+    iconWrapper: "bg-sky-50 dark:bg-sky-950/60 border-sky-100 dark:border-sky-900/40",
     colSpan: "md:col-span-1 lg:col-span-1",
-    bgClass: "bg-white/80",
-    textClass: "text-slate-800",
-    descClass: "text-slate-500",
-    borderClass: "border-white",
+    bgClass: "bg-white/80 dark:bg-slate-900/80",
+    textClass: "text-slate-800 dark:text-white",
+    descClass: "text-slate-500 dark:text-slate-400",
+    borderClass: "border-white dark:border-white/10",
     visual: (
       <div className="mt-4 grid grid-cols-2 gap-1.5 opacity-80">
         {[...Array(4)].map((_, i) => (
-          <div key={i} className={`h-4 rounded-sm ${i % 2 === 0 ? 'bg-sky-200' : 'bg-sky-100'}`}></div>
+          <div key={i} className={`h-4 rounded-sm ${i % 2 === 0 ? 'bg-sky-200 dark:bg-sky-800' : 'bg-sky-100 dark:bg-sky-900'}`}></div>
         ))}
       </div>
     )
@@ -67,17 +67,17 @@ const FEATURES = [
     title: "Member Directory",
     description: "Easily find and communicate with faculty and peers.",
     icon: <Users className="h-5 w-5 text-purple-500" />,
-    iconWrapper: "bg-purple-50 border-purple-100",
+    iconWrapper: "bg-purple-50 dark:bg-purple-950/60 border-purple-100 dark:border-purple-900/40",
     colSpan: "md:col-span-1 lg:col-span-1",
-    bgClass: "bg-white/80",
-    textClass: "text-slate-800",
-    descClass: "text-slate-500",
-    borderClass: "border-white",
+    bgClass: "bg-white/80 dark:bg-slate-900/80",
+    textClass: "text-slate-800 dark:text-white",
+    descClass: "text-slate-500 dark:text-slate-400",
+    borderClass: "border-white dark:border-white/10",
     visual: (
       <div className="mt-4 flex -space-x-2 opacity-90">
-        <div className="w-7 h-7 rounded-full bg-purple-200 border-2 border-white"></div>
-        <div className="w-7 h-7 rounded-full bg-purple-300 border-2 border-white"></div>
-        <div className="w-7 h-7 rounded-full bg-purple-500 border-2 border-white flex items-center justify-center text-[8px] text-white font-bold">+5k</div>
+        <div className="w-7 h-7 rounded-full bg-purple-200 dark:bg-purple-700 border-2 border-white dark:border-slate-800"></div>
+        <div className="w-7 h-7 rounded-full bg-purple-300 dark:bg-purple-600 border-2 border-white dark:border-slate-800"></div>
+        <div className="w-7 h-7 rounded-full bg-purple-500 border-2 border-white dark:border-slate-800 flex items-center justify-center text-[8px] text-white font-bold">+5k</div>
       </div>
     )
   },
@@ -85,14 +85,14 @@ const FEATURES = [
     title: "Secure Assignments",
     description: "End-to-end encrypted assignment submissions.",
     icon: <ShieldCheck className="h-5 w-5 text-emerald-500" />,
-    iconWrapper: "bg-emerald-50 border-emerald-100",
+    iconWrapper: "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-100 dark:border-emerald-900/40",
     colSpan: "md:col-span-1 lg:col-span-1",
-    bgClass: "bg-white/80",
-    textClass: "text-slate-800",
-    descClass: "text-slate-500",
-    borderClass: "border-white",
+    bgClass: "bg-white/80 dark:bg-slate-900/80",
+    textClass: "text-slate-800 dark:text-white",
+    descClass: "text-slate-500 dark:text-slate-400",
+    borderClass: "border-white dark:border-white/10",
     visual: (
-      <div className="mt-4 h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+      <div className="mt-4 h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
          <motion.div initial={{ width: 0 }} whileInView={{ width: '100%' }} transition={{ duration: 1.5 }} className="h-full bg-emerald-400"></motion.div>
       </div>
     )
@@ -101,16 +101,16 @@ const FEATURES = [
     title: "Exam Seat Planner",
     description: "Automated seat planning algorithms for midterms and finals.",
     icon: <LayoutGrid className="h-6 w-6 text-amber-500" />,
-    iconWrapper: "bg-white/50 border-amber-200/50",
+    iconWrapper: "bg-white/50 dark:bg-amber-950/80 border-amber-200/50 dark:border-amber-800/40",
     colSpan: "md:col-span-2 lg:col-span-2",
-    bgClass: "bg-gradient-to-br from-amber-50 to-orange-50",
-    textClass: "text-amber-900",
-    descClass: "text-amber-700/70",
-    borderClass: "border-amber-100",
+    bgClass: "bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/30",
+    textClass: "text-amber-900 dark:text-amber-200",
+    descClass: "text-amber-700/70 dark:text-amber-300/70",
+    borderClass: "border-amber-100 dark:border-amber-900/40",
     visual: (
       <div className="mt-4 grid grid-cols-6 gap-1.5 opacity-70">
         {[...Array(12)].map((_, i) => (
-          <div key={i} className={`h-4 rounded-sm ${i % 4 === 0 ? 'bg-amber-300' : 'bg-amber-200'}`}></div>
+          <div key={i} className={`h-4 rounded-sm ${i % 4 === 0 ? 'bg-amber-300 dark:bg-amber-700' : 'bg-amber-200 dark:bg-amber-800'}`}></div>
         ))}
       </div>
     )
@@ -125,7 +125,7 @@ export function CoreFeatures() {
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="text-[10px] font-black tracking-[0.3em] text-indigo-600 uppercase"
+          className="text-[10px] font-black tracking-[0.3em] text-indigo-600 dark:text-indigo-400 uppercase"
         >
           Everything You Need
         </motion.h2>
@@ -134,7 +134,7 @@ export function CoreFeatures() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ delay: 0.1 }}
-          className="text-3xl md:text-4xl font-extrabold tracking-tight text-slate-900"
+          className="text-3xl md:text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white"
         >
           Powerful Core Features
         </motion.p>

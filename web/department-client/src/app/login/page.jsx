@@ -2,14 +2,36 @@
 
 import { Button } from '@heroui/react';
 import Link from 'next/link';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { authClient } from '@/lib/auth-client';
 import toast from 'react-hot-toast';
 import { Lock, Mail, KeyRound, Eye, EyeOff, ArrowRight } from 'lucide-react';
 
+const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
+
+const redirectByRole = (role, email) => {
+    const cleanEmail = (email || "").toLowerCase().trim();
+    if (role === "admin" || cleanEmail === "admin@cse.edu") {
+        window.location.href = "/dashboard/admin";
+    } else if (role === "teacher" || cleanEmail.endsWith("@teacher.cse.edu") || (cleanEmail.endsWith("@cse.edu") && !cleanEmail.includes("student") && !cleanEmail.includes("staff") && !cleanEmail.includes("admin"))) {
+        window.location.href = "/dashboard/teacher";
+    } else if (role === "employee" || cleanEmail.endsWith("@employee.cse.edu") || cleanEmail.endsWith("@staff.cse.edu")) {
+        window.location.href = "/dashboard/employee";
+    } else {
+        window.location.href = "/dashboard/student";
+    }
+};
+
 const LoginPage = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [isVisible, setIsVisible] = useState(false);
+    const { data: sessionData } = authClient.useSession();
+
+    useEffect(() => {
+        if (sessionData?.user) {
+            redirectByRole(sessionData.user.role, sessionData.user.email);
+        }
+    }, [sessionData]);
 
     const toggleVisibility = () => setIsVisible(!isVisible);
 
@@ -19,6 +41,7 @@ const LoginPage = () => {
 
         const formData = new FormData(e.currentTarget);
         const data = Object.fromEntries(formData);
+        const email = (data.email || "").toLowerCase().trim();
 
         const { data: signInData, error: signInError } = await authClient.signIn.email({
             email: data.email,
@@ -30,7 +53,19 @@ const LoginPage = () => {
             setIsLoading(false);
         } else {
             toast.success("Logged in successfully!");
-            window.location.href = "/";
+            let role = signInData?.user?.role;
+            if (!role) {
+                try {
+                    const res = await fetch(`${SERVER_URL}/api/users/${email}`);
+                    if (res.ok) {
+                        const userData = await res.json();
+                        role = userData?.user?.role;
+                    }
+                } catch (e) {
+                    console.error("User role lookup:", e);
+                }
+            }
+            redirectByRole(role, email);
         }
     };
 
