@@ -11,14 +11,19 @@ let client;
 let clientPromise;
 
 if (process.env.NODE_ENV === "development") {
-  if (!global._mongoClientPromise) {
-    client = new MongoClient(uri, options);
-    global._mongoClientPromise = client.connect();
+  if (!global._mongoClient) {
+    global._mongoClient = new MongoClient(uri, options);
+    global._mongoClientPromise = global._mongoClient.connect();
   }
+  client = global._mongoClient;
   clientPromise = global._mongoClientPromise;
 } else {
   client = new MongoClient(uri, options);
   clientPromise = client.connect();
 }
 
+const db = client.db(process.env.DB_NAME || "department_db");
+
+export { client, db, clientPromise };
 export default clientPromise;
+

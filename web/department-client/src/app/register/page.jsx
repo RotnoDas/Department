@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 import { 
     ShieldCheck, Layers, Phone, Calendar, Sparkles, 
     Droplet, MapPin, Briefcase, Microscope, DoorOpen, Lock, Mail, User, GraduationCap, Presentation,
-    Eye, EyeOff, ArrowRight, UserPlus
+    Eye, EyeOff, ArrowRight, UserPlus, Hash
 } from 'lucide-react';
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
@@ -45,25 +45,29 @@ const RegisterPage = () => {
             return;
         }
 
-        const { data: signUpData, error: signUpError } = await authClient.signUp.email({
+        const payload = {
             email: data.email,
             password: data.password,
             name: data.name,
-            studentId: data.studentId,
-            phone: data.phone,
-            batch: data.batch,
-            semester: data.semester,
-            session: data.session,
-            bloodGroup: data.bloodGroup,
-            address: data.address,
-            teacherId: data.teacherId,
-            designation: data.designation,
-            specialization: data.specialization,
-            joiningDate: data.joiningDate,
-            employeeId: data.employeeId,
-            department: data.department,
-            role: derivedRole || "user",
-        });
+            role: derivedRole || "student",
+        };
+
+        if (data.phone) payload.phone = data.phone;
+        if (data.studentId) payload.studentId = data.studentId;
+        if (data.batch) payload.batch = String(data.batch);
+        if (data.semester) payload.semester = data.semester;
+        if (data.session) payload.session = data.session;
+        if (data.bloodGroup) payload.bloodGroup = data.bloodGroup;
+        if (data.address) payload.address = data.address;
+        if (data.teacherId) payload.teacherId = data.teacherId;
+        if (data.designation) payload.designation = data.designation;
+        if (data.specialization) payload.specialization = data.specialization;
+        if (data.officeRoom) payload.officeRoom = data.officeRoom;
+        if (data.joiningDate) payload.joiningDate = data.joiningDate;
+        if (data.employeeId) payload.employeeId = data.employeeId;
+        if (data.department) payload.department = data.department;
+
+        const { data: signUpData, error: signUpError } = await authClient.signUp.email(payload);
 
         if (signUpError) {
             toast.error(signUpError.message || "Registration failed. Please try again.");
@@ -186,8 +190,14 @@ const RegisterPage = () => {
                                 <div className="flex flex-col gap-1.5 w-full">
                                     <label className="font-semibold text-slate-700 text-sm">Batch</label>
                                     <div className="relative">
-                                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
-                                        <input name="batch" placeholder="e.g. 2024-2028" className={inputClassName} />
+                                        <Hash className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <input 
+                                            name="batch" 
+                                            type="number" 
+                                            min="1" 
+                                            placeholder="Enter batch number" 
+                                            className={inputClassName} 
+                                        />
                                     </div>
                                 </div>
 
