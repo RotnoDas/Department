@@ -30,19 +30,33 @@ export default function StudentDashboardPage() {
   const [profile, setProfile] = useState(null);
   const [isMarking, setIsMarking] = useState(false);
 
-  useEffect(() => {
-    async function loadProfile() {
-      if (!user?.email) return;
-      try {
-        const res = await fetch(`${SERVER_URL}/api/students/email/${user.email}`);
-        if (res.ok) {
-          const data = await res.json();
-          setProfile(data);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const loadProfile = async (showToast = false) => {
+    if (!user?.email) return;
+    if (showToast) setIsRefreshing(true);
+    try {
+      const res = await fetch(`${SERVER_URL}/api/students/email/${user.email}`);
+      if (res.ok) {
+        const data = await res.json();
+        setProfile(data);
+        if (showToast) {
+          if (data.status === "approved") {
+            toast.success("Congratulations! Your account has been approved by the department administrator.");
+          } else {
+            toast("Status: Still Pending Administrator Approval.", { icon: "⏳" });
+          }
         }
-      } catch (e) {
-        console.error(e);
       }
+    } catch (e) {
+      console.error(e);
+      if (showToast) toast.error("Unable to check status. Please check your connection.");
+    } finally {
+      if (showToast) setIsRefreshing(false);
     }
+  };
+
+  useEffect(() => {
     loadProfile();
   }, [user?.email]);
 
@@ -73,6 +87,11 @@ export default function StudentDashboardPage() {
         toast.error("Unable to retrieve campus GPS coordinate. Please enable location.");
       }
     );
+  };
+
+  const handleSignOut = async () => {
+    await authClient.signOut();
+    window.location.href = "/login";
   };
 
   return (
@@ -121,16 +140,42 @@ export default function StudentDashboardPage() {
         </div>
       </div>
 
-      {/* Account Verification Warning Banner */}
+      {/* Account Verification Gate / Status Banner */}
       {isPending ? (
-        <div className="p-6 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 flex items-start gap-4">
-          <AlertCircle className="w-6 h-6 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <h3 className="font-bold text-sm text-amber-900 dark:text-amber-200">Registration Pending Verification</h3>
-            <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed font-medium">
-              Your student profile has been submitted and is currently awaiting approval from the CSE Department office.
-              You can explore your course schedule and lecture notes below. Once approved by an admin, formal marks and submission records will be active.
-            </p>
+        <div className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-amber-200/80 dark:border-amber-800/60 shadow-lg space-y-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-4">
+              <div className="h-12 w-12 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/60 text-[11px] font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider">
+                  <Clock className="w-3 h-3" />
+                  <span>Awaiting Administrator Approval</span>
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Registration Under Review</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium max-w-2xl">
+                  Your registration has been submitted and is currently in the <strong>CSE Department Approval Queue</strong>. Once an administrator verifies and approves your account from the Admin Panel, your full academic profile, course routine, marks, and attendance portals will be unlocked automatically.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => loadProfile(true)}
+                disabled={isRefreshing}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-200 dark:shadow-none transition-colors cursor-pointer"
+              >
+                <Clock className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
+                <span>{isRefreshing ? "Checking..." : "Check Approval Status"}</span>
+              </button>
+              <button
+                onClick={handleSignOut}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer"
+              >
+                <span>Sign Out</span>
+              </button>
+            </div>
           </div>
         </div>
       ) : (

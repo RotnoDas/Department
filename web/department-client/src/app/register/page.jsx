@@ -84,10 +84,17 @@ const RegisterPage = () => {
                 return;
             }
 
-            toast.success("Account created successfully!");
+            // If a student registered, their status is pending; sign out the auto-session so they must wait for admin approval
+            if (payload.role === "student" || payload.email.endsWith("@student.cse.edu")) {
+                await authClient.signOut();
+                toast.success("Registration submitted! Your student account is pending administrator approval before you can log in.", { duration: 6000 });
+            } else {
+                toast.success("Account created successfully!");
+            }
+
             setTimeout(() => {
                 window.location.href = "/login";
-            }, 800);
+            }, 1200);
         } catch (err) {
             console.error("Unexpected error:", err);
             toast.error(err.message || "Something went wrong. Please check your inputs.");

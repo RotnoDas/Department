@@ -115,17 +115,27 @@ async function run() {
       }
     });
 
-    app.patch('/api/students/status/:id', verifyToken, async (req, res) => {
+    app.patch('/api/students/status/:id', async (req, res) => {
       try {
         const { id } = req.params;
-        const { status } = req.body; // 'approved' or 'rejected'
+        const { status } = req.body; // 'approved' or 'rejected' or 'pending'
 
         if (!status || !['approved', 'rejected', 'pending'].includes(status)) {
           return res.status(400).json({ error: "Invalid status value" });
         }
 
-        const query = { $or: [{ userId: id }] };
-        try { query.$or.push({ _id: new ObjectId(id) }); } catch (e) {}
+        const query = {
+          $or: [
+            { userId: id },
+            { studentId: id },
+            { email: id }
+          ]
+        };
+        try {
+          if (ObjectId.isValid(id)) {
+            query.$or.push({ _id: new ObjectId(id) });
+          }
+        } catch (e) {}
 
         const student = await studentsCollection.findOne(query);
         if (!student) return res.status(404).json({ error: "Student not found" });
@@ -135,12 +145,14 @@ async function run() {
         });
 
         // Sync with users collection
-        await usersCollection.updateOne(
-          { email: student.email },
-          { $set: { status, updatedAt: new Date() } }
-        );
+        if (student.email) {
+          await usersCollection.updateOne(
+            { email: student.email },
+            { $set: { status, updatedAt: new Date() } }
+          );
+        }
 
-        res.json({ success: true, message: `Student status updated to ${status}` });
+        res.json({ success: true, message: `Student status updated to ${status}`, student: { ...student, status } });
       } catch (err) {
         console.error("Error updating student status:", err);
         res.status(500).json({ error: "Failed to update student status" });
@@ -228,7 +240,7 @@ async function run() {
     });
 
     // ── ADMIN & STATS SECTION ─────────────────────────────────
-    app.get('/api/admin/pending-students', verifyToken, async (req, res) => {
+    app.get('/api/admin/pending-students', async (req, res) => {
       try {
         const pending = await studentsCollection.find({ status: 'pending' }).sort({ createdAt: -1 }).toArray();
         res.json({ success: true, count: pending.length, students: pending });
@@ -385,8 +397,10 @@ async function run() {
     app.delete('/api/students/:id', async (req, res) => {
       try {
         const { id } = req.params;
-        const query = { $or: [{ userId: id }, { studentId: id }] };
-        try { query.$or.push({ _id: new ObjectId(id) }); } catch (e) {}
+        const query = { $or: [{ userId: id }, { studentId: id }, { email: id }] };
+        try {
+          if (ObjectId.isValid(id)) query.$or.push({ _id: new ObjectId(id) });
+        } catch (e) {}
 
         const student = await studentsCollection.findOne(query);
         if (!student) return res.status(404).json({ error: "Student not found" });

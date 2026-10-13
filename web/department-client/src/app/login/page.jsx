@@ -30,7 +30,32 @@ const LoginPage = () => {
 
     useEffect(() => {
         if (sessionData?.user) {
-            redirectByRole(sessionData.user.role, sessionData.user.email);
+            const cleanEmail = (sessionData.user.email || "").toLowerCase().trim();
+            const role = sessionData.user.role;
+            const isStudent = role === "student" || cleanEmail.endsWith("@student.cse.edu");
+
+            if (isStudent) {
+                // Verify student approval before auto-redirecting
+                fetch(`${SERVER_URL}/api/students/email/${cleanEmail}`)
+                    .then((res) => {
+                        if (!res.ok) throw new Error("Student record not found");
+                        return res.json();
+                    })
+                    .then((student) => {
+                        if (student?.status === "approved") {
+                            window.location.href = "/dashboard/student";
+                        } else {
+                            // Account is pending or rejected; clear session
+                            authClient.signOut();
+                        }
+                    })
+                    .catch(() => {
+                        authClient.signOut();
+                    });
+                return;
+            }
+
+            redirectByRole(role, cleanEmail);
         }
     }, [sessionData]);
 
@@ -52,22 +77,53 @@ const LoginPage = () => {
         if (signInError) {
             toast.error(signInError.message || "Invalid credentials.");
             setIsLoading(false);
-        } else {
-            toast.success("Logged in successfully!");
-            let role = signInData?.user?.role;
-            if (!role) {
-                try {
-                    const res = await fetch(`${SERVER_URL}/api/users/${email}`);
-                    if (res.ok) {
-                        const userData = await res.json();
-                        role = userData?.user?.role;
-                    }
-                } catch (e) {
-                    console.error("User role lookup:", e);
-                }
-            }
-            redirectByRole(role, email);
+            return;
         }
+
+        const isStudent = email.endsWith("@student.cse.edu") || signInData?.user?.role === "student";
+
+        if (isStudent) {
+            // Check student approval status from database
+            try {
+                const res = await fetch(`${SERVER_URL}/api/students/email/${email}`);
+                if (res.ok) {
+                    const student = await res.json();
+                    if (student.status === "pending") {
+                        await authClient.signOut();
+                        toast.error("Your student account is currently PENDING approval by the department administrator. Please wait for verification.", { duration: 6000 });
+                        setIsLoading(false);
+                        return;
+                    }
+                    if (student.status === "rejected") {
+                        await authClient.signOut();
+                        toast.error("Your student registration was REJECTED by the department administration. Please contact the department office.", { duration: 6000 });
+                        setIsLoading(false);
+                        return;
+                    }
+                }
+            } catch (err) {
+                console.warn("Error checking student status:", err);
+            }
+
+            toast.success("Welcome! Entering student dashboard...");
+            window.location.href = "/dashboard/student";
+            return;
+        }
+
+        toast.success("Logged in successfully!");
+        let role = signInData?.user?.role;
+        if (!role) {
+            try {
+                const res = await fetch(`${SERVER_URL}/api/users/${email}`);
+                if (res.ok) {
+                    const userData = await res.json();
+                    role = userData?.user?.role;
+                }
+            } catch (e) {
+                console.error("User role lookup:", e);
+            }
+        }
+        redirectByRole(role, email);
     };
 
     return (
