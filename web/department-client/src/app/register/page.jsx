@@ -10,6 +10,7 @@ import {
     Droplet, MapPin, Briefcase, Microscope, DoorOpen, Lock, Mail, User, GraduationCap, Presentation,
     Eye, EyeOff, ArrowRight, UserPlus, Hash
 } from 'lucide-react';
+import { ThemeToggle } from '@/components/common/ThemeToggle';
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 
@@ -94,32 +95,46 @@ const RegisterPage = () => {
         }
     };
 
-    const inputClassName = "w-full h-12 bg-white border-2 border-slate-200 hover:border-indigo-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg shadow-sm !pl-11 !pr-4 text-slate-800 outline-none transition-all";
+    const inputClassName = "w-full h-12 bg-white dark:bg-slate-800/80 border-2 border-slate-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-400 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-1 focus:ring-indigo-500 rounded-lg shadow-sm !pl-11 !pr-4 text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none transition-all";
+    const selectClassName = "w-full h-12 !pl-11 !pr-4 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-400 rounded-lg text-slate-800 dark:text-white outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-1 focus:ring-indigo-500 transition-all shadow-sm appearance-none";
 
     return (
-        <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans selection:bg-indigo-100 selection:text-indigo-900">
+        <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#030712] flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans selection:bg-indigo-100 dark:selection:bg-indigo-900/40 selection:text-indigo-900 dark:selection:text-indigo-200 transition-colors duration-300">
             {/* Background Dynamic Blur Gradients matching Landing Page */}
-            <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden bg-slate-50/50 backdrop-blur-[2px]">
-                <div className="absolute -top-[20%] -left-[10%] h-[70%] w-[70%] opacity-40">
-                    <div className="w-full h-full rounded-full bg-indigo-200 blur-[150px] animate-blob"></div>
+            <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden bg-slate-50/50 dark:bg-[#030712]/90 backdrop-blur-[2px] transition-colors duration-300">
+                <div className="absolute -top-[20%] -left-[10%] h-[70%] w-[70%] opacity-40 dark:opacity-20">
+                    <div className="w-full h-full rounded-full bg-indigo-200 dark:bg-indigo-700 blur-[150px] animate-blob"></div>
                 </div>
-                <div className="absolute top-[10%] -right-[10%] h-[60%] w-[60%] opacity-40">
-                    <div className="w-full h-full rounded-full bg-sky-200 blur-[150px] animate-blob" style={{animationDelay: '2s'}}></div>
+                <div className="absolute top-[10%] -right-[10%] h-[60%] w-[60%] opacity-40 dark:opacity-20">
+                    <div className="w-full h-full rounded-full bg-sky-200 dark:bg-sky-700 blur-[150px] animate-blob" style={{animationDelay: '2s'}}></div>
                 </div>
-                <div className="absolute -bottom-[20%] left-[10%] h-[70%] w-[70%] opacity-30">
-                    <div className="w-full h-full rounded-full bg-purple-200 blur-[150px] animate-blob" style={{animationDelay: '4s'}}></div>
+                <div className="absolute -bottom-[20%] left-[10%] h-[70%] w-[70%] opacity-30 dark:opacity-15">
+                    <div className="w-full h-full rounded-full bg-purple-200 dark:bg-purple-800 blur-[150px] animate-blob" style={{animationDelay: '4s'}}></div>
                 </div>
             </div>
 
-            <div className="w-full max-w-2xl relative z-10 animate-in fade-in slide-in-from-bottom-8 duration-700 py-10">
+            {/* Top Bar with Home Link & Theme Toggle */}
+            <div className="w-full max-w-2xl flex items-center justify-between relative z-20 mb-2">
+                <Link 
+                    href="/" 
+                    className="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors inline-flex items-center gap-1.5"
+                >
+                    <span>← Back to Home</span>
+                </Link>
+                <div className="flex items-center gap-2">
+                    <ThemeToggle className="w-9 h-9 rounded-xl shadow-xs" />
+                </div>
+            </div>
+
+            <div className="w-full max-w-2xl relative z-10 animate-in fade-in slide-in-from-bottom-8 duration-700 pb-10">
                 
                 {/* Header Section */}
                 <div className="text-center mb-8">
-                    <div className={`mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-white shadow-[0_0_40px_-10px_rgba(79,70,229,0.3)] ring-1 ring-slate-100 transform transition-transform hover:scale-105 hover:rotate-3 duration-500 ${
-                        derivedRole === 'student' ? 'text-indigo-600' : 
-                        derivedRole === 'teacher' ? 'text-sky-500' : 
-                        derivedRole === 'employee' ? 'text-emerald-500' : 
-                        'text-slate-800'
+                    <div className={`mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-white dark:bg-slate-900 shadow-[0_0_40px_-10px_rgba(79,70,229,0.3)] dark:shadow-[0_0_40px_-10px_rgba(99,102,241,0.2)] ring-1 ring-slate-100 dark:ring-white/10 transform transition-transform hover:scale-105 hover:rotate-3 duration-500 ${
+                        derivedRole === 'student' ? 'text-indigo-600 dark:text-indigo-400' : 
+                        derivedRole === 'teacher' ? 'text-sky-500 dark:text-sky-400' : 
+                        derivedRole === 'employee' ? 'text-emerald-500 dark:text-emerald-400' : 
+                        'text-slate-800 dark:text-slate-100'
                     }`}>
                         {derivedRole === 'student' ? <GraduationCap className="h-8 w-8 animate-in zoom-in" strokeWidth={2.5} /> :
                          derivedRole === 'teacher' ? <Presentation className="h-8 w-8 animate-in zoom-in" strokeWidth={2.5} /> :
@@ -127,35 +142,35 @@ const RegisterPage = () => {
                          <UserPlus className="h-8 w-8 animate-in zoom-in" strokeWidth={2.5} />}
                     </div>
                     <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-500">
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-500 dark:from-indigo-400 dark:to-purple-400">
                             {derivedRole === 'student' ? "Student Registration" : 
                              derivedRole === 'teacher' ? "Faculty Registration" : 
                              derivedRole === 'employee' ? "Employee Registration" : 
                              "Create an Account"}
                         </span>
                     </h1>
-                    <p className="mt-2 text-sm font-medium text-slate-500">
+                    <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">
                         {derivedRole ? `Complete your ${derivedRole} profile below` : "Enter your email to automatically determine your role"}
                     </p>
                 </div>
 
-                <div className="bg-white/70 backdrop-blur-3xl p-8 sm:p-12 rounded-[2.5rem] border border-white/80 shadow-[0_30px_60px_-15px_rgba(79,70,229,0.3)]">
+                <div className="bg-white/70 dark:bg-slate-900/80 backdrop-blur-3xl p-8 sm:p-12 rounded-[2.5rem] border border-white/80 dark:border-white/10 shadow-[0_30px_60px_-15px_rgba(79,70,229,0.3)] dark:shadow-[0_30px_60px_-15px_rgba(0,0,0,0.7)] transition-colors duration-300">
                     <form onSubmit={onSubmit} className="flex flex-col gap-6">
                         
                         {/* BASE FIELDS */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
                             <div className="flex flex-col gap-1.5 w-full">
-                                <label className="font-semibold text-slate-700 text-sm">Full Name</label>
+                                <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Full Name</label>
                                 <div className="relative">
-                                    <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                    <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
                                     <input required name="name" placeholder="e.g. John Doe" className={inputClassName} />
                                 </div>
                             </div>
 
                             <div className="flex flex-col gap-1.5 w-full">
-                                <label className="font-semibold text-slate-700 text-sm">Email Address</label>
+                                <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Email Address</label>
                                 <div className="relative">
-                                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
                                     <input 
                                         required name="email" type="email" placeholder="john@student.cse.edu" 
                                         className={inputClassName}
@@ -170,14 +185,14 @@ const RegisterPage = () => {
                         {derivedRole && (
                             <div className="flex items-center gap-2 w-full mt-2 animate-in fade-in slide-in-from-top-2 duration-300">
                                 <span className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider ${
-                                    derivedRole === 'student' ? 'bg-indigo-50 text-indigo-600 ring-1 ring-indigo-200' : 
-                                    derivedRole === 'teacher' ? 'bg-sky-50 text-sky-600 ring-1 ring-sky-200' : 
-                                    'bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200'
+                                    derivedRole === 'student' ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 ring-1 ring-indigo-200 dark:ring-indigo-800' : 
+                                    derivedRole === 'teacher' ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-300 ring-1 ring-sky-200 dark:ring-sky-800' : 
+                                    'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-300 ring-1 ring-emerald-200 dark:ring-emerald-800'
                                 }`}>
                                     <Sparkles className="w-3.5 h-3.5" />
                                     Register as {derivedRole}
                                 </span>
-                                <span className="text-xs font-medium text-slate-400">
+                                <span className="text-xs font-medium text-slate-400 dark:text-slate-500">
                                     Role automatically detected from email domain
                                 </span>
                             </div>
@@ -185,28 +200,28 @@ const RegisterPage = () => {
 
                         {/* DYNAMIC STUDENT FIELDS */}
                         {derivedRole === "student" && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full animate-in fade-in zoom-in-95 duration-500 pt-6 border-t border-slate-100">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full animate-in fade-in zoom-in-95 duration-500 pt-6 border-t border-slate-100 dark:border-white/10">
                                 
                                 <div className="flex flex-col gap-1.5 w-full">
-                                    <label className="font-semibold text-slate-700 text-sm">Student Roll</label>
+                                    <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Student Roll</label>
                                     <div className="relative">
-                                        <Layers className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <Layers className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
                                         <input name="studentId" placeholder="e.g. 220106" className={inputClassName} />
                                     </div>
                                 </div>
 
                                 <div className="flex flex-col gap-1.5 w-full">
-                                    <label className="font-semibold text-slate-700 text-sm">Phone Number</label>
+                                    <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Phone Number</label>
                                     <div className="relative">
-                                        <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
                                         <input name="phone" placeholder="+880" className={inputClassName} />
                                     </div>
                                 </div>
 
                                 <div className="flex flex-col gap-1.5 w-full">
-                                    <label className="font-semibold text-slate-700 text-sm">Batch</label>
+                                    <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Batch</label>
                                     <div className="relative">
-                                        <Hash className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <Hash className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
                                         <input 
                                             name="batch" 
                                             type="number" 
@@ -218,39 +233,39 @@ const RegisterPage = () => {
                                 </div>
 
                                 <div className="flex flex-col gap-1.5 w-full">
-                                    <label className="font-semibold text-slate-700 text-sm">Session</label>
+                                    <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Session</label>
                                     <div className="relative">
-                                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
                                         <input name="session" placeholder="e.g. 2022-2023" className={inputClassName} />
                                     </div>
                                 </div>
 
                                 <div className="flex flex-col gap-1.5 w-full">
-                                    <label className="font-semibold text-slate-700 text-sm">Semester</label>
+                                    <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Semester</label>
                                     <div className="relative">
-                                        <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
-                                        <select name="semester" className="w-full h-12 !pl-11 !pr-4 bg-white border-2 border-slate-200 hover:border-indigo-400 rounded-lg text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-sm appearance-none" defaultValue="">
-                                            <option value="" disabled>Select Semester</option>
-                                            {[1, 2, 3, 4, 5, 6, 7, 8].map(s => <option key={s} value={s.toString()}>Semester {s}</option>)}
+                                        <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
+                                        <select name="semester" className={selectClassName} defaultValue="">
+                                            <option value="" disabled className="bg-white dark:bg-slate-800">Select Semester</option>
+                                            {[1, 2, 3, 4, 5, 6, 7, 8].map(s => <option key={s} value={s.toString()} className="bg-white dark:bg-slate-800">Semester {s}</option>)}
                                         </select>
                                     </div>
                                 </div>
 
                                 <div className="flex flex-col gap-1.5 w-full">
-                                    <label className="font-semibold text-slate-700 text-sm">Blood Group</label>
+                                    <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Blood Group</label>
                                     <div className="relative">
-                                        <Droplet className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
-                                        <select name="bloodGroup" className="w-full h-12 !pl-11 !pr-4 bg-white border-2 border-slate-200 hover:border-indigo-400 rounded-lg text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-sm appearance-none" defaultValue="">
-                                            <option value="" disabled>Select Blood Group</option>
-                                            {BLOOD_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
+                                        <Droplet className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
+                                        <select name="bloodGroup" className={selectClassName} defaultValue="">
+                                            <option value="" disabled className="bg-white dark:bg-slate-800">Select Blood Group</option>
+                                            {BLOOD_GROUPS.map(g => <option key={g} value={g} className="bg-white dark:bg-slate-800">{g}</option>)}
                                         </select>
                                     </div>
                                 </div>
 
                                 <div className="flex flex-col gap-1.5 w-full md:col-span-2">
-                                    <label className="font-semibold text-slate-700 text-sm">Address</label>
+                                    <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Address</label>
                                     <div className="relative">
-                                        <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
                                         <input name="address" placeholder="City, District" className={inputClassName} />
                                     </div>
                                 </div>
@@ -259,52 +274,52 @@ const RegisterPage = () => {
 
                         {/* DYNAMIC TEACHER FIELDS */}
                         {derivedRole === "teacher" && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full animate-in fade-in zoom-in-95 duration-500 pt-6 border-t border-slate-100">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full animate-in fade-in zoom-in-95 duration-500 pt-6 border-t border-slate-100 dark:border-white/10">
                                 
                                 <div className="flex flex-col gap-1.5 w-full">
-                                    <label className="font-semibold text-slate-700 text-sm">Dept ID</label>
+                                    <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Dept ID</label>
                                     <div className="relative">
-                                        <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
                                         <input name="teacherId" placeholder="e.g. T-101" className={inputClassName} />
                                     </div>
                                 </div>
 
                                 <div className="flex flex-col gap-1.5 w-full">
-                                    <label className="font-semibold text-slate-700 text-sm">Phone Number</label>
+                                    <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Phone Number</label>
                                     <div className="relative">
-                                        <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
                                         <input name="phone" placeholder="+880" className={inputClassName} />
                                     </div>
                                 </div>
 
                                 <div className="flex flex-col gap-1.5 w-full">
-                                    <label className="font-semibold text-slate-700 text-sm">Designation</label>
+                                    <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Designation</label>
                                     <div className="relative">
-                                        <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
                                         <input name="designation" placeholder="e.g. Professor" className={inputClassName} />
                                     </div>
                                 </div>
 
                                 <div className="flex flex-col gap-1.5 w-full">
-                                    <label className="font-semibold text-slate-700 text-sm">Specialization</label>
+                                    <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Specialization</label>
                                     <div className="relative">
-                                        <Microscope className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <Microscope className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
                                         <input name="specialization" placeholder="e.g. AI & ML" className={inputClassName} />
                                     </div>
                                 </div>
 
                                 <div className="flex flex-col gap-1.5 w-full">
-                                    <label className="font-semibold text-slate-700 text-sm">Joining Date</label>
+                                    <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Joining Date</label>
                                     <div className="relative">
-                                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
                                         <input name="joiningDate" type="date" className={inputClassName} />
                                     </div>
                                 </div>
 
                                 <div className="flex flex-col gap-1.5 w-full">
-                                    <label className="font-semibold text-slate-700 text-sm">Office Room</label>
+                                    <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Office Room</label>
                                     <div className="relative">
-                                        <DoorOpen className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <DoorOpen className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
                                         <input name="officeRoom" placeholder="e.g. Room 402" className={inputClassName} />
                                     </div>
                                 </div>
@@ -314,44 +329,44 @@ const RegisterPage = () => {
 
                         {/* DYNAMIC EMPLOYEE FIELDS */}
                         {derivedRole === "employee" && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full animate-in fade-in zoom-in-95 duration-500 pt-6 border-t border-slate-100">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full animate-in fade-in zoom-in-95 duration-500 pt-6 border-t border-slate-100 dark:border-white/10">
                                 
                                 <div className="flex flex-col gap-1.5 w-full">
-                                    <label className="font-semibold text-slate-700 text-sm">Employee ID</label>
+                                    <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Employee ID</label>
                                     <div className="relative">
-                                        <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
                                         <input name="employeeId" placeholder="e.g. E-204" className={inputClassName} />
                                     </div>
                                 </div>
 
                                 <div className="flex flex-col gap-1.5 w-full">
-                                    <label className="font-semibold text-slate-700 text-sm">Phone Number</label>
+                                    <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Phone Number</label>
                                     <div className="relative">
-                                        <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
                                         <input name="phone" placeholder="+880" className={inputClassName} />
                                     </div>
                                 </div>
 
                                 <div className="flex flex-col gap-1.5 w-full">
-                                    <label className="font-semibold text-slate-700 text-sm">Department</label>
+                                    <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Department</label>
                                     <div className="relative">
-                                        <Layers className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <Layers className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
                                         <input name="department" placeholder="e.g. IT Support" className={inputClassName} />
                                     </div>
                                 </div>
 
                                 <div className="flex flex-col gap-1.5 w-full">
-                                    <label className="font-semibold text-slate-700 text-sm">Designation</label>
+                                    <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Designation</label>
                                     <div className="relative">
-                                        <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
                                         <input name="designation" placeholder="e.g. Lab Assistant" className={inputClassName} />
                                     </div>
                                 </div>
 
                                 <div className="flex flex-col gap-1.5 w-full">
-                                    <label className="font-semibold text-slate-700 text-sm">Joining Date</label>
+                                    <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Joining Date</label>
                                     <div className="relative">
-                                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
                                         <input name="joiningDate" type="date" className={inputClassName} />
                                     </div>
                                 </div>
@@ -359,12 +374,12 @@ const RegisterPage = () => {
                         )}
 
                         {/* PASSWORDS */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full pt-6 border-t border-slate-100">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full pt-6 border-t border-slate-100 dark:border-white/10">
                             
                             <div className="flex flex-col gap-1.5 w-full">
-                                <label className="font-semibold text-slate-700 text-sm">Password</label>
+                                <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Password</label>
                                 <div className="relative">
-                                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
                                     <input 
                                         required name="password" 
                                         type={isVisible ? "text" : "password"} 
@@ -374,15 +389,15 @@ const RegisterPage = () => {
                                         className={inputClassName.replace("!pr-4", "!pr-11")}
                                     />
                                     <button className="absolute right-4 top-1/2 -translate-y-1/2 focus:outline-none z-10" type="button" onClick={toggleVisibility}>
-                                        {isVisible ? <EyeOff className="w-5 h-5 text-slate-400 hover:text-indigo-500 transition-colors" /> : <Eye className="w-5 h-5 text-slate-400 hover:text-indigo-500 transition-colors" />}
+                                        {isVisible ? <EyeOff className="w-5 h-5 text-slate-400 hover:text-indigo-500 dark:text-slate-400 dark:hover:text-indigo-400 transition-colors" /> : <Eye className="w-5 h-5 text-slate-400 hover:text-indigo-500 dark:text-slate-400 dark:hover:text-indigo-400 transition-colors" />}
                                     </button>
                                 </div>
                             </div>
 
                             <div className="flex flex-col gap-1.5 w-full">
-                                <label className="font-semibold text-slate-700 text-sm">Confirm Password</label>
+                                <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Confirm Password</label>
                                 <div className="relative">
-                                    <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10 pointer-events-none" />
+                                    <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
                                     <input 
                                         required name="confirmPassword" 
                                         type={isConfirmVisible ? "text" : "password"} 
@@ -390,7 +405,7 @@ const RegisterPage = () => {
                                         className={inputClassName.replace("!pr-4", "!pr-11")}
                                     />
                                     <button className="absolute right-4 top-1/2 -translate-y-1/2 focus:outline-none z-10" type="button" onClick={toggleConfirmVisibility}>
-                                        {isConfirmVisible ? <EyeOff className="w-5 h-5 text-slate-400 hover:text-indigo-500 transition-colors" /> : <Eye className="w-5 h-5 text-slate-400 hover:text-indigo-500 transition-colors" />}
+                                        {isConfirmVisible ? <EyeOff className="w-5 h-5 text-slate-400 hover:text-indigo-500 dark:text-slate-400 dark:hover:text-indigo-400 transition-colors" /> : <Eye className="w-5 h-5 text-slate-400 hover:text-indigo-500 dark:text-slate-400 dark:hover:text-indigo-400 transition-colors" />}
                                     </button>
                                 </div>
                             </div>
@@ -398,7 +413,7 @@ const RegisterPage = () => {
 
                         <Button
                             type="submit"
-                            className="w-full inline-flex items-center justify-center font-bold text-sm tracking-wide h-14 px-8 shadow-xl shadow-indigo-200/50 bg-indigo-600 hover:bg-indigo-700 rounded-2xl text-white transition-colors mt-2"
+                            className="w-full inline-flex items-center justify-center font-bold text-sm tracking-wide h-14 px-8 shadow-xl shadow-indigo-200/50 dark:shadow-indigo-950/40 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-500 rounded-2xl text-white transition-colors mt-2"
                             isLoading={isLoading}
                             endContent={!isLoading && <ArrowRight className="h-4 w-4 ml-1 opacity-90" />}
                         >
@@ -406,10 +421,10 @@ const RegisterPage = () => {
                         </Button>
                     </form>
 
-                    <div className="mt-8 pt-6 border-t border-slate-100 flex justify-center">
-                        <p className="text-sm font-medium text-slate-500">
+                    <div className="mt-8 pt-6 border-t border-slate-100 dark:border-white/10 flex justify-center">
+                        <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
                             Already registered?{" "}
-                            <Link href="/login" className="text-indigo-600 font-semibold hover:text-indigo-700 hover:underline transition-all">
+                            <Link href="/login" className="text-indigo-600 dark:text-indigo-400 font-semibold hover:text-indigo-700 dark:hover:text-indigo-300 hover:underline transition-all">
                                 Sign In Instead
                             </Link>
                         </p>

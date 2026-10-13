@@ -139,7 +139,7 @@ export default function EmployeeDashboardPage() {
       room: "Room 301",
       systems: "45 / 45 PCs Online",
       status: "100% Operational",
-      badgeColor: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+      badgeColor: "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 ring-emerald-200 dark:ring-emerald-800",
       specs: "Intel Core i7 13th Gen, 32GB RAM, Gigabit LAN",
     },
     {
@@ -147,7 +147,7 @@ export default function EmployeeDashboardPage() {
       room: "Room 303",
       systems: "38 / 40 PCs Online",
       status: "95% Operational",
-      badgeColor: "bg-indigo-50 text-indigo-700 ring-indigo-200",
+      badgeColor: "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 ring-indigo-200 dark:ring-indigo-800",
       specs: "Cisco Switches, Patch Panels, Logic Analyzers",
     },
     {
@@ -155,7 +155,7 @@ export default function EmployeeDashboardPage() {
       room: "Room 405",
       systems: "24 / 24 GPU Nodes",
       status: "100% Operational",
-      badgeColor: "bg-purple-50 text-purple-700 ring-purple-200",
+      badgeColor: "bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 ring-purple-200 dark:ring-purple-800",
       specs: "RTX 4090 Workstations, Liquid Cooled, Linux Cluster",
     },
     {
@@ -163,7 +163,7 @@ export default function EmployeeDashboardPage() {
       room: "Room 501",
       systems: "Audio / Projection Suite",
       status: "Operational",
-      badgeColor: "bg-sky-50 text-sky-700 ring-sky-200",
+      badgeColor: "bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 ring-sky-200 dark:ring-sky-800",
       specs: "4K Laser Projector, Smart Podium, Shure Wireless",
     },
   ];
@@ -216,11 +216,11 @@ export default function EmployeeDashboardPage() {
 
       {/* Quick Action & Shift Status Bar */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="p-5 rounded-2xl bg-white/80 backdrop-blur-xl border border-white shadow-sm flex items-center justify-between">
+        <div className="p-5 rounded-2xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm flex items-center justify-between transition-colors">
           <div className="space-y-1">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Today's Shift</span>
-            <h4 className="text-lg font-bold text-slate-800">08:30 AM - 04:30 PM</h4>
-            <span className="text-[11px] font-medium text-emerald-600 flex items-center gap-1">
+            <span className="text-xs font-semibold text-slate-400 dark:text-slate-400 uppercase tracking-wider">Today's Shift</span>
+            <h4 className="text-lg font-bold text-slate-800 dark:text-white">08:30 AM - 04:30 PM</h4>
+            <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
               <CheckCircle2 className="w-3 h-3" /> Standard Day Duty
             </span>
           </div>
@@ -229,47 +229,47 @@ export default function EmployeeDashboardPage() {
             disabled={shiftLogged}
             className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md ${
               shiftLogged
-                ? "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none"
-                : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200"
+                ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed shadow-none"
+                : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200 dark:shadow-none"
             }`}
           >
             {shiftLogged ? "Shift Logged" : "Log Check-in"}
           </button>
         </div>
 
-        <div className="p-5 rounded-2xl bg-white/80 backdrop-blur-xl border border-white shadow-sm flex items-center gap-4">
-          <div className="h-12 w-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+        <div className="p-5 rounded-2xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm flex items-center gap-4 transition-colors">
+          <div className="h-12 w-12 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
             <Cpu className="w-6 h-6" />
           </div>
           <div>
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Monitored Labs</span>
-            <h4 className="text-2xl font-black text-slate-900">4 Labs</h4>
-            <span className="text-[11px] text-slate-500 font-medium">147 Workstations</span>
+            <span className="text-xs font-semibold text-slate-400 dark:text-slate-400 uppercase tracking-wider">Monitored Labs</span>
+            <h4 className="text-2xl font-black text-slate-900 dark:text-white">4 Labs</h4>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">147 Workstations</span>
           </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-white/80 backdrop-blur-xl border border-white shadow-sm flex items-center gap-4">
-          <div className="h-12 w-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+        <div className="p-5 rounded-2xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm flex items-center gap-4 transition-colors">
+          <div className="h-12 w-12 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold">
             <Wrench className="w-6 h-6" />
           </div>
           <div>
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Active Tickets</span>
-            <h4 className="text-2xl font-black text-slate-900">
+            <span className="text-xs font-semibold text-slate-400 dark:text-slate-400 uppercase tracking-wider">Active Tickets</span>
+            <h4 className="text-2xl font-black text-slate-900 dark:text-white">
               {tasks.filter((t) => t.status !== "Resolved").length} Pending
             </h4>
-            <span className="text-[11px] text-slate-500 font-medium">1 In Progress</span>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">1 In Progress</span>
           </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-white/80 backdrop-blur-xl border border-white shadow-sm flex items-center justify-between">
+        <div className="p-5 rounded-2xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm flex items-center justify-between transition-colors">
           <div>
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Quick Action</span>
-            <h4 className="text-sm font-bold text-slate-800">Equipment Report</h4>
-            <span className="text-[11px] text-slate-500 font-medium">Log new hardware task</span>
+            <span className="text-xs font-semibold text-slate-400 dark:text-slate-400 uppercase tracking-wider">Quick Action</span>
+            <h4 className="text-sm font-bold text-slate-800 dark:text-white">Equipment Report</h4>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">Log new hardware task</span>
           </div>
           <button
             onClick={handleNewTicket}
-            className="p-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-200 transition-all"
+            className="p-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-200 dark:shadow-none transition-all cursor-pointer"
             title="Create Ticket"
           >
             <PlusCircle className="w-5 h-5" />
@@ -278,18 +278,18 @@ export default function EmployeeDashboardPage() {
       </div>
 
       {/* Lab Facilities & Workstation Live Status */}
-      <div className="p-8 rounded-[2rem] bg-white/90 backdrop-blur-xl border border-white shadow-sm space-y-6">
+      <div className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-              <Server className="w-5 h-5 text-indigo-600" />
+            <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+              <Server className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
               Department Lab Infrastructure & Hardware Status
             </h2>
-            <p className="text-xs text-slate-500 font-medium mt-1">
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-1">
               Real-time monitoring of computer laboratories, server rooms, and lecture halls
             </p>
           </div>
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 font-bold text-xs ring-1 ring-emerald-200">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold text-xs ring-1 ring-emerald-200 dark:ring-emerald-800">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
             All Systems Normal
           </span>
@@ -299,22 +299,22 @@ export default function EmployeeDashboardPage() {
           {labFacilities.map((lab) => (
             <div
               key={lab.name}
-              className="p-5 rounded-2xl bg-slate-50/80 border border-slate-100 hover:border-indigo-200 transition-all hover:shadow-md space-y-3 group"
+              className="p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60 hover:border-indigo-200 dark:hover:border-indigo-500/50 transition-all hover:shadow-md space-y-3 group"
             >
               <div className="flex items-start justify-between">
                 <div>
-                  <h4 className="font-bold text-slate-900 text-sm group-hover:text-indigo-600 transition-colors">
+                  <h4 className="font-bold text-slate-900 dark:text-white text-sm group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                     {lab.name}
                   </h4>
-                  <span className="text-[11px] text-slate-400 font-medium">{lab.room}</span>
+                  <span className="text-[11px] text-slate-400 dark:text-slate-400 font-medium">{lab.room}</span>
                 </div>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ring-1 ${lab.badgeColor}`}>
                   {lab.status}
                 </span>
               </div>
-              <div className="pt-2 border-t border-slate-200/50 space-y-1">
-                <p className="text-xs font-semibold text-slate-700">{lab.systems}</p>
-                <p className="text-[11px] text-slate-500 font-medium leading-relaxed">{lab.specs}</p>
+              <div className="pt-2 border-t border-slate-200/50 dark:border-slate-700/50 space-y-1">
+                <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{lab.systems}</p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium leading-relaxed">{lab.specs}</p>
               </div>
             </div>
           ))}
@@ -322,20 +322,20 @@ export default function EmployeeDashboardPage() {
       </div>
 
       {/* Section Tasks & Maintenance Tickets */}
-      <div id="tasks" className="p-8 rounded-[2rem] bg-white/90 backdrop-blur-xl border border-white shadow-sm space-y-6">
+      <div id="tasks" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-              <Layers className="w-5 h-5 text-emerald-600" />
+            <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+              <Layers className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
               Assigned Section Tasks & Maintenance Tickets
             </h2>
-            <p className="text-xs text-slate-500 font-medium mt-1">
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-1">
               Click any status button to toggle between Pending, In Progress, and Resolved
             </p>
           </div>
           <button
             onClick={handleNewTicket}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-slate-200"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 dark:bg-indigo-600 hover:bg-slate-800 dark:hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-slate-200 dark:shadow-none cursor-pointer"
           >
             <PlusCircle className="w-4 h-4" />
             Add Work Ticket
@@ -345,7 +345,7 @@ export default function EmployeeDashboardPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-slate-100 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+              <tr className="border-b border-slate-100 dark:border-white/10 text-[11px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider">
                 <th className="pb-3 px-4">Ticket ID</th>
                 <th className="pb-3 px-4">Task Description</th>
                 <th className="pb-3 px-4">Location</th>
@@ -354,28 +354,28 @@ export default function EmployeeDashboardPage() {
                 <th className="pb-3 px-4 text-right">Reported</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
+            <tbody className="divide-y divide-slate-100 dark:divide-white/10 text-xs font-medium text-slate-700 dark:text-slate-200">
               {tasks.map((task) => (
-                <tr key={task.id} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="py-4 px-4 font-mono font-bold text-indigo-600">
+                <tr key={task.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
+                  <td className="py-4 px-4 font-mono font-bold text-indigo-600 dark:text-indigo-400">
                     {task.id}
                   </td>
                   <td className="py-4 px-4">
-                    <div className="font-bold text-slate-900">{task.title}</div>
-                    <span className="text-[10px] text-slate-400 font-medium">
+                    <div className="font-bold text-slate-900 dark:text-white">{task.title}</div>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-400 font-medium">
                       Category: {task.category} • Assigned By: {task.assignedBy}
                     </span>
                   </td>
-                  <td className="py-4 px-4 text-slate-600">
+                  <td className="py-4 px-4 text-slate-600 dark:text-slate-300">
                     {task.location}
                   </td>
                   <td className="py-4 px-4">
                     <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] uppercase tracking-wider ${
                       task.priority === "High"
-                        ? "bg-rose-50 text-rose-700 ring-1 ring-rose-200"
+                        ? "bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 ring-1 ring-rose-200 dark:ring-rose-800"
                         : task.priority === "Medium"
-                        ? "bg-amber-50 text-amber-700 ring-1 ring-amber-200"
-                        : "bg-slate-100 text-slate-600 ring-1 ring-slate-200"
+                        ? "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 ring-1 ring-amber-200 dark:ring-amber-800"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-700"
                     }`}>
                       {task.priority}
                     </span>
@@ -385,23 +385,23 @@ export default function EmployeeDashboardPage() {
                       onClick={() => handleToggleTaskStatus(task.id)}
                       className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs ${
                         task.status === "Resolved"
-                          ? "bg-emerald-100 hover:bg-emerald-200 text-emerald-800"
+                          ? "bg-emerald-100 dark:bg-emerald-950/60 hover:bg-emerald-200 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300"
                           : task.status === "In Progress"
-                          ? "bg-sky-100 hover:bg-sky-200 text-sky-800"
-                          : "bg-amber-100 hover:bg-amber-200 text-amber-800"
+                          ? "bg-sky-100 dark:bg-sky-950/60 hover:bg-sky-200 dark:hover:bg-sky-900/60 text-sky-800 dark:text-sky-300"
+                          : "bg-amber-100 dark:bg-amber-950/60 hover:bg-amber-200 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-300"
                       }`}
                     >
                       {task.status === "Resolved" ? (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                       ) : task.status === "In Progress" ? (
-                        <Activity className="w-3.5 h-3.5 text-sky-600 animate-spin" />
+                        <Activity className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 animate-spin" />
                       ) : (
-                        <Clock className="w-3.5 h-3.5 text-amber-600" />
+                        <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                       )}
                       <span>{task.status}</span>
                     </button>
                   </td>
-                  <td className="py-4 px-4 text-right text-slate-400 font-medium text-[11px]">
+                  <td className="py-4 px-4 text-right text-slate-400 dark:text-slate-400 font-medium text-[11px]">
                     {task.date}
                   </td>
                 </tr>
@@ -412,46 +412,46 @@ export default function EmployeeDashboardPage() {
       </div>
 
       {/* Notices & Circulars */}
-      <div id="notices" className="p-8 rounded-[2rem] bg-white/90 backdrop-blur-xl border border-white shadow-sm space-y-6">
+      <div id="notices" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-              <Bell className="w-5 h-5 text-indigo-600" />
+            <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+              <Bell className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
               Administrative Circulars & Department Notices
             </h2>
-            <p className="text-xs text-slate-500 font-medium mt-1">
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-1">
               Official circulars regarding staff duties, examination seating, and facility upkeep
             </p>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="p-5 rounded-2xl bg-slate-50/70 border border-slate-100 space-y-2">
+          <div className="p-5 rounded-2xl bg-slate-50/70 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded">
                 Examination Circular
               </span>
-              <span className="text-[10px] text-slate-400 font-medium">Oct 11, 2026</span>
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">Oct 11, 2026</span>
             </div>
-            <h4 className="font-bold text-slate-900 text-sm">
+            <h4 className="font-bold text-slate-900 dark:text-white text-sm">
               6th & 8th Semester Final Examination Lab Preparation
             </h4>
-            <p className="text-xs text-slate-500 leading-relaxed">
+            <p className="text-xs text-slate-500 dark:text-slate-300 leading-relaxed">
               All technical staff are instructed to lock workstation USB ports and verify network firewalls in Software Labs 1 & 2 before upcoming semester finals.
             </p>
           </div>
 
-          <div className="p-5 rounded-2xl bg-slate-50/70 border border-slate-100 space-y-2">
+          <div className="p-5 rounded-2xl bg-slate-50/70 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded">
                 Facility Maintenance
               </span>
-              <span className="text-[10px] text-slate-400 font-medium">Oct 09, 2026</span>
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">Oct 09, 2026</span>
             </div>
-            <h4 className="font-bold text-slate-900 text-sm">
+            <h4 className="font-bold text-slate-900 dark:text-white text-sm">
               Routine Campus Power Backup & Generator Test Notice
             </h4>
-            <p className="text-xs text-slate-500 leading-relaxed">
+            <p className="text-xs text-slate-500 dark:text-slate-300 leading-relaxed">
               Scheduled power transfer testing will occur this Saturday between 06:00 AM - 07:30 AM. Kindly verify all server battery backups.
             </p>
           </div>

@@ -123,23 +123,23 @@ export default function StudentDashboardPage() {
 
       {/* Account Verification Warning Banner */}
       {isPending ? (
-        <div className="p-6 rounded-2xl bg-amber-50 border border-amber-200 flex items-start gap-4">
-          <AlertCircle className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
+        <div className="p-6 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 flex items-start gap-4">
+          <AlertCircle className="w-6 h-6 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
           <div className="space-y-1">
-            <h3 className="font-bold text-sm text-amber-900">Registration Pending Verification</h3>
-            <p className="text-xs text-amber-700 leading-relaxed font-medium">
+            <h3 className="font-bold text-sm text-amber-900 dark:text-amber-200">Registration Pending Verification</h3>
+            <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed font-medium">
               Your student profile has been submitted and is currently awaiting approval from the CSE Department office.
               You can explore your course schedule and lecture notes below. Once approved by an admin, formal marks and submission records will be active.
             </p>
           </div>
         </div>
       ) : (
-        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-between">
+        <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-            <span className="text-xs font-bold text-emerald-900">Account Approved & Verified by Department Admin</span>
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+            <span className="text-xs font-bold text-emerald-900 dark:text-emerald-200">Account Approved & Verified by Department Admin</span>
           </div>
-          <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-3 py-1 rounded-lg">
+          <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/60 px-3 py-1 rounded-lg">
             Active Student
           </span>
         </div>
@@ -147,51 +147,51 @@ export default function StudentDashboardPage() {
 
       {/* Attendance & Geofence Mark Center */}
       <div id="attendance" className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="p-6 rounded-2xl bg-white/90 backdrop-blur-xl border border-white shadow-sm flex flex-col justify-between">
+        <div className="p-6 rounded-2xl bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm flex flex-col justify-between transition-colors">
           <div>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Overall Attendance</span>
+            <span className="text-xs font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider">Overall Attendance</span>
             <div className="mt-3 flex items-baseline gap-2">
-              <span className="text-4xl font-black text-indigo-600">91.4%</span>
-              <span className="text-xs font-bold text-emerald-600">Above 75% target</span>
+              <span className="text-4xl font-black text-indigo-600 dark:text-indigo-400">91.4%</span>
+              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">Above 75% target</span>
             </div>
-            <p className="text-xs text-slate-400 mt-2 font-medium">
+            <p className="text-xs text-slate-400 dark:text-slate-400 mt-2 font-medium">
               43 out of 47 mandatory lecture hours attended this term.
             </p>
           </div>
-          <div className="mt-4 w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-            <div className="bg-indigo-600 h-full rounded-full" style={{ width: "91.4%" }}></div>
+          <div className="mt-4 w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
+            <div className="bg-indigo-600 dark:bg-indigo-500 h-full rounded-full" style={{ width: "91.4%" }}></div>
           </div>
         </div>
 
-        <div className="p-6 rounded-2xl bg-white/90 backdrop-blur-xl border border-white shadow-sm flex flex-col justify-between">
+        <div className="p-6 rounded-2xl bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm flex flex-col justify-between transition-colors">
           <div>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Cumulative GPA</span>
+            <span className="text-xs font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider">Cumulative GPA</span>
             <div className="mt-3 flex items-baseline gap-2">
-              <span className="text-4xl font-black text-slate-900">3.78</span>
-              <span className="text-xs font-bold text-indigo-600">Scale of 4.00</span>
+              <span className="text-4xl font-black text-slate-900 dark:text-white">3.78</span>
+              <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400">Scale of 4.00</span>
             </div>
-            <p className="text-xs text-slate-400 mt-2 font-medium">
+            <p className="text-xs text-slate-400 dark:text-slate-400 mt-2 font-medium">
               Ranked in top 10% of 10th Batch.
             </p>
           </div>
-          <div className="mt-4 flex items-center gap-1.5 text-xs text-emerald-600 font-bold">
+          <div className="mt-4 flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-bold">
             <Award className="w-4 h-4" />
             <span>Honors List Eligible</span>
           </div>
         </div>
 
-        <div className="p-6 rounded-2xl bg-white/90 backdrop-blur-xl border border-white shadow-sm flex flex-col justify-between space-y-4">
+        <div className="p-6 rounded-2xl bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm flex flex-col justify-between space-y-4 transition-colors">
           <div>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Live Geofence Check-in</span>
-            <h4 className="text-sm font-bold text-slate-900 mt-1">Mark Classroom Presence</h4>
-            <p className="text-xs text-slate-400 mt-1 font-medium">
+            <span className="text-xs font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider">Live Geofence Check-in</span>
+            <h4 className="text-sm font-bold text-slate-900 dark:text-white mt-1">Mark Classroom Presence</h4>
+            <p className="text-xs text-slate-400 dark:text-slate-400 mt-1 font-medium">
               Verify your GPS location within campus classrooms to check in for current class.
             </p>
           </div>
           <button
             onClick={handleMarkAttendance}
             disabled={isMarking}
-            className="w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-200/60 transition-colors"
+            className="w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-200/60 dark:shadow-none transition-colors"
           >
             <Navigation className="w-4 h-4" />
             <span>{isMarking ? "Verifying GPS..." : "Check In to Classroom"}</span>
@@ -200,26 +200,26 @@ export default function StudentDashboardPage() {
       </div>
 
       {/* Routine & Semester Courses */}
-      <div id="routine" className="p-8 rounded-[2rem] bg-white/90 backdrop-blur-xl border border-white shadow-sm space-y-6">
+      <div id="routine" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-slate-900">Enrolled Courses & Weekly Routine</h2>
-            <p className="text-xs text-slate-500 font-medium">Curriculum overview for Semester 6</p>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Enrolled Courses & Weekly Routine</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Curriculum overview for Semester 6</p>
           </div>
-          <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-xl ring-1 ring-indigo-200">
+          <span className="text-xs font-bold text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 px-3 py-1.5 rounded-xl ring-1 ring-indigo-200 dark:ring-indigo-800">
             Semester 6 • 19 Credits
           </span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
           {courses.map((c, i) => (
-            <div key={i} className="p-5 rounded-2xl bg-slate-50/80 border border-slate-200/80 hover:border-indigo-300 transition-all space-y-3">
+            <div key={i} className="p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 hover:border-indigo-300 dark:hover:border-indigo-500/50 transition-all space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider">{c.code}</span>
-                <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">{c.attendance}</span>
+                <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">{c.code}</span>
+                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md">{c.attendance}</span>
               </div>
-              <h3 className="font-bold text-slate-900 text-sm leading-snug">{c.title}</h3>
-              <div className="space-y-1 text-xs text-slate-500">
+              <h3 className="font-bold text-slate-900 dark:text-white text-sm leading-snug">{c.title}</h3>
+              <div className="space-y-1 text-xs text-slate-500 dark:text-slate-400">
                 <div className="flex items-center gap-1.5">
                   <Clock className="w-3.5 h-3.5 text-slate-400" />
                   <span>{c.time}</span>
@@ -228,7 +228,7 @@ export default function StudentDashboardPage() {
                   <MapPin className="w-3.5 h-3.5 text-slate-400" />
                   <span>{c.room}</span>
                 </div>
-                <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-200/60">
+                <div className="text-[11px] text-slate-400 dark:text-slate-400 pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
                   {c.teacher}
                 </div>
               </div>

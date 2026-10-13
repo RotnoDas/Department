@@ -78,14 +78,14 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
   const getRoleBadge = () => {
     switch (role) {
       case "admin":
-        return { label: "Department Admin", bg: "bg-purple-50 text-purple-700 ring-purple-200" };
+        return { label: "Department Admin", bg: "bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 ring-purple-200 dark:ring-purple-800" };
       case "teacher":
-        return { label: "Faculty Member", bg: "bg-sky-50 text-sky-700 ring-sky-200" };
+        return { label: "Faculty Member", bg: "bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 ring-sky-200 dark:ring-sky-800" };
       case "employee":
-        return { label: "Staff / Officer", bg: "bg-emerald-50 text-emerald-700 ring-emerald-200" };
+        return { label: "Staff / Officer", bg: "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 ring-emerald-200 dark:ring-emerald-800" };
       case "student":
       default:
-        return { label: "Student", bg: "bg-indigo-50 text-indigo-700 ring-indigo-200" };
+        return { label: "Student", bg: "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 ring-indigo-200 dark:ring-indigo-800" };
     }
   };
 

@@ -95,48 +95,48 @@ export default function TeacherDashboardPage() {
       </div>
 
       {/* Routine & Today's Classes */}
-      <div id="routine" className="p-8 rounded-[2rem] bg-white/90 backdrop-blur-xl border border-white shadow-sm space-y-6">
+      <div id="routine" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-slate-900">Today's Class Schedule</h2>
-            <p className="text-xs text-slate-500 font-medium">Courses assigned for your faculty instruction</p>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Today's Class Schedule</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Courses assigned for your faculty instruction</p>
           </div>
-          <span className="text-xs font-bold text-sky-600 bg-sky-50 px-3 py-1.5 rounded-xl ring-1 ring-sky-200">
+          <span className="text-xs font-bold text-sky-600 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/60 px-3 py-1.5 rounded-xl ring-1 ring-sky-200 dark:ring-sky-800">
             3 Lectures Scheduled
           </span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {teacherSchedule.map((cls, idx) => (
-            <div key={idx} className="p-6 rounded-2xl bg-slate-50/80 border border-slate-200/80 hover:border-sky-300 transition-all space-y-4">
+            <div key={idx} className="p-6 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 hover:border-sky-300 dark:hover:border-sky-500/50 transition-all space-y-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <span className="text-[11px] font-bold text-sky-600 uppercase tracking-wider">{cls.code}</span>
-                  <h3 className="font-bold text-slate-900 text-base">{cls.title}</h3>
+                  <span className="text-[11px] font-bold text-sky-600 dark:text-sky-400 uppercase tracking-wider">{cls.code}</span>
+                  <h3 className="font-bold text-slate-900 dark:text-white text-base">{cls.title}</h3>
                 </div>
-                <div className="h-8 w-8 rounded-lg bg-sky-100 text-sky-600 flex items-center justify-center">
+                <div className="h-8 w-8 rounded-lg bg-sky-100 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center">
                   <Clock className="w-4 h-4" />
                 </div>
               </div>
 
-              <div className="space-y-1.5 text-xs text-slate-500">
+              <div className="space-y-1.5 text-xs text-slate-500 dark:text-slate-400">
                 <div className="flex items-center justify-between">
                   <span>Time Slot:</span>
-                  <span className="font-semibold text-slate-800">{cls.time}</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">{cls.time}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span>Classroom:</span>
-                  <span className="font-semibold text-slate-800">{cls.room}</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">{cls.room}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span>Target Class:</span>
-                  <span className="font-semibold text-slate-800">{cls.semester}</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">{cls.semester}</span>
                 </div>
               </div>
 
               <button 
                 onClick={() => toast.success(`Attendance session active for ${cls.code}`)}
-                className="w-full inline-flex items-center justify-center gap-2 h-10 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs shadow-md shadow-sky-200/60 transition-colors"
+                className="w-full inline-flex items-center justify-center gap-2 h-10 rounded-xl bg-sky-600 hover:bg-sky-700 dark:bg-sky-600 dark:hover:bg-sky-500 text-white font-bold text-xs shadow-md shadow-sky-200/60 dark:shadow-none transition-colors"
               >
                 <Play className="w-3.5 h-3.5 fill-current" />
                 <span>Start Attendance Session</span>
@@ -148,15 +148,15 @@ export default function TeacherDashboardPage() {
 
       {/* Materials & Assignment Center */}
       <div id="materials" className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="p-8 rounded-[2rem] bg-white/90 backdrop-blur-xl border border-white shadow-sm space-y-4">
+        <div className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-4 transition-colors">
           <div className="flex items-center justify-between">
-            <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
-              <BookOpen className="w-5 h-5 text-indigo-600" />
+            <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2">
+              <BookOpen className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
               <span>Published Study Materials</span>
             </h3>
             <button 
               onClick={() => toast.success("Upload modal will open")}
-              className="text-xs font-bold text-indigo-600 hover:underline"
+              className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
             >
               + Upload Material
             </button>
@@ -167,24 +167,24 @@ export default function TeacherDashboardPage() {
               { title: "Lexical Analysis & Syntax Trees", course: "CSE 3203", type: "Slides (5.1 MB)", date: "3 days ago" },
               { title: "CAP Theorem and Consensus Protocols", course: "CSE 4101", type: "Notes (1.2 MB)", date: "Oct 5, 2026" },
             ].map((mat, i) => (
-              <div key={i} className="p-4 rounded-xl bg-slate-50 flex items-center justify-between text-xs">
+              <div key={i} className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-transparent dark:border-slate-700/50 flex items-center justify-between text-xs">
                 <div>
-                  <div className="font-bold text-slate-800">{mat.title}</div>
-                  <div className="text-slate-400">{mat.course} • {mat.type}</div>
+                  <div className="font-bold text-slate-800 dark:text-slate-100">{mat.title}</div>
+                  <div className="text-slate-400 dark:text-slate-400">{mat.course} • {mat.type}</div>
                 </div>
-                <span className="text-slate-400 font-medium">{mat.date}</span>
+                <span className="text-slate-400 dark:text-slate-500 font-medium">{mat.date}</span>
               </div>
             ))}
           </div>
         </div>
 
-        <div id="attendance" className="p-8 rounded-[2rem] bg-white/90 backdrop-blur-xl border border-white shadow-sm space-y-4">
+        <div id="attendance" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-4 transition-colors">
           <div className="flex items-center justify-between">
-            <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
-              <UserCheck className="w-5 h-5 text-emerald-600" />
+            <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2">
+              <UserCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
               <span>Attendance History</span>
             </h3>
-            <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-md">
+            <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-1 rounded-md">
               94% Average Presence
             </span>
           </div>
@@ -194,12 +194,12 @@ export default function TeacherDashboardPage() {
               { course: "CSE 3203", date: "Oct 10, 11:00 AM", present: 49, absent: 3, percentage: "94.2%" },
               { course: "CSE 4101", date: "Oct 08, 02:00 PM", present: 43, absent: 2, percentage: "95.5%" },
             ].map((att, i) => (
-              <div key={i} className="p-4 rounded-xl bg-slate-50 flex items-center justify-between text-xs">
+              <div key={i} className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-transparent dark:border-slate-700/50 flex items-center justify-between text-xs">
                 <div>
-                  <div className="font-bold text-slate-800">{att.course} Attendance</div>
-                  <div className="text-slate-400">{att.date} • {att.present} Present, {att.absent} Absent</div>
+                  <div className="font-bold text-slate-800 dark:text-slate-100">{att.course} Attendance</div>
+                  <div className="text-slate-400 dark:text-slate-400">{att.date} • {att.present} Present, {att.absent} Absent</div>
                 </div>
-                <span className="font-bold text-emerald-600 text-sm">{att.percentage}</span>
+                <span className="font-bold text-emerald-600 dark:text-emerald-400 text-sm">{att.percentage}</span>
               </div>
             ))}
           </div>
