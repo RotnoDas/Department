@@ -32,6 +32,7 @@ import {
   FileText
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { SEMESTER_COURSES, SEMESTER_LABELS, SEMESTER_KEYS } from "@/data/courses";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
@@ -56,7 +57,10 @@ export default function AdminDashboardPage() {
 
   // Modal / Inline Form states
   const [showCourseForm, setShowCourseForm] = useState(false);
-  const [newCourse, setNewCourse] = useState({ code: "", title: "", credits: "3.0", semester: "6th Semester", faculty: "" });
+  const [newCourse, setNewCourse] = useState({ code: "", title: "", credits: "3.0", semester: "1st Semester", faculty: "" });
+  const [selectedCourseSemester, setSelectedCourseSemester] = useState("all");
+  const [courseSearch, setCourseSearch] = useState("");
+  const [isSyncingCurriculum, setIsSyncingCurriculum] = useState(false);
 
   const [showNoticeForm, setShowNoticeForm] = useState(false);
   const [newNotice, setNewNotice] = useState({ title: "", category: "Academic", audience: "All Members", content: "", priority: "Normal" });
@@ -219,6 +223,28 @@ export default function AdminDashboardPage() {
     }
   };
 
+  // Sync complete standard curriculum (Semesters 1-8)
+  const handleSyncCurriculum = async () => {
+    if (!confirm("Sync complete 8-semester CSE curriculum from syllabus into database?")) return;
+    setIsSyncingCurriculum(true);
+    try {
+      const res = await fetch(`${SERVER_URL}/api/courses/seed-all`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        toast.success(data.message || "Curriculum for Semesters 1 to 8 synced successfully!");
+        fetchData();
+      } else {
+        toast.error("Failed to sync curriculum");
+      }
+    } catch (err) {
+      toast.error("Network error syncing curriculum");
+    } finally {
+      setIsSyncingCurriculum(false);
+    }
+  };
+
   // Create notice
   const handleCreateNotice = async (e) => {
     e.preventDefault();
@@ -327,6 +353,31 @@ export default function AdminDashboardPage() {
     s.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     s.studentId?.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const filteredCourses = courses.filter((c) => {
+    if (selectedCourseSemester !== "all") {
+      const semKey = String(selectedCourseSemester);
+      const matchesNum = String(c.semesterNum) === semKey;
+      const matchesLabel = c.semester && (
+        c.semester.toLowerCase().startsWith(semKey) ||
+        c.semester.toLowerCase().includes(`${semKey}st`) ||
+        c.semester.toLowerCase().includes(`${semKey}nd`) ||
+        c.semester.toLowerCase().includes(`${semKey}rd`) ||
+        c.semester.toLowerCase().includes(`${semKey}th`)
+      );
+      if (!matchesNum && !matchesLabel) return false;
+    }
+    if (courseSearch.trim()) {
+      const q = courseSearch.toLowerCase();
+      const matchesCode = c.code?.toLowerCase().includes(q);
+      const matchesTitle = c.title?.toLowerCase().includes(q);
+      const matchesFaculty = c.faculty?.toLowerCase().includes(q);
+      if (!matchesCode && !matchesTitle && !matchesFaculty) return false;
+    }
+    return true;
+  });
+
+  const totalFilteredCredits = filteredCourses.reduce((sum, c) => sum + (parseFloat(c.credits) || 0), 0);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -619,23 +670,121 @@ export default function AdminDashboardPage() {
 
       {/* Curriculum & Courses Section */}
       <div id="courses" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
           <div>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+              <span>Full 8-Semester Syllabus</span>
+            </div>
             <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <BookOpen className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
               Department Curriculum & Course Matrix
             </h2>
             <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5">
-              Add and manage academic courses, credit hours, and assigned faculty members.
+              Explore and manage standard courses from Semester 1 through 8, credits, and assigned faculty members.
             </p>
           </div>
-          <button
-            onClick={() => setShowCourseForm(!showCourseForm)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-200 dark:shadow-none transition-all cursor-pointer"
-          >
-            <PlusCircle className="w-4 h-4" />
-            <span>{showCourseForm ? "Close Form" : "Add New Course"}</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              onClick={handleSyncCurriculum}
+              disabled={isSyncingCurriculum}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 cursor-pointer shadow-sm disabled:opacity-60"
+              title="Sync standard syllabus for Semesters 1 to 8"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncingCurriculum ? "animate-spin text-indigo-500" : ""}`} />
+              <span>{isSyncingCurriculum ? "Syncing Syllabus..." : "Sync Full Curriculum (Sem 1-8)"}</span>
+            </button>
+            <button
+              onClick={() => setShowCourseForm(!showCourseForm)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-200 dark:shadow-none transition-all cursor-pointer"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>{showCourseForm ? "Close Form" : "Add New Course"}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Semester Filter Tabs (Semesters 1 to 8) */}
+        <div className="space-y-3 pt-2">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              Filter by Semester (1 - 8):
+            </span>
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+              Showing <strong className="text-indigo-600 dark:text-indigo-400">{filteredCourses.length}</strong> of {courses.length} courses ({totalFilteredCredits.toFixed(1)} credits)
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-thin">
+            <button
+              onClick={() => setSelectedCourseSemester("all")}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                selectedCourseSemester === "all"
+                  ? "bg-indigo-600 text-white shadow-sm shadow-indigo-300 dark:shadow-none"
+                  : "bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+              }`}
+            >
+              <span>All Semesters</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                selectedCourseSemester === "all" ? "bg-white/20 text-white" : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400"
+              }`}>
+                {courses.length}
+              </span>
+            </button>
+
+            {SEMESTER_KEYS.map((semKey) => {
+              const semCount = courses.filter((c) => 
+                String(c.semesterNum) === String(semKey) || 
+                (c.semester && (
+                  c.semester.toLowerCase().startsWith(String(semKey)) ||
+                  c.semester.toLowerCase().includes(`${semKey}st`) ||
+                  c.semester.toLowerCase().includes(`${semKey}nd`) ||
+                  c.semester.toLowerCase().includes(`${semKey}rd`) ||
+                  c.semester.toLowerCase().includes(`${semKey}th`)
+                ))
+              ).length;
+
+              const isSelected = selectedCourseSemester === String(semKey);
+              return (
+                <button
+                  key={semKey}
+                  onClick={() => setSelectedCourseSemester(String(semKey))}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                    isSelected
+                      ? "bg-indigo-600 text-white shadow-sm shadow-indigo-300 dark:shadow-none"
+                      : "bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                  }`}
+                >
+                  <span>Sem {semKey}</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                    isSelected ? "bg-white/20 text-white" : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400"
+                  }`}>
+                    {semCount}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Search bar inside courses */}
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search courses by code (e.g. CSE 1101), course title, or instructor name..."
+              value={courseSearch}
+              onChange={(e) => setCourseSearch(e.target.value)}
+              className="w-full h-10 pl-10 pr-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 text-xs font-medium text-slate-900 dark:text-white placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
+            />
+            {courseSearch && (
+              <button
+                onClick={() => setCourseSearch("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold"
+              >
+                Clear
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Add Course Form */}
@@ -645,7 +794,7 @@ export default function AdminDashboardPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
               <input
                 required
-                placeholder="Code (e.g. CSE 3209)"
+                placeholder="Code (e.g. CSE 1101)"
                 value={newCourse.code}
                 onChange={(e) => setNewCourse({ ...newCourse, code: e.target.value })}
                 className="h-10 px-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-indigo-500"
@@ -660,17 +809,22 @@ export default function AdminDashboardPage() {
               <input
                 type="number"
                 step="0.5"
-                placeholder="Credits (3.0)"
+                placeholder="Credits (e.g. 3.0)"
                 value={newCourse.credits}
                 onChange={(e) => setNewCourse({ ...newCourse, credits: e.target.value })}
                 className="h-10 px-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-indigo-500"
               />
-              <input
-                placeholder="Semester (e.g. 6th Semester)"
+              <select
                 value={newCourse.semester}
                 onChange={(e) => setNewCourse({ ...newCourse, semester: e.target.value })}
                 className="h-10 px-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-indigo-500"
-              />
+              >
+                {SEMESTER_KEYS.map((key) => (
+                  <option key={key} value={SEMESTER_LABELS[key]}>
+                    {SEMESTER_LABELS[key]} (Sem {key})
+                  </option>
+                ))}
+              </select>
               <input
                 placeholder="Assigned Faculty"
                 value={newCourse.faculty}
@@ -697,37 +851,71 @@ export default function AdminDashboardPage() {
         )}
 
         {/* Course Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {courses.map((course) => (
-            <div
-              key={course._id}
-              className="p-5 rounded-2xl bg-slate-50/70 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60 hover:border-indigo-200 dark:hover:border-indigo-500/50 transition-all hover:shadow-md flex flex-col justify-between space-y-3"
-            >
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="font-mono font-bold text-xs text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-0.5 rounded-md">
-                    {course.code}
-                  </span>
-                  <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                    {course.credits} Credits
-                  </span>
-                </div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-sm pt-1">{course.title}</h4>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Semester: {course.semester}</p>
-                <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Faculty: {course.faculty || "Not Assigned"}</p>
-              </div>
-              <div className="pt-2 border-t border-slate-200/50 dark:border-slate-700/50 flex justify-end">
-                <button
-                  onClick={() => handleDeleteCourse(course._id)}
-                  className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300 flex items-center gap-1 cursor-pointer"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Remove</span>
-                </button>
-              </div>
+        {filteredCourses.length === 0 ? (
+          <div className="py-12 text-center rounded-2xl bg-slate-50/50 dark:bg-slate-800/30 border border-dashed border-slate-200 dark:border-slate-700/80 space-y-3">
+            <BookOpen className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto" />
+            <div className="space-y-1">
+              <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">No courses match the selected criteria</h4>
+              <p className="text-xs text-slate-400 dark:text-slate-500">
+                Try selecting "All Semesters", clearing your search query, or synchronizing the standard syllabus.
+              </p>
             </div>
-          ))}
-        </div>
+            <div className="pt-2 flex justify-center gap-3">
+              <button
+                onClick={() => { setSelectedCourseSemester("all"); setCourseSearch(""); }}
+                className="px-3.5 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 cursor-pointer"
+              >
+                Reset Filters
+              </button>
+              <button
+                onClick={handleSyncCurriculum}
+                className="px-3.5 py-1.5 rounded-lg bg-indigo-600 text-xs font-bold text-white cursor-pointer"
+              >
+                Sync 8 Semesters
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredCourses.map((course) => (
+              <div
+                key={course._id || course.code}
+                className="p-5 rounded-2xl bg-slate-50/70 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60 hover:border-indigo-200 dark:hover:border-indigo-500/50 transition-all hover:shadow-md flex flex-col justify-between space-y-3"
+              >
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-bold text-xs text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-0.5 rounded-md">
+                      {course.code}
+                    </span>
+                    <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300 bg-slate-200/60 dark:bg-slate-700/60 px-2 py-0.5 rounded-md">
+                      {course.credits} Credits
+                    </span>
+                  </div>
+                  <h4 className="font-bold text-slate-900 dark:text-white text-sm pt-1 leading-snug">{course.title}</h4>
+                  <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                    <span className="font-medium">{course.semester}</span>
+                    {course.type && (
+                      <>
+                        <span>•</span>
+                        <span className="text-[11px] font-semibold text-slate-400">{course.type}</span>
+                      </>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Faculty: {course.faculty || "Faculty Department Pool"}</p>
+                </div>
+                <div className="pt-2 border-t border-slate-200/50 dark:border-slate-700/50 flex justify-end">
+                  <button
+                    onClick={() => handleDeleteCourse(course._id)}
+                    className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300 flex items-center gap-1 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Remove</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Notice Board Dispatcher Section */}

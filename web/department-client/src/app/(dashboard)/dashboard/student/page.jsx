@@ -21,6 +21,12 @@ import {
   FileCheck 
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { 
+  getCoursesBySemester, 
+  getSemesterTotalCredits, 
+  SEMESTER_KEYS, 
+  SEMESTER_LABELS 
+} from "@/data/courses";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
@@ -29,8 +35,21 @@ export default function StudentDashboardPage() {
   const user = sessionData?.user;
   const [profile, setProfile] = useState(null);
   const [isMarking, setIsMarking] = useState(false);
-
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Helper to extract numeric semester 1-8
+  const parseSemesterNum = (semStr) => {
+    if (!semStr) return 6;
+    const match = String(semStr).match(/(\d+)/);
+    if (match && match[1]) {
+      const n = parseInt(match[1], 10);
+      if (n >= 1 && n <= 8) return n;
+    }
+    return 6;
+  };
+
+  const studentEnrolledSem = parseSemesterNum(profile?.semester);
+  const [selectedSemester, setSelectedSemester] = useState(6);
 
   const loadProfile = async (showToast = false) => {
     if (!user?.email) return;
@@ -40,6 +59,9 @@ export default function StudentDashboardPage() {
       if (res.ok) {
         const data = await res.json();
         setProfile(data);
+        if (data.semester) {
+          setSelectedSemester(parseSemesterNum(data.semester));
+        }
         if (showToast) {
           if (data.status === "approved") {
             toast.success("Congratulations! Your account has been approved by the department administrator.");
@@ -62,12 +84,8 @@ export default function StudentDashboardPage() {
 
   const isPending = (profile?.status || user?.status) === "pending";
 
-  const courses = [
-    { code: "CSE 3201", title: "Operating Systems", teacher: "Dr. John Smith", time: "09:00 - 10:00", room: "Room 401", attendance: "92%" },
-    { code: "CSE 3203", title: "Compiler Design", teacher: "Prof. Kamal Uddin", time: "11:00 - 12:00", room: "Room 402", attendance: "88%" },
-    { code: "CSE 3205", title: "Computer Networks", teacher: "Dr. Nazmul Haque", time: "01:00 - 02:00", room: "Lab 1", attendance: "95%" },
-    { code: "CSE 3207", title: "Software Engineering", teacher: "Ms. Farhana Ahmed", time: "02:00 - 03:00", room: "Room 401", attendance: "90%" },
-  ];
+  const semesterCourses = getCoursesBySemester(selectedSemester);
+  const semesterCredits = getSemesterTotalCredits(selectedSemester);
 
   const handleMarkAttendance = () => {
     setIsMarking(true);
@@ -244,41 +262,125 @@ export default function StudentDashboardPage() {
         </div>
       </div>
 
-      {/* Routine & Semester Courses */}
+      {/* Routine & Semester Courses (Semesters 1 to 8) */}
       <div id="routine" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Enrolled Courses & Weekly Routine</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Curriculum overview for Semester 6</p>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+              <span>Academic Curriculum Explorer</span>
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <BookOpen className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              Semester Courses & Academic Routine
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+              Browse syllabus courses, credit weights, and class schedules across Semesters 1 to 8.
+            </p>
           </div>
-          <span className="text-xs font-bold text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 px-3 py-1.5 rounded-xl ring-1 ring-indigo-200 dark:ring-indigo-800">
-            Semester 6 • 19 Credits
-          </span>
+          <div className="flex items-center gap-2 flex-wrap">
+            {selectedSemester === studentEnrolledSem && (
+              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-3 py-1.5 rounded-xl border border-emerald-200 dark:border-emerald-800 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Your Enrolled Term</span>
+              </span>
+            )}
+            <span className="text-xs font-bold text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 px-3 py-1.5 rounded-xl ring-1 ring-indigo-200 dark:ring-indigo-800">
+              {SEMESTER_LABELS[selectedSemester]} • {semesterCredits.toFixed(1)} Credits
+            </span>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-          {courses.map((c, i) => (
-            <div key={i} className="p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 hover:border-indigo-300 dark:hover:border-indigo-500/50 transition-all space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">{c.code}</span>
-                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md">{c.attendance}</span>
+        {/* Semester Tab Switcher (Semesters 1 through 8) */}
+        <div className="space-y-2 pt-1">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              Select Semester:
+            </span>
+            <span className="text-xs font-medium text-slate-400 dark:text-slate-500">
+              {semesterCourses.length} Courses Offered
+            </span>
+          </div>
+          <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
+            {SEMESTER_KEYS.map((k) => {
+              const isSelected = selectedSemester === k;
+              const isEnrolled = studentEnrolledSem === k;
+              return (
+                <button
+                  key={k}
+                  onClick={() => setSelectedSemester(k)}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 relative ${
+                    isSelected
+                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-300 dark:shadow-none"
+                      : "bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                  }`}
+                >
+                  <span>Semester {k}</span>
+                  {isEnrolled && (
+                    <span className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded-full uppercase tracking-wider ${
+                      isSelected ? "bg-white/25 text-white" : "bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300"
+                    }`}>
+                      Current
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Course Cards Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+          {semesterCourses.map((c, i) => {
+            const timeSlots = ["09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00", "01:00 - 02:00", "02:00 - 03:00", "03:00 - 04:00"];
+            const isLab = c.type === "Sessional" || c.type === "Laboratory" || c.title?.toLowerCase().includes("sessional") || c.title?.toLowerCase().includes("lab");
+            const slotTime = timeSlots[i % timeSlots.length];
+            const roomLocation = isLab ? "Computer Lab 1 / Lab 2" : (i % 2 === 0 ? "Room 401 (Academic Block)" : "Room 402 (Academic Block)");
+
+            return (
+              <div
+                key={c.code || i}
+                className="p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 hover:border-indigo-300 dark:hover:border-indigo-500/50 transition-all flex flex-col justify-between space-y-3"
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                      {c.code}
+                    </span>
+                    <span className="text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-200/60 dark:bg-slate-700/60 px-2 py-0.5 rounded-md">
+                      {c.credits} Credits
+                    </span>
+                  </div>
+                  <h3 className="font-bold text-slate-900 dark:text-white text-sm leading-snug line-clamp-2">
+                    {c.title}
+                  </h3>
+                  <div className="inline-block">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      isLab 
+                        ? "bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800/50"
+                        : "bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50"
+                    }`}>
+                      {c.type || (isLab ? "Sessional / Practical" : "Theory")}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 text-xs text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
+                  <div className="flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-slate-400" />
+                    <span>{slotTime}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                    <span className="truncate">{roomLocation}</span>
+                  </div>
+                  <div className="text-[11px] text-slate-400 dark:text-slate-500 pt-1">
+                    Faculty Department Instructor
+                  </div>
+                </div>
               </div>
-              <h3 className="font-bold text-slate-900 dark:text-white text-sm leading-snug">{c.title}</h3>
-              <div className="space-y-1 text-xs text-slate-500 dark:text-slate-400">
-                <div className="flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-slate-400" />
-                  <span>{c.time}</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                  <span>{c.room}</span>
-                </div>
-                <div className="text-[11px] text-slate-400 dark:text-slate-400 pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
-                  {c.teacher}
-                </div>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

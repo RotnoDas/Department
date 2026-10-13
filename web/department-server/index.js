@@ -3,6 +3,7 @@ const dotenv = require('dotenv');
 const cors = require('cors');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const { createRemoteJWKSet, jwtVerify } = require('jose-cjs');
+const { SEMESTER_COURSES, SEMESTER_LABELS } = require('./data/courses');
 
 dotenv.config();
 
@@ -338,10 +339,76 @@ async function run() {
     // ── COURSES SECTION ───────────────────────────────────────
     app.get('/api/courses', async (req, res) => {
       try {
-        const courses = await coursesCollection.find({}).sort({ code: 1 }).toArray();
+        const { semester, search } = req.query;
+        const query = {};
+
+        if (semester) {
+          const semNumMatch = String(semester).match(/\d+/);
+          const semNum = semNumMatch ? parseInt(semNumMatch[0], 10) : null;
+          query.$or = [
+            { semester: semester },
+            { semester: { $regex: semester, $options: 'i' } }
+          ];
+          if (semNum) {
+            query.$or.push({ semesterNum: semNum });
+            query.$or.push({ semester: `${semNum}st Semester` });
+            query.$or.push({ semester: `${semNum}nd Semester` });
+            query.$or.push({ semester: `${semNum}rd Semester` });
+            query.$or.push({ semester: `${semNum}th Semester` });
+          }
+        }
+
+        if (search) {
+          const searchCondition = [
+            { code: { $regex: search, $options: 'i' } },
+            { title: { $regex: search, $options: 'i' } }
+          ];
+          if (query.$or) {
+            query.$and = [{ $or: query.$or }, { $or: searchCondition }];
+            delete query.$or;
+          } else {
+            query.$or = searchCondition;
+          }
+        }
+
+        const courses = await coursesCollection.find(query).sort({ semesterNum: 1, code: 1 }).toArray();
         res.json({ success: true, count: courses.length, courses });
       } catch (err) {
         res.status(500).json({ error: "Failed to fetch courses" });
+      }
+    });
+
+    app.post('/api/courses/seed-all', async (req, res) => {
+      try {
+        let count = 0;
+        for (const [semNum, list] of Object.entries(SEMESTER_COURSES)) {
+          const semLabel = SEMESTER_LABELS[semNum] || `${semNum}th Semester`;
+          for (const course of list) {
+            await coursesCollection.updateOne(
+              { code: course.code },
+              {
+                $set: {
+                  code: course.code,
+                  title: course.title,
+                  credits: Number(course.credits),
+                  semester: semLabel,
+                  semesterNum: Number(semNum),
+                  updatedAt: new Date()
+                },
+                $setOnInsert: {
+                  faculty: "Dept Faculty Member",
+                  createdAt: new Date()
+                }
+              },
+              { upsert: true }
+            );
+            count++;
+          }
+        }
+        res.json({ success: true, count, message: "Curriculum successfully synced for Semesters 1 to 8!" });
+      } catch (err) {
+        console.error("Error seeding curriculum:", err);
+        res.status(500).json({ error: "Failed to seed curriculum" });
       }
     });
 
@@ -351,11 +418,14 @@ async function run() {
         if (!code || !title) {
           return res.status(400).json({ error: "Course code and title are required" });
         }
+        const semNumMatch = String(semester || "").match(/\d+/);
+        const semNum = semNumMatch ? parseInt(semNumMatch[0], 10) : 1;
         const newCourse = {
           code: code.toUpperCase().trim(),
           title: title.trim(),
           credits: Number(credits) || 3.0,
-          semester: semester || "6th Semester",
+          semester: semester || `${semNum}th Semester`,
+          semesterNum: semNum,
           faculty: faculty || "Dept Faculty Member",
           createdAt: new Date(),
         };
@@ -448,15 +518,31 @@ async function run() {
     }
 
     const courseCount = await coursesCollection.countDocuments();
-    if (courseCount === 0) {
-      await coursesCollection.insertMany([
-        { code: "CSE 3201", title: "Operating Systems", credits: 3.0, semester: "6th Semester", faculty: "Dr. A. Rahman", createdAt: new Date() },
-        { code: "CSE 3202", title: "Operating Systems Sessional", credits: 1.5, semester: "6th Semester", faculty: "Dr. A. Rahman", createdAt: new Date() },
-        { code: "CSE 3203", title: "Compiler Design", credits: 3.0, semester: "6th Semester", faculty: "Prof. S. Hossain", createdAt: new Date() },
-        { code: "CSE 3204", title: "Compiler Design Sessional", credits: 1.5, semester: "6th Semester", faculty: "Prof. S. Hossain", createdAt: new Date() },
-        { code: "CSE 3205", title: "Software Engineering & IS", credits: 3.0, semester: "6th Semester", faculty: "Asst. Prof. N. Ahmed", createdAt: new Date() },
-        { code: "CSE 3207", title: "Computer Networks", credits: 3.0, semester: "6th Semester", faculty: "Dr. K. Mahmud", createdAt: new Date() },
-      ]);
+    if (courseCount < 70) {
+      for (const [semNum, list] of Object.entries(SEMESTER_COURSES)) {
+        const semLabel = SEMESTER_LABELS[semNum] || `${semNum}th Semester`;
+        for (const course of list) {
+          await coursesCollection.updateOne(
+            { code: course.code },
+            {
+              $set: {
+                code: course.code,
+                title: course.title,
+                credits: Number(course.credits),
+                semester: semLabel,
+                semesterNum: Number(semNum),
+                updatedAt: new Date(),
+              },
+              $setOnInsert: {
+                faculty: "Dept Faculty Member",
+                createdAt: new Date(),
+              }
+            },
+            { upsert: true }
+          );
+        }
+      }
+      console.log('Seeded complete curriculum courses for Semesters 1 to 8 into MongoDB!');
     }
 
     console.log('Successfully connected to MongoDB!');
