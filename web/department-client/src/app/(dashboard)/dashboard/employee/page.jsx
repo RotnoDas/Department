@@ -24,6 +24,7 @@ import {
   HardDrive
 } from "lucide-react";
 import toast from "react-hot-toast";
+import Loading from "@/components/common/Loading";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
@@ -165,6 +166,16 @@ export default function EmployeeDashboardPage() {
       specs: "4K Laser Projector, Smart Podium, Shure Wireless",
     },
   ];
+
+  if (isLoading && !profile) {
+    return (
+      <Loading 
+        text="Loading Staff Dashboard..." 
+        subtext="Synchronizing assigned maintenance logs, facility health, and lab status" 
+        fullScreen 
+      />
+    );
+  }
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">

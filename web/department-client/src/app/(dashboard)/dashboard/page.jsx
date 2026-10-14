@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
-import { GraduationCap } from "lucide-react";
+import Loading from "@/components/common/Loading";
 
 export default function DashboardRedirect() {
   const router = useRouter();
@@ -30,12 +30,10 @@ export default function DashboardRedirect() {
   }, [sessionData, isPending, router]);
 
   return (
-    <div className="min-h-[70vh] flex flex-col items-center justify-center gap-4 text-center">
-      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 animate-bounce">
-        <GraduationCap className="h-8 w-8" />
-      </div>
-      <h2 className="text-xl font-bold text-slate-800">Directing to your workspace...</h2>
-      <p className="text-sm font-medium text-slate-400">Loading your role privileges and dashboard</p>
-    </div>
+    <Loading 
+      text="Directing to your workspace..." 
+      subtext="Loading your role privileges and dashboard access" 
+      fullScreen 
+    />
   );
 }

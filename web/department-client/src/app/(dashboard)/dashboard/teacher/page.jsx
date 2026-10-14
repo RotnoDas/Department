@@ -19,6 +19,7 @@ import {
   Layers 
 } from "lucide-react";
 import toast from "react-hot-toast";
+import Loading from "@/components/common/Loading";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
@@ -51,6 +52,16 @@ export default function TeacherDashboardPage() {
     { code: "CSE 3203", title: "Compiler Design", room: "Room 402", time: "11:00 - 12:00", semester: "6th Semester", enrolled: 52 },
     { code: "CSE 4101", title: "Distributed Systems", room: "Lab 2", time: "02:00 - 04:00", semester: "7th Semester", enrolled: 45 },
   ];
+
+  if (isLoading && !profile) {
+    return (
+      <Loading 
+        text="Loading Faculty Workspace..." 
+        subtext="Synchronizing teaching schedule, course modules, and department notices" 
+        fullScreen 
+      />
+    );
+  }
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">

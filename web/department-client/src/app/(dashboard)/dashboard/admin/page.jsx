@@ -33,11 +33,13 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { SEMESTER_COURSES, SEMESTER_LABELS, SEMESTER_KEYS } from "@/data/courses";
+import Loading from "@/components/common/Loading";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
 export default function AdminDashboardPage() {
   const { data: sessionData } = authClient.useSession();
+  const [initialLoading, setInitialLoading] = useState(true);
   const [stats, setStats] = useState({
     totalStudents: 0,
     pendingStudents: 0,
@@ -51,7 +53,7 @@ export default function AdminDashboardPage() {
   const [employees, setEmployees] = useState([]);
   const [courses, setCourses] = useState([]);
   const [notices, setNotices] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("pending");
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -114,6 +116,7 @@ export default function AdminDashboardPage() {
       toast.error("Failed to fetch department statistics");
     } finally {
       setIsLoading(false);
+      setInitialLoading(false);
     }
   };
 
@@ -378,6 +381,16 @@ export default function AdminDashboardPage() {
   });
 
   const totalFilteredCredits = filteredCourses.reduce((sum, c) => sum + (parseFloat(c.credits) || 0), 0);
+
+  if (initialLoading) {
+    return (
+      <Loading 
+        text="Loading Administrator Hub..." 
+        subtext="Synchronizing department rosters, verified students, and course matrix" 
+        fullScreen 
+      />
+    );
+  }
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">

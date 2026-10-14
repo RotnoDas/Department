@@ -27,6 +27,7 @@ import {
   SEMESTER_KEYS, 
   SEMESTER_LABELS 
 } from "@/data/courses";
+import Loading from "@/components/common/Loading";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
@@ -34,6 +35,7 @@ export default function StudentDashboardPage() {
   const { data: sessionData } = authClient.useSession();
   const user = sessionData?.user;
   const [profile, setProfile] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [isMarking, setIsMarking] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -75,6 +77,7 @@ export default function StudentDashboardPage() {
       if (showToast) toast.error("Unable to check status. Please check your connection.");
     } finally {
       if (showToast) setIsRefreshing(false);
+      setIsLoading(false);
     }
   };
 
@@ -111,6 +114,16 @@ export default function StudentDashboardPage() {
     await authClient.signOut();
     window.location.href = "/login";
   };
+
+  if (isLoading && !profile) {
+    return (
+      <Loading 
+        text="Loading Student Workspace..." 
+        subtext="Retrieving semester curriculum, attendance & department status" 
+        fullScreen 
+      />
+    );
+  }
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
