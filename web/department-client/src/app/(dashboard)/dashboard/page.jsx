@@ -23,7 +23,21 @@ export default function DashboardRedirect() {
         } else if (role === "employee" || email.endsWith("@employee.cse.edu") || email.endsWith("@staff.cse.edu")) {
           router.push("/dashboard/employee");
         } else {
-          router.push("/dashboard/student");
+          const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
+          fetch(`${serverUrl}/api/students/email/${email}`)
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+              if (data?.status === "pending") {
+                router.push("/pending");
+              } else if (data?.status === "rejected") {
+                router.push("/rejected");
+              } else {
+                router.push("/dashboard/student");
+              }
+            })
+            .catch(() => {
+              router.push("/dashboard/student");
+            });
         }
       }
     }

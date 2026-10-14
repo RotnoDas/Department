@@ -44,13 +44,15 @@ const LoginPage = () => {
                     .then((student) => {
                         if (student?.status === "approved") {
                             window.location.href = "/dashboard/student";
+                        } else if (student?.status === "rejected") {
+                            window.location.href = `/rejected?email=${encodeURIComponent(cleanEmail)}`;
                         } else {
-                            // Account is pending or rejected; clear session
-                            authClient.signOut();
+                            // Account is pending approval; route to dedicated pending page
+                            window.location.href = `/pending?email=${encodeURIComponent(cleanEmail)}`;
                         }
                     })
                     .catch(() => {
-                        authClient.signOut();
+                        window.location.href = `/pending?email=${encodeURIComponent(cleanEmail)}`;
                     });
                 return;
             }
@@ -89,20 +91,24 @@ const LoginPage = () => {
                 if (res.ok) {
                     const student = await res.json();
                     if (student.status === "pending") {
-                        await authClient.signOut();
-                        toast.error("Your student account is currently PENDING approval by the department administrator. Please wait for verification.", { duration: 6000 });
-                        setIsLoading(false);
+                        // Do not show toast error; redirect directly to the dedicated pending page!
+                        window.location.href = `/pending?email=${encodeURIComponent(email)}`;
                         return;
                     }
                     if (student.status === "rejected") {
-                        await authClient.signOut();
-                        toast.error("Your student registration was REJECTED by the department administration. Please contact the department office.", { duration: 6000 });
-                        setIsLoading(false);
+                        // Do not show toast error; redirect directly to the dedicated rejected page!
+                        window.location.href = `/rejected?email=${encodeURIComponent(email)}`;
                         return;
                     }
+                } else {
+                    // Record pending or not verified yet
+                    window.location.href = `/pending?email=${encodeURIComponent(email)}`;
+                    return;
                 }
             } catch (err) {
                 console.warn("Error checking student status:", err);
+                window.location.href = `/pending?email=${encodeURIComponent(email)}`;
+                return;
             }
 
             toast.success("Welcome! Entering student dashboard...");

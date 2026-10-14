@@ -61,15 +61,22 @@ export default function StudentDashboardPage() {
       if (res.ok) {
         const data = await res.json();
         setProfile(data);
+
+        // If student is not yet approved by admin, route to dedicated status page
+        if (data.status === "pending") {
+          window.location.href = "/pending";
+          return;
+        }
+        if (data.status === "rejected") {
+          window.location.href = "/rejected";
+          return;
+        }
+
         if (data.semester) {
           setSelectedSemester(parseSemesterNum(data.semester));
         }
         if (showToast) {
-          if (data.status === "approved") {
-            toast.success("Congratulations! Your account has been approved by the department administrator.");
-          } else {
-            toast("Status: Still Pending Administrator Approval.", { icon: "⏳" });
-          }
+          toast.success("Student profile synced!");
         }
       }
     } catch (e) {
