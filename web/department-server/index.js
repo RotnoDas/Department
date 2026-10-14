@@ -11,13 +11,26 @@ const app = express();
 const port = process.env.PORT || 5000;
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:3000";
 
+const allowedOrigins = [
+  CLIENT_URL,
+  "http://localhost:3000",
+  "http://127.0.0.1:3000"
+];
+
 app.use(cors({
-  origin: CLIENT_URL,
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin) || origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:")) {
+      callback(null, true);
+    } else {
+      callback(null, true);
+    }
+  },
   credentials: true,
-  methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "x-internal-secret"]
 }));
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Token verification middleware
 const verifyToken = async (req, res, next) => {
@@ -159,6 +172,126 @@ async function run() {
         res.status(500).json({ error: "Failed to update student status" });
       }
     });
+
+    // ── UPDATE STUDENT PROFILE ─────────────────────────────────
+    const handleStudentProfileUpdate = async (req, res) => {
+      try {
+        let identifier = req.params.email || req.params.id;
+        if (!identifier) {
+          return res.status(400).json({ error: "Student identifier (email or ID) is required" });
+        }
+        let decodedIdentifier = identifier;
+        try {
+          decodedIdentifier = decodeURIComponent(identifier);
+        } catch (e) {}
+
+        const query = {
+          $or: [
+            { email: decodedIdentifier },
+            { email: identifier },
+            { userId: decodedIdentifier },
+            { userId: identifier },
+            { studentId: decodedIdentifier },
+            { studentId: identifier }
+          ]
+        };
+        try {
+          if (ObjectId.isValid(identifier)) {
+            query.$or.push({ _id: new ObjectId(identifier) });
+          }
+        } catch (e) {}
+
+        const student = await studentsCollection.findOne(query);
+        if (!student) {
+          return res.status(404).json({ error: "Student profile not found" });
+        }
+
+        const {
+          name,
+          phone,
+          studentId,
+          batch,
+          semester,
+          session,
+          bloodGroup,
+          address,
+          bio,
+          emergencyContact,
+          guardianName,
+          github,
+          linkedin,
+          image,
+          avatar,
+          photo
+        } = req.body;
+
+        const updateFields = {
+          updatedAt: new Date()
+        };
+
+        if (name !== undefined) updateFields.name = typeof name === 'string' ? name.trim() : name;
+        if (phone !== undefined) updateFields.phone = typeof phone === 'string' ? phone.trim() : phone;
+        if (studentId !== undefined) updateFields.studentId = typeof studentId === 'string' ? studentId.trim() : studentId;
+        if (batch !== undefined) {
+          const numBatch = Number(batch);
+          updateFields.batch = !isNaN(numBatch) && String(batch).trim() !== "" ? numBatch : batch;
+        }
+        if (semester !== undefined) updateFields.semester = String(semester).trim();
+        if (session !== undefined) updateFields.session = typeof session === 'string' ? session.trim() : session;
+        if (bloodGroup !== undefined) updateFields.bloodGroup = typeof bloodGroup === 'string' ? bloodGroup.trim() : bloodGroup;
+        if (address !== undefined) updateFields.address = typeof address === 'string' ? address.trim() : address;
+        if (bio !== undefined) updateFields.bio = typeof bio === 'string' ? bio.trim() : bio;
+        if (emergencyContact !== undefined) updateFields.emergencyContact = typeof emergencyContact === 'string' ? emergencyContact.trim() : emergencyContact;
+        if (guardianName !== undefined) updateFields.guardianName = typeof guardianName === 'string' ? guardianName.trim() : guardianName;
+        if (github !== undefined) updateFields.github = typeof github === 'string' ? github.trim() : github;
+        if (linkedin !== undefined) updateFields.linkedin = typeof linkedin === 'string' ? linkedin.trim() : linkedin;
+
+        const profileImage = image !== undefined ? image : (avatar !== undefined ? avatar : photo);
+        if (profileImage !== undefined) {
+          updateFields.image = typeof profileImage === 'string' ? profileImage.trim() : profileImage;
+        }
+
+        await studentsCollection.updateOne({ _id: student._id }, { $set: updateFields });
+
+        // Synchronize core fields with usersCollection for Better Auth session consistency
+        const targetEmail = student.email || identifier;
+        if (targetEmail) {
+          const userSyncFields = { updatedAt: new Date() };
+          if (updateFields.name !== undefined) userSyncFields.name = updateFields.name;
+          if (updateFields.phone !== undefined) userSyncFields.phone = updateFields.phone;
+          if (updateFields.studentId !== undefined) userSyncFields.studentId = updateFields.studentId;
+          if (updateFields.batch !== undefined) userSyncFields.batch = updateFields.batch;
+          if (updateFields.semester !== undefined) userSyncFields.semester = updateFields.semester;
+          if (updateFields.session !== undefined) userSyncFields.session = updateFields.session;
+          if (updateFields.bloodGroup !== undefined) userSyncFields.bloodGroup = updateFields.bloodGroup;
+          if (updateFields.address !== undefined) userSyncFields.address = updateFields.address;
+          if (updateFields.image !== undefined) userSyncFields.image = updateFields.image;
+
+          await usersCollection.updateOne(
+            { email: targetEmail },
+            { $set: userSyncFields }
+          );
+        }
+
+        const updatedStudent = await studentsCollection.findOne({ _id: student._id });
+        res.json({
+          success: true,
+          message: "Profile updated successfully!",
+          student: updatedStudent
+        });
+      } catch (err) {
+        console.error("Error updating student profile:", err);
+        res.status(500).json({ error: "Failed to update student profile" });
+      }
+    };
+
+    app.put('/api/students/profile/:email', handleStudentProfileUpdate);
+    app.patch('/api/students/profile/:email', handleStudentProfileUpdate);
+    app.put('/api/students/:id', handleStudentProfileUpdate);
+    app.patch('/api/students/:id', handleStudentProfileUpdate);
+    app.post('/api/students/profile-picture/:email', handleStudentProfileUpdate);
+    app.patch('/api/students/profile-picture/:email', handleStudentProfileUpdate);
+    app.put('/api/students/profile-picture/:email', handleStudentProfileUpdate);
 
     // ── TEACHERS SECTION ──────────────────────────────────────
     app.get('/api/teachers', async (req, res) => {

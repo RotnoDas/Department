@@ -175,6 +175,7 @@ export function Navbar() {
   );
   const displayEmail = user?.email || "";
   const initial = (displayName.trim().charAt(0) || "U").toUpperCase();
+  const userPhoto = user?.image || dbProfile?.image || null;
 
   return (
     <>
@@ -256,8 +257,12 @@ export function Navbar() {
                   className="flex items-center gap-2 p-1 sm:pl-1.5 sm:pr-2.5 rounded-full sm:rounded-2xl border border-slate-200/90 dark:border-white/10 bg-slate-50/90 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700/80 transition-all cursor-pointer group shadow-xs"
                 >
                   {/* Avatar Icon */}
-                  <div className={`flex h-8 w-8 sm:h-8.5 sm:w-8.5 items-center justify-center rounded-full bg-gradient-to-br ${roleMeta.avatarBg} text-white font-bold text-xs shadow-sm ring-2 ring-white dark:ring-slate-900`}>
-                    {initial}
+                  <div className={`flex h-8 w-8 sm:h-8.5 sm:w-8.5 items-center justify-center rounded-full bg-gradient-to-br ${roleMeta.avatarBg} text-white font-bold text-xs shadow-sm ring-2 ring-white dark:ring-slate-900 overflow-hidden shrink-0`}>
+                    {userPhoto ? (
+                      <img src={userPhoto} alt={displayName} className="h-full w-full object-cover" />
+                    ) : (
+                      initial
+                    )}
                   </div>
                   {/* Name and Role Label (Desktop) */}
                   <div className="hidden md:flex flex-col text-left mr-0.5">
@@ -284,8 +289,12 @@ export function Navbar() {
                       {/* User Header Section */}
                       <div className="flex items-center gap-3.5 pb-4 border-b border-slate-100 dark:border-white/10">
                         <div className="relative">
-                          <div className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${roleMeta.avatarBg} text-white font-extrabold text-lg shadow-md ring-2 ring-white dark:ring-slate-800`}>
-                            {initial}
+                          <div className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${roleMeta.avatarBg} text-white font-extrabold text-lg shadow-md ring-2 ring-white dark:ring-slate-800 overflow-hidden shrink-0`}>
+                            {userPhoto ? (
+                              <img src={userPhoto} alt={displayName} className="h-full w-full object-cover" />
+                            ) : (
+                              initial
+                            )}
                           </div>
                           <span className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-900" title="Active" />
                         </div>

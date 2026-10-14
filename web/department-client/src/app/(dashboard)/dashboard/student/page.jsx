@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { authClient } from "@/lib/auth-client";
 import { 
   GraduationCap, 
@@ -18,8 +18,23 @@ import {
   Download, 
   Award, 
   Navigation,
-  FileCheck 
+  FileCheck,
+  Edit3,
+  Save,
+  X,
+  User,
+  Hash,
+  HeartPulse,
+  ShieldCheck,
+  Check,
+  RotateCcw,
+  Camera,
+  Upload,
+  Trash2,
+  Link2,
+  Image as ImageIcon
 } from "lucide-react";
+import { FaGithub, FaLinkedin } from "react-icons/fa";
 import toast from "react-hot-toast";
 import { 
   getCoursesBySemester, 
@@ -29,7 +44,17 @@ import {
 } from "@/data/courses";
 import Loading from "@/components/common/Loading";
 
-const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
+const getServerUrl = () => {
+  if (typeof window !== "undefined") {
+    const { hostname } = window.location;
+    if (hostname === "127.0.0.1") {
+      return "http://127.0.0.1:5000";
+    }
+  }
+  return process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
+};
+
+const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 
 export default function StudentDashboardPage() {
   const { data: sessionData } = authClient.useSession();
@@ -38,6 +63,30 @@ export default function StudentDashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isMarking, setIsMarking] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Profile Edit State
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [showUrlInput, setShowUrlInput] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const [formData, setFormData] = useState({
+    name: "",
+    phone: "",
+    studentId: "",
+    batch: "",
+    semester: "6",
+    session: "",
+    bloodGroup: "",
+    address: "",
+    bio: "",
+    emergencyContact: "",
+    guardianName: "",
+    github: "",
+    linkedin: "",
+    image: "",
+  });
 
   // Helper to extract numeric semester 1-8
   const parseSemesterNum = (semStr) => {
@@ -50,17 +99,38 @@ export default function StudentDashboardPage() {
     return 6;
   };
 
+  const syncFormData = (data) => {
+    setFormData({
+      name: data?.name || user?.name || "",
+      phone: data?.phone || user?.phone || "",
+      studentId: data?.studentId || user?.studentId || "",
+      batch: data?.batch !== undefined && data?.batch !== null ? String(data.batch) : "",
+      semester: data?.semester ? String(parseSemesterNum(data.semester)) : "6",
+      session: data?.session || user?.session || "",
+      bloodGroup: data?.bloodGroup || user?.bloodGroup || "",
+      address: data?.address || user?.address || "",
+      bio: data?.bio || "",
+      emergencyContact: data?.emergencyContact || "",
+      guardianName: data?.guardianName || "",
+      github: data?.github || "",
+      linkedin: data?.linkedin || "",
+      image: data?.image || user?.image || "",
+    });
+  };
+
   const studentEnrolledSem = parseSemesterNum(profile?.semester);
   const [selectedSemester, setSelectedSemester] = useState(6);
 
   const loadProfile = async (showToast = false) => {
     if (!user?.email) return;
     if (showToast) setIsRefreshing(true);
+    const serverUrl = getServerUrl();
     try {
-      const res = await fetch(`${SERVER_URL}/api/students/email/${user.email}`);
+      const res = await fetch(`${serverUrl}/api/students/email/${encodeURIComponent(user.email)}`);
       if (res.ok) {
         const data = await res.json();
         setProfile(data);
+        syncFormData(data);
 
         // If student is not yet approved by admin, route to dedicated status page
         if (data.status === "pending") {
@@ -80,7 +150,7 @@ export default function StudentDashboardPage() {
         }
       }
     } catch (e) {
-      console.error(e);
+      console.error("Error loading profile:", e);
       if (showToast) toast.error("Unable to check status. Please check your connection.");
     } finally {
       if (showToast) setIsRefreshing(false);
@@ -91,6 +161,180 @@ export default function StudentDashboardPage() {
   useEffect(() => {
     loadProfile();
   }, [user?.email]);
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  // Client-side image optimization & base64 converter
+  const handleImageFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select a valid image file (PNG, JPG, or WEBP).");
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Image file is too large. Please select an image under 10MB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new window.Image();
+      img.onload = () => {
+        // Optimize on canvas: max 600px width/height for avatar fidelity
+        const maxDim = 600;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxDim) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          }
+        } else {
+          if (height > maxDim) {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.88);
+        setFormData((prev) => ({ ...prev, image: compressedDataUrl }));
+        toast.success("New picture staged! Click 'Save Profile Changes' or 'Save Picture Now' to apply.");
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  // Dedicated instant save for profile picture
+  const handleQuickSavePhoto = async (newImageUrl) => {
+    const targetEmail = user?.email || profile?.email;
+    if (!targetEmail) {
+      toast.error("User session not found.");
+      return;
+    }
+
+    setIsUploadingPhoto(true);
+    const serverUrl = getServerUrl();
+    const photoToSave = newImageUrl !== undefined ? newImageUrl : formData.image;
+
+    try {
+      let res;
+      try {
+        res = await fetch(`${serverUrl}/api/students/profile/${encodeURIComponent(targetEmail)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: photoToSave }),
+        });
+      } catch (err) {
+        res = await fetch(`${serverUrl}/api/students/profile/${encodeURIComponent(targetEmail)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: photoToSave }),
+        });
+      }
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to update profile picture");
+      }
+
+      setProfile(data.student);
+      setFormData((prev) => ({ ...prev, image: data.student.image || "" }));
+      toast.success(photoToSave ? "Profile picture updated successfully!" : "Profile picture removed.");
+    } catch (err) {
+      console.error("Photo save error:", err);
+      toast.error(err.message || "Failed to update profile picture");
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+
+  const handleRemovePhoto = () => {
+    setFormData((prev) => ({ ...prev, image: "" }));
+    if (profile?.image) {
+      handleQuickSavePhoto("");
+    } else {
+      toast.success("Profile photo cleared.");
+    }
+  };
+
+  const handleUpdateProfile = async (e) => {
+    e.preventDefault();
+    const targetEmail = user?.email || profile?.email;
+    if (!targetEmail) {
+      toast.error("User session not found. Please log in again.");
+      return;
+    }
+
+    if (!formData.name?.trim()) {
+      toast.error("Full Name is required.");
+      return;
+    }
+
+    setIsSaving(true);
+    const serverUrl = getServerUrl();
+    try {
+      let res;
+      try {
+        res = await fetch(`${serverUrl}/api/students/profile/${encodeURIComponent(targetEmail)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(formData),
+        });
+      } catch (fetchErr) {
+        console.warn("PUT failed, attempting PATCH fallback:", fetchErr);
+        res = await fetch(`${serverUrl}/api/students/profile/${encodeURIComponent(targetEmail)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(formData),
+        });
+      }
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to update student profile");
+      }
+
+      setProfile(data.student);
+      syncFormData(data.student);
+
+      if (data.student.semester) {
+        setSelectedSemester(parseSemesterNum(data.student.semester));
+      }
+
+      setIsEditing(false);
+      toast.success("Profile updated successfully!");
+    } catch (err) {
+      console.error("Profile update error:", err);
+      const isNetworkError = err?.name === "TypeError" && String(err?.message || "").toLowerCase().includes("fetch");
+      toast.error(
+        isNetworkError 
+          ? "Cannot connect to server. Please ensure the backend server on port 5000 is running." 
+          : (err.message || "Failed to save profile changes")
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    syncFormData(profile);
+    setIsEditing(false);
+  };
 
   const isPending = (profile?.status || user?.status) === "pending";
 
@@ -132,48 +376,98 @@ export default function StudentDashboardPage() {
     );
   }
 
+  const activeName = profile?.name || user?.name || "Student Portal";
+  const activeRoll = profile?.studentId || user?.studentId || "220101";
+  const activeBatch = profile?.batch || user?.batch || "10";
+  const activeSemester = profile?.semester || user?.semester || "6";
+  const activeSession = profile?.session || user?.session || "2021-2022";
+  const activePhone = profile?.phone || user?.phone || "+8801700000000";
+  const activeAddress = profile?.address || user?.address || "Pabna, Bangladesh";
+  const activeBlood = profile?.bloodGroup || user?.bloodGroup || "Not specified";
+
+  const displayImage = formData.image || profile?.image || user?.image || null;
+
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       {/* Student Profile Hero Card */}
-      <div id="profile" className="p-8 rounded-[2rem] bg-gradient-to-r from-indigo-900 via-purple-900 to-slate-900 text-white shadow-xl relative overflow-hidden scroll-mt-6">
-        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+      <div id="profile" className="p-7 sm:p-8 rounded-[2rem] bg-gradient-to-r from-indigo-900 via-purple-900 to-slate-900 text-white shadow-xl relative overflow-hidden scroll-mt-6 border border-white/10">
+        {/* Decorative background glow */}
+        <div className="absolute -right-20 -top-20 w-80 h-80 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -left-20 -bottom-20 w-80 h-80 bg-purple-500/20 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
           <div className="flex items-center gap-5">
-            <div className="h-20 w-20 rounded-3xl bg-white/10 backdrop-blur-md flex items-center justify-center text-indigo-300 font-extrabold text-2xl border border-white/20 shadow-inner">
-              {user?.name ? user.name.charAt(0) : "S"}
+            <div className="relative group shrink-0">
+              <div className="h-20 w-20 sm:h-22 sm:w-22 rounded-3xl bg-white/10 backdrop-blur-md flex items-center justify-center text-indigo-300 font-extrabold text-3xl border border-white/20 shadow-inner overflow-hidden ring-2 ring-white/10">
+                {displayImage ? (
+                  <img src={displayImage} alt={activeName} className="h-full w-full object-cover" />
+                ) : (
+                  activeName ? activeName.charAt(0).toUpperCase() : "S"
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditing(true);
+                  setTimeout(() => {
+                    fileInputRef.current?.click();
+                    const el = document.getElementById("profile-settings");
+                    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }, 60);
+                }}
+                title="Change Profile Picture"
+                className="absolute -bottom-1 -right-1 p-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg border border-white/30 transition-transform active:scale-95 cursor-pointer group-hover:scale-110"
+              >
+                <Camera className="w-3.5 h-3.5" />
+              </button>
             </div>
             <div className="space-y-1">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 text-xs font-semibold text-indigo-200 backdrop-blur-md mb-1">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 text-xs font-semibold text-indigo-200 backdrop-blur-md mb-1 border border-indigo-400/20">
                 <GraduationCap className="w-3.5 h-3.5 text-indigo-400" />
                 <span>Undergraduate CSE Student</span>
               </div>
-              <h1 className="text-3xl font-extrabold tracking-tight">
-                {user?.name || "Student Portal"}
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+                {activeName}
               </h1>
-              <p className="text-xs text-indigo-200/80 font-medium flex items-center gap-2">
-                <span>Roll: {profile?.studentId || user?.studentId || "220101"}</span>
+              <p className="text-xs text-indigo-200/80 font-medium flex items-center gap-2 flex-wrap">
+                <span>Roll: {activeRoll}</span>
                 <span>•</span>
-                <span>Batch {profile?.batch || user?.batch || "10"}</span>
+                <span>Batch {activeBatch}</span>
                 <span>•</span>
-                <span>Semester {profile?.semester || user?.semester || "6"}</span>
+                <span>Semester {activeSemester}</span>
                 <span>•</span>
-                <span>Session {profile?.session || user?.session || "2021-2022"}</span>
+                <span>Session {activeSession}</span>
               </p>
             </div>
           </div>
 
-          <div className="flex flex-col gap-2 text-xs font-medium text-slate-300 bg-white/5 p-4 rounded-2xl border border-white/10">
-            <span className="flex items-center gap-2">
-              <Mail className="w-3.5 h-3.5 text-indigo-400" />
-              {user?.email}
-            </span>
-            <span className="flex items-center gap-2">
-              <Phone className="w-3.5 h-3.5 text-indigo-400" />
-              {profile?.phone || user?.phone || "+8801700000000"}
-            </span>
-            <span className="flex items-center gap-2">
-              <MapPin className="w-3.5 h-3.5 text-indigo-400" />
-              {profile?.address || user?.address || "Pabna, Bangladesh"}
-            </span>
+          <div className="flex flex-col sm:flex-row lg:flex-col gap-3 w-full lg:w-auto">
+            <div className="flex flex-col gap-2 text-xs font-medium text-slate-300 bg-white/5 p-4 rounded-2xl border border-white/10 backdrop-blur-sm flex-1">
+              <span className="flex items-center gap-2 truncate">
+                <Mail className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                <span className="truncate">{user?.email}</span>
+              </span>
+              <span className="flex items-center gap-2">
+                <Phone className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                <span>{activePhone}</span>
+              </span>
+              <span className="flex items-center gap-2">
+                <MapPin className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                <span className="truncate">{activeAddress}</span>
+              </span>
+            </div>
+
+            <button
+              onClick={() => {
+                setIsEditing(!isEditing);
+                const el = document.getElementById("profile-settings");
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/20 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-sm"
+            >
+              <Edit3 className="w-4 h-4 text-indigo-300" />
+              <span>{isEditing ? "Close Profile Editor" : "Edit Profile Data"}</span>
+            </button>
           </div>
         </div>
       </div>
@@ -227,6 +521,563 @@ export default function StudentDashboardPage() {
           </span>
         </div>
       )}
+
+      {/* Profile Update Section */}
+      <div id="profile-settings" className="p-7 sm:p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-white/10">
+          <div>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+              <span>Academic Identity Management</span>
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <User className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              Student Profile & Information Center
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+              Keep your contact details, academic roll, semester, and personal information up to date.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {!isEditing ? (
+              <button
+                onClick={() => setIsEditing(true)}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-200/50 dark:shadow-indigo-950/40 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+              >
+                <Edit3 className="w-4 h-4" />
+                <span>Update Profile Data</span>
+              </button>
+            ) : (
+              <button
+                onClick={handleCancelEdit}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+                <span>Cancel</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {isEditing ? (
+          /* Profile Edit Form */
+          <form onSubmit={handleUpdateProfile} className="space-y-6">
+            {/* Profile Picture & Avatar Studio */}
+            <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-indigo-50/80 via-purple-50/50 to-slate-50/80 dark:from-indigo-950/40 dark:via-purple-950/30 dark:to-slate-900/50 border border-indigo-100/80 dark:border-white/10 shadow-xs">
+              <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
+                {/* Photo Preview Container */}
+                <div className="relative group shrink-0">
+                  <div className="h-24 w-24 sm:h-28 sm:w-28 rounded-3xl bg-white dark:bg-slate-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-extrabold text-3xl border-2 border-indigo-200 dark:border-indigo-800 shadow-md overflow-hidden ring-4 ring-indigo-500/10">
+                    {formData.image ? (
+                      <img src={formData.image} alt="Preview" className="h-full w-full object-cover" />
+                    ) : profile?.image ? (
+                      <img src={profile.image} alt="Profile" className="h-full w-full object-cover" />
+                    ) : (
+                      <span>{formData.name?.charAt(0) || activeName.charAt(0) || "S"}</span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    title="Choose Picture from Device"
+                    className="absolute -bottom-1 -right-1 p-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md border-2 border-white dark:border-slate-900 cursor-pointer transition-transform hover:scale-110 active:scale-95"
+                  >
+                    <Camera className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Photo Actions & Description */}
+                <div className="flex-1 space-y-3 text-center sm:text-left w-full">
+                  <div>
+                    <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white">Profile Photo</h3>
+                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60">
+                        PNG, JPG, WEBP (Auto-optimized)
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">
+                      Select a clear photo from your device or paste an image link. It will update your Student Portal, Attendance card, and Navbar.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm shadow-indigo-200 dark:shadow-none transition-all cursor-pointer hover:scale-102 active:scale-98"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Choose From Device</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowUrlInput(!showUrlInput)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      <Link2 className="w-3.5 h-3.5 text-indigo-500" />
+                      <span>{showUrlInput ? "Hide Link Input" : "Image URL"}</span>
+                    </button>
+
+                    {(formData.image || profile?.image) && (
+                      <button
+                        type="button"
+                        onClick={handleRemovePhoto}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/50 text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Remove Photo</span>
+                      </button>
+                    )}
+
+                    {formData.image && formData.image !== (profile?.image || "") && (
+                      <button
+                        type="button"
+                        disabled={isUploadingPhoto}
+                        onClick={() => handleQuickSavePhoto(formData.image)}
+                        className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm shadow-emerald-200 dark:shadow-none transition-all cursor-pointer"
+                      >
+                        {isUploadingPhoto ? (
+                          <>
+                            <Clock className="w-3.5 h-3.5 animate-spin" />
+                            <span>Saving...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Save Photo Only</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Hidden File Input */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    onChange={handleImageFileChange}
+                    className="hidden"
+                  />
+
+                  {/* Optional Image URL Input */}
+                  {showUrlInput && (
+                    <div className="pt-2 animate-in fade-in duration-200">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="url"
+                          placeholder="Paste image URL (e.g. https://... or GitHub avatar)"
+                          value={formData.image}
+                          onChange={(e) => setFormData((prev) => ({ ...prev, image: e.target.value }))}
+                          className="flex-1 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {/* Full Name */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5 text-indigo-500" />
+                  Full Name *
+                </label>
+                <input
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  required
+                  placeholder="e.g. Rotno Das"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-medium text-slate-900 dark:text-white transition-all"
+                />
+              </div>
+
+              {/* Student Roll / ID */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                  <Hash className="w-3.5 h-3.5 text-indigo-500" />
+                  Student Roll / ID *
+                </label>
+                <input
+                  type="text"
+                  name="studentId"
+                  value={formData.studentId}
+                  onChange={handleInputChange}
+                  placeholder="e.g. 220106"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-medium text-slate-900 dark:text-white transition-all"
+                />
+              </div>
+
+              {/* Contact Phone */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-indigo-500" />
+                  Mobile Number
+                </label>
+                <input
+                  type="text"
+                  name="phone"
+                  value={formData.phone}
+                  onChange={handleInputChange}
+                  placeholder="e.g. 01700000000"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-medium text-slate-900 dark:text-white transition-all"
+                />
+              </div>
+
+              {/* Current Semester Dropdown */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                  <BookOpen className="w-3.5 h-3.5 text-indigo-500" />
+                  Current Semester *
+                </label>
+                <select
+                  name="semester"
+                  value={formData.semester}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-medium text-slate-900 dark:text-white transition-all cursor-pointer"
+                >
+                  {SEMESTER_KEYS.map((sem) => (
+                    <option key={sem} value={String(sem)}>
+                      Semester {sem} ({SEMESTER_LABELS[sem]})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Batch Number */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-indigo-500" />
+                  Batch Number
+                </label>
+                <input
+                  type="text"
+                  name="batch"
+                  value={formData.batch}
+                  onChange={handleInputChange}
+                  placeholder="e.g. 14"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-medium text-slate-900 dark:text-white transition-all"
+                />
+              </div>
+
+              {/* Academic Session */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-indigo-500" />
+                  Academic Session
+                </label>
+                <input
+                  type="text"
+                  name="session"
+                  value={formData.session}
+                  onChange={handleInputChange}
+                  placeholder="e.g. 2021-2022"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-medium text-slate-900 dark:text-white transition-all"
+                />
+              </div>
+
+              {/* Blood Group */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                  <HeartPulse className="w-3.5 h-3.5 text-rose-500" />
+                  Blood Group
+                </label>
+                <select
+                  name="bloodGroup"
+                  value={formData.bloodGroup}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-medium text-slate-900 dark:text-white transition-all cursor-pointer"
+                >
+                  <option value="">Select Blood Group</option>
+                  {BLOOD_GROUPS.map((bg) => (
+                    <option key={bg} value={bg}>{bg}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Address */}
+              <div className="space-y-1.5 md:col-span-2">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-indigo-500" />
+                  Present Address / District
+                </label>
+                <input
+                  type="text"
+                  name="address"
+                  value={formData.address}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Bogura / Pabna, Bangladesh"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-medium text-slate-900 dark:text-white transition-all"
+                />
+              </div>
+
+              {/* Guardian Name */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-indigo-500" />
+                  Guardian / Parent Name
+                </label>
+                <input
+                  type="text"
+                  name="guardianName"
+                  value={formData.guardianName}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Md. Das"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-medium text-slate-900 dark:text-white transition-all"
+                />
+              </div>
+
+              {/* Emergency Contact */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-rose-500" />
+                  Emergency Contact Number
+                </label>
+                <input
+                  type="text"
+                  name="emergencyContact"
+                  value={formData.emergencyContact}
+                  onChange={handleInputChange}
+                  placeholder="e.g. 01800000000"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-medium text-slate-900 dark:text-white transition-all"
+                />
+              </div>
+
+              {/* Institutional Email (Read-Only) */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-slate-400" />
+                  Institutional Email (Locked)
+                </label>
+                <input
+                  type="text"
+                  disabled
+                  value={user?.email || ""}
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-500 dark:text-slate-400 cursor-not-allowed"
+                />
+              </div>
+
+              {/* GitHub */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                  <FaGithub className="w-3.5 h-3.5 text-slate-700 dark:text-slate-300" />
+                  GitHub Profile URL
+                </label>
+                <input
+                  type="text"
+                  name="github"
+                  value={formData.github}
+                  onChange={handleInputChange}
+                  placeholder="https://github.com/username"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-medium text-slate-900 dark:text-white transition-all"
+                />
+              </div>
+
+              {/* LinkedIn */}
+              <div className="space-y-1.5 md:col-span-2">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                  <FaLinkedin className="w-3.5 h-3.5 text-blue-500" />
+                  LinkedIn Profile URL
+                </label>
+                <input
+                  type="text"
+                  name="linkedin"
+                  value={formData.linkedin}
+                  onChange={handleInputChange}
+                  placeholder="https://linkedin.com/in/username"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-medium text-slate-900 dark:text-white transition-all"
+                />
+              </div>
+
+              {/* Bio / Academic Focus */}
+              <div className="space-y-1.5 md:col-span-3">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-yellow-500" />
+                  Academic Bio / Research Interests
+                </label>
+                <textarea
+                  name="bio"
+                  rows={3}
+                  value={formData.bio}
+                  onChange={handleInputChange}
+                  placeholder="Brief summary of your academic interests, competitive programming, project domains, or aspirations..."
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-medium text-slate-900 dark:text-white transition-all resize-none"
+                />
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-white/10">
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                disabled={isSaving}
+                className="px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs shadow-md shadow-indigo-200/50 dark:shadow-indigo-950/40 transition-all hover:scale-105 active:scale-95 cursor-pointer disabled:opacity-50"
+              >
+                {isSaving ? (
+                  <>
+                    <Clock className="w-4 h-4 animate-spin" />
+                    <span>Saving Changes...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    <span>Save Profile Changes</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        ) : (
+          /* Profile Details Card (View Mode) */
+          <div className="space-y-6">
+            {/* Top Identity & Photo Bar */}
+            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100/70 dark:border-white/5">
+              <div className="h-16 w-16 rounded-2xl bg-white dark:bg-slate-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-extrabold text-2xl border border-indigo-200 dark:border-indigo-800 shadow-sm overflow-hidden shrink-0">
+                {displayImage ? (
+                  <img src={displayImage} alt={activeName} className="h-full w-full object-cover" />
+                ) : (
+                  activeName ? activeName.charAt(0).toUpperCase() : "S"
+                )}
+              </div>
+              <div className="flex-1 text-center sm:text-left">
+                <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
+                  <span className="text-sm font-bold text-slate-900 dark:text-white">{activeName}</span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40">
+                    {displayImage ? "Custom Picture Active" : "Default Initial Avatar"}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 font-medium">
+                  Roll: <strong>{activeRoll}</strong> • Semester {activeSemester} • Batch {activeBatch}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditing(true);
+                  setTimeout(() => {
+                    fileInputRef.current?.click();
+                  }, 60);
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+              >
+                <Camera className="w-3.5 h-3.5" />
+                <span>Change Photo</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+              <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-100 dark:border-white/5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Student Roll</span>
+                <span className="text-sm font-extrabold text-slate-900 dark:text-white mt-1 block">
+                  {activeRoll}
+                </span>
+              </div>
+              <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-100 dark:border-white/5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Current Semester</span>
+                <span className="text-sm font-extrabold text-indigo-600 dark:text-indigo-400 mt-1 block">
+                  Semester {activeSemester}
+                </span>
+              </div>
+              <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-100 dark:border-white/5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Academic Batch</span>
+                <span className="text-sm font-extrabold text-slate-900 dark:text-white mt-1 block">
+                  Batch {activeBatch}
+                </span>
+              </div>
+              <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-100 dark:border-white/5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Session</span>
+                <span className="text-sm font-extrabold text-slate-900 dark:text-white mt-1 block">
+                  {activeSession}
+                </span>
+              </div>
+              <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-100 dark:border-white/5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Blood Group</span>
+                <span className="text-sm font-extrabold text-rose-600 dark:text-rose-400 mt-1 block">
+                  {activeBlood}
+                </span>
+              </div>
+              <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-100 dark:border-white/5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Contact Phone</span>
+                <span className="text-sm font-extrabold text-slate-900 dark:text-white mt-1 block truncate">
+                  {activePhone}
+                </span>
+              </div>
+              <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-100 dark:border-white/5 col-span-2">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Campus / Home Address</span>
+                <span className="text-sm font-extrabold text-slate-900 dark:text-white mt-1 block truncate">
+                  {activeAddress}
+                </span>
+              </div>
+            </div>
+
+            {/* Extra profile details (Bio, Guardian, Links) */}
+            {(profile?.bio || profile?.guardianName || profile?.emergencyContact || profile?.github || profile?.linkedin) && (
+              <div className="p-5 rounded-2xl bg-slate-50/60 dark:bg-slate-800/40 border border-slate-100 dark:border-white/5 space-y-4">
+                {profile?.bio && (
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                      Academic Bio & Focus
+                    </span>
+                    <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
+                      {profile.bio}
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center gap-6 pt-2 border-t border-slate-200/50 dark:border-white/5 text-xs">
+                  {profile?.guardianName && (
+                    <span className="text-slate-600 dark:text-slate-300 font-medium">
+                      <strong>Guardian:</strong> {profile.guardianName}
+                    </span>
+                  )}
+                  {profile?.emergencyContact && (
+                    <span className="text-slate-600 dark:text-slate-300 font-medium">
+                      <strong>Emergency Contact:</strong> {profile.emergencyContact}
+                    </span>
+                  )}
+                  {profile?.github && (
+                    <a
+                      href={profile.github.startsWith("http") ? profile.github : `https://${profile.github}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 font-bold"
+                    >
+                      <FaGithub className="w-3.5 h-3.5" />
+                      <span>GitHub</span>
+                    </a>
+                  )}
+                  {profile?.linkedin && (
+                    <a
+                      href={profile.linkedin.startsWith("http") ? profile.linkedin : `https://${profile.linkedin}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 font-bold"
+                    >
+                      <FaLinkedin className="w-3.5 h-3.5" />
+                      <span>LinkedIn</span>
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
 
       {/* Attendance & Geofence Mark Center */}
       <div id="attendance" className="grid grid-cols-1 md:grid-cols-3 gap-6">
