@@ -32,7 +32,9 @@ import {
   Upload,
   Trash2,
   Link2,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Search,
+  Filter
 } from "lucide-react";
 import { FaGithub, FaLinkedin } from "react-icons/fa";
 import toast from "react-hot-toast";
@@ -90,13 +92,13 @@ export default function StudentDashboardPage() {
 
   // Helper to extract numeric semester 1-8
   const parseSemesterNum = (semStr) => {
-    if (!semStr) return 6;
+    if (!semStr) return 1;
     const match = String(semStr).match(/(\d+)/);
     if (match && match[1]) {
       const n = parseInt(match[1], 10);
       if (n >= 1 && n <= 8) return n;
     }
-    return 6;
+    return 1;
   };
 
   const syncFormData = (data) => {
@@ -105,7 +107,7 @@ export default function StudentDashboardPage() {
       phone: data?.phone || user?.phone || "",
       studentId: data?.studentId || user?.studentId || "",
       batch: data?.batch !== undefined && data?.batch !== null ? String(data.batch) : "",
-      semester: data?.semester ? String(parseSemesterNum(data.semester)) : "6",
+      semester: data?.semester ? String(parseSemesterNum(data.semester)) : "1",
       session: data?.session || user?.session || "",
       bloodGroup: data?.bloodGroup || user?.bloodGroup || "",
       address: data?.address || user?.address || "",
@@ -118,8 +120,10 @@ export default function StudentDashboardPage() {
     });
   };
 
-  const studentEnrolledSem = parseSemesterNum(profile?.semester);
-  const [selectedSemester, setSelectedSemester] = useState(6);
+  // Enrolled semester automatically resolves from student registration data
+  const studentEnrolledSem = parseSemesterNum(profile?.semester || user?.semester);
+  const [courseFilter, setCourseFilter] = useState("all");
+  const [courseSearch, setCourseSearch] = useState("");
 
   const loadProfile = async (showToast = false) => {
     if (!user?.email) return;
@@ -142,9 +146,6 @@ export default function StudentDashboardPage() {
           return;
         }
 
-        if (data.semester) {
-          setSelectedSemester(parseSemesterNum(data.semester));
-        }
         if (showToast) {
           toast.success("Student profile synced!");
         }
@@ -312,10 +313,6 @@ export default function StudentDashboardPage() {
       setProfile(data.student);
       syncFormData(data.student);
 
-      if (data.student.semester) {
-        setSelectedSemester(parseSemesterNum(data.student.semester));
-      }
-
       setIsEditing(false);
       toast.success("Profile updated successfully!");
     } catch (err) {
@@ -338,8 +335,25 @@ export default function StudentDashboardPage() {
 
   const isPending = (profile?.status || user?.status) === "pending";
 
-  const semesterCourses = getCoursesBySemester(selectedSemester);
-  const semesterCredits = getSemesterTotalCredits(selectedSemester);
+  const enrolledSemester = studentEnrolledSem;
+  const semesterCourses = getCoursesBySemester(enrolledSemester);
+  const semesterCredits = getSemesterTotalCredits(enrolledSemester);
+
+  const filteredCourses = semesterCourses.filter((course) => {
+    const isLab = course.type === "Sessional" || course.type === "Laboratory" || course.title?.toLowerCase().includes("sessional") || course.title?.toLowerCase().includes("lab");
+    if (courseFilter === "theory" && isLab) return false;
+    if (courseFilter === "lab" && !isLab) return false;
+    if (courseSearch.trim()) {
+      const q = courseSearch.toLowerCase();
+      const codeMatch = (course.code || "").toLowerCase().includes(q);
+      const titleMatch = (course.title || "").toLowerCase().includes(q);
+      return codeMatch || titleMatch;
+    }
+    return true;
+  });
+
+  const theoryCount = semesterCourses.filter((c) => !(c.type === "Sessional" || c.type === "Laboratory" || c.title?.toLowerCase().includes("sessional") || c.title?.toLowerCase().includes("lab"))).length;
+  const labCount = semesterCourses.length - theoryCount;
 
   const handleMarkAttendance = () => {
     setIsMarking(true);
@@ -1133,126 +1147,166 @@ export default function StudentDashboardPage() {
         </div>
       </div>
 
-      {/* Routine & Semester Courses (Semesters 1 to 8) */}
+      {/* Routine & Semester Courses (Enrolled Registered Semester) */}
       <div id="routine" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-white/10">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5">
               <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-              <span>Academic Curriculum Explorer</span>
+              <span>Registered Curriculum & Routine</span>
             </div>
             <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <BookOpen className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-              Semester Courses & Academic Routine
+              Semester {enrolledSemester} Courses & Academic Routine
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
-              Browse syllabus courses, credit weights, and class schedules across Semesters 1 to 8.
+              Syllabus courses, credit weights, and weekly lecture routine for your registered term (Semester {enrolledSemester} • {SEMESTER_LABELS[enrolledSemester] || "Current Semester"}).
             </p>
           </div>
+
           <div className="flex items-center gap-2 flex-wrap">
-            {selectedSemester === studentEnrolledSem && (
-              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-3 py-1.5 rounded-xl border border-emerald-200 dark:border-emerald-800 flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Your Enrolled Term</span>
-              </span>
-            )}
+            <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-3 py-1.5 rounded-xl border border-emerald-200 dark:border-emerald-800 flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>Enrolled Term: Semester {enrolledSemester}</span>
+            </span>
             <span className="text-xs font-bold text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 px-3 py-1.5 rounded-xl ring-1 ring-indigo-200 dark:ring-indigo-800">
-              {SEMESTER_LABELS[selectedSemester]} • {semesterCredits.toFixed(1)} Credits
+              {semesterCredits.toFixed(1)} Total Credits
+            </span>
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-xl">
+              {semesterCourses.length} Enrolled Courses
             </span>
           </div>
         </div>
 
-        {/* Semester Tab Switcher (Semesters 1 through 8) */}
-        <div className="space-y-2 pt-1">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-              Select Semester:
-            </span>
-            <span className="text-xs font-medium text-slate-400 dark:text-slate-500">
-              {semesterCourses.length} Courses Offered
-            </span>
+        {/* Filter & Search Bar */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
+          {/* Category Filter Pills */}
+          <div className="inline-flex items-center p-1 rounded-2xl bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/50 dark:border-slate-700/50 text-xs font-bold">
+            <button
+              type="button"
+              onClick={() => setCourseFilter("all")}
+              className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                courseFilter === "all"
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              }`}
+            >
+              All Courses ({semesterCourses.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setCourseFilter("theory")}
+              className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                courseFilter === "theory"
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              }`}
+            >
+              Theory ({theoryCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setCourseFilter("lab")}
+              className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                courseFilter === "lab"
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              }`}
+            >
+              Lab / Sessional ({labCount})
+            </button>
           </div>
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
-            {SEMESTER_KEYS.map((k) => {
-              const isSelected = selectedSemester === k;
-              const isEnrolled = studentEnrolledSem === k;
-              return (
-                <button
-                  key={k}
-                  onClick={() => setSelectedSemester(k)}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 relative ${
-                    isSelected
-                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-300 dark:shadow-none"
-                      : "bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
-                  }`}
-                >
-                  <span>Semester {k}</span>
-                  {isEnrolled && (
-                    <span className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded-full uppercase tracking-wider ${
-                      isSelected ? "bg-white/25 text-white" : "bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300"
-                    }`}>
-                      Current
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+
+          {/* Quick Course Search */}
+          <div className="relative max-w-xs sm:w-64">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search course code or title..."
+              value={courseSearch}
+              onChange={(e) => setCourseSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            {courseSearch && (
+              <button
+                type="button"
+                onClick={() => setCourseSearch("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </div>
 
         {/* Course Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-          {semesterCourses.map((c, i) => {
-            const timeSlots = ["09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00", "01:00 - 02:00", "02:00 - 03:00", "03:00 - 04:00"];
-            const isLab = c.type === "Sessional" || c.type === "Laboratory" || c.title?.toLowerCase().includes("sessional") || c.title?.toLowerCase().includes("lab");
-            const slotTime = timeSlots[i % timeSlots.length];
-            const roomLocation = isLab ? "Computer Lab 1 / Lab 2" : (i % 2 === 0 ? "Room 401 (Academic Block)" : "Room 402 (Academic Block)");
+        {filteredCourses.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            {filteredCourses.map((c, i) => {
+              const timeSlots = ["09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00", "01:00 - 02:00", "02:00 - 03:00", "03:00 - 04:00"];
+              const isLab = c.type === "Sessional" || c.type === "Laboratory" || c.title?.toLowerCase().includes("sessional") || c.title?.toLowerCase().includes("lab");
+              const slotTime = timeSlots[i % timeSlots.length];
+              const roomLocation = isLab ? "Computer Lab 1 / Lab 2" : (i % 2 === 0 ? "Room 401 (Academic Block)" : "Room 402 (Academic Block)");
 
-            return (
-              <div
-                key={c.code || i}
-                className="p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 hover:border-indigo-300 dark:hover:border-indigo-500/50 transition-all flex flex-col justify-between space-y-3"
-              >
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-md uppercase tracking-wider">
-                      {c.code}
-                    </span>
-                    <span className="text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-200/60 dark:bg-slate-700/60 px-2 py-0.5 rounded-md">
-                      {c.credits} Credits
-                    </span>
+              return (
+                <div
+                  key={c.code || i}
+                  className="p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 hover:border-indigo-300 dark:hover:border-indigo-500/50 hover:shadow-md transition-all flex flex-col justify-between space-y-3"
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                        {c.code}
+                      </span>
+                      <span className="text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-200/60 dark:bg-slate-700/60 px-2 py-0.5 rounded-md">
+                        {c.credits} Credits
+                      </span>
+                    </div>
+                    <h3 className="font-bold text-slate-900 dark:text-white text-sm leading-snug line-clamp-2">
+                      {c.title}
+                    </h3>
+                    <div className="inline-block">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        isLab 
+                          ? "bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800/50"
+                          : "bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50"
+                      }`}>
+                        {c.type || (isLab ? "Sessional / Practical" : "Theory")}
+                      </span>
+                    </div>
                   </div>
-                  <h3 className="font-bold text-slate-900 dark:text-white text-sm leading-snug line-clamp-2">
-                    {c.title}
-                  </h3>
-                  <div className="inline-block">
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      isLab 
-                        ? "bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800/50"
-                        : "bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50"
-                    }`}>
-                      {c.type || (isLab ? "Sessional / Practical" : "Theory")}
-                    </span>
+
+                  <div className="space-y-1.5 text-xs text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-slate-400" />
+                      <span>{slotTime}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                      <span className="truncate">{roomLocation}</span>
+                    </div>
+                    <div className="text-[11px] text-slate-400 dark:text-slate-500 pt-1">
+                      Faculty Department Instructor
+                    </div>
                   </div>
                 </div>
-
-                <div className="space-y-1.5 text-xs text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
-                  <div className="flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{slotTime}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                    <span className="truncate">{roomLocation}</span>
-                  </div>
-                  <div className="text-[11px] text-slate-400 dark:text-slate-500 pt-1">
-                    Faculty Department Instructor
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="p-8 text-center rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-dashed border-slate-300 dark:border-slate-700 space-y-2">
+            <BookOpen className="w-8 h-8 text-slate-400 mx-auto" />
+            <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">No courses match your filter</h4>
+            <p className="text-xs text-slate-400">Try clearing the search query or selecting "All Courses".</p>
+            <button
+              type="button"
+              onClick={() => { setCourseFilter("all"); setCourseSearch(""); }}
+              className="mt-2 px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-bold cursor-pointer"
+            >
+              Reset Filters
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
