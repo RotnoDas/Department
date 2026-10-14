@@ -79,6 +79,7 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
           { name: "Overview", href: "/dashboard/admin", icon: LayoutDashboard },
           { name: "Student Approvals", href: "/dashboard/admin#pending", icon: UserCheck },
           { name: "Student Directory", href: "/dashboard/admin#students", icon: GraduationCap },
+          { name: "Class Routine", href: "/dashboard/admin#routine", icon: Calendar },
           { name: "Curriculum Matrix (1-8)", href: "/dashboard/admin#courses", icon: BookOpen },
           { name: "Notice Dispatcher", href: "/dashboard/admin#notices", icon: Bell },
           { name: "Faculty & Staff", href: "/dashboard/admin#directory", icon: Users },

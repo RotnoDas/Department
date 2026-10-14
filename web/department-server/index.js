@@ -74,6 +74,12 @@ async function run() {
     const adminsCollection = db.collection('admins');
     const noticesCollection = db.collection('notices');
     const coursesCollection = db.collection('courses');
+    const routinesCollection = db.collection('routines');
+    try {
+      await routinesCollection.createIndex({ day: 1, semester: 1, timeSlot: 1 }, { unique: true });
+    } catch (e) {
+      // index may already exist
+    }
 
     // ── HEALTH & ME ───────────────────────────────────────────
     app.get('/api/me', verifyToken, async (req, res) => {
@@ -580,6 +586,259 @@ async function run() {
       }
     });
 
+    // ── ACADEMIC ROUTINE SECTION ──────────────────────────────
+    app.get('/api/routines', async (req, res) => {
+      try {
+        const { semester, day, teacherId, search } = req.query;
+        const query = {};
+
+        if (semester && semester !== "all") {
+          const semNumMatch = String(semester).match(/\d+/);
+          const semNum = semNumMatch ? parseInt(semNumMatch[0], 10) : null;
+          if (semNum) {
+            query.semester = semNum;
+          }
+        }
+
+        if (day && day !== "all") {
+          query.day = day;
+        }
+
+        if (teacherId) {
+          query.teacherId = teacherId;
+        }
+
+        if (search) {
+          query.$or = [
+            { courseCode: { $regex: search, $options: 'i' } },
+            { courseTitle: { $regex: search, $options: 'i' } },
+            { teacherName: { $regex: search, $options: 'i' } },
+            { room: { $regex: search, $options: 'i' } }
+          ];
+        }
+
+        const routines = await routinesCollection.find(query).sort({ day: 1, semester: 1, timeSlot: 1 }).toArray();
+        res.json({ success: true, count: routines.length, routines });
+      } catch (err) {
+        console.error("Error fetching routines:", err);
+        res.status(500).json({ error: "Failed to fetch routines" });
+      }
+    });
+
+    app.get('/api/admin/routine', async (req, res) => {
+      try {
+        const { semester } = req.query;
+        const query = {};
+        if (semester && semester !== "all") {
+          const semNumMatch = String(semester).match(/\d+/);
+          if (semNumMatch) query.semester = parseInt(semNumMatch[0], 10);
+        }
+        const routines = await routinesCollection.find(query).sort({ day: 1, semester: 1, timeSlot: 1 }).toArray();
+        res.json(routines);
+      } catch (err) {
+        res.status(500).json({ error: "Failed to fetch routines" });
+      }
+    });
+
+    app.get('/api/student/routine', async (req, res) => {
+      try {
+        const { semester } = req.query;
+        const query = {};
+        if (semester) {
+          const semNumMatch = String(semester).match(/\d+/);
+          if (semNumMatch) query.semester = parseInt(semNumMatch[0], 10);
+        }
+        const routines = await routinesCollection.find(query).sort({ day: 1, timeSlot: 1 }).toArray();
+        res.json(routines);
+      } catch (err) {
+        res.status(500).json({ error: "Failed to fetch student routine" });
+      }
+    });
+
+    const handleSaveRoutineSlot = async (req, res) => {
+      try {
+        const { day, semester, timeSlot, courseCode, courseTitle, teacherId, teacherName, room } = req.body;
+        if (!day || semester === undefined || semester === null || !timeSlot) {
+          return res.status(400).json({ error: "Day, semester, and time slot are required." });
+        }
+
+        const semNumMatch = String(semester).match(/\d+/);
+        const semNum = semNumMatch ? parseInt(semNumMatch[0], 10) : Number(semester);
+        const normalizedSlot = String(timeSlot).trim();
+
+        // If courseCode is empty or 'CLEAR', vacate the slot
+        if (!courseCode || courseCode.trim() === "" || courseCode.toUpperCase() === "CLEAR") {
+          await routinesCollection.deleteOne({ day, semester: semNum, timeSlot: normalizedSlot });
+          return res.json({ success: true, message: "Class slot removed/cleared successfully." });
+        }
+
+        let finalCourseTitle = courseTitle || "";
+        let finalTeacherName = teacherName || "";
+
+        // Resolve course title if empty
+        if (!finalCourseTitle && SEMESTER_COURSES[semNum]) {
+          const foundCourse = SEMESTER_COURSES[semNum].find(c => c.code.toUpperCase() === courseCode.trim().toUpperCase());
+          if (foundCourse) finalCourseTitle = foundCourse.title;
+        }
+        if (!finalCourseTitle) {
+          const dbCourse = await coursesCollection.findOne({ code: courseCode.trim().toUpperCase() });
+          if (dbCourse) finalCourseTitle = dbCourse.title;
+        }
+
+        // Resolve teacher name if teacherId given
+        if (teacherId && !finalTeacherName) {
+          const dbTeacher = await teachersCollection.findOne({
+            $or: [{ teacherId: teacherId }, { email: teacherId }]
+          });
+          if (dbTeacher) finalTeacherName = dbTeacher.name;
+        }
+
+        await routinesCollection.updateOne(
+          { day, semester: semNum, timeSlot: normalizedSlot },
+          {
+            $set: {
+              day,
+              semester: semNum,
+              timeSlot: normalizedSlot,
+              courseCode: courseCode.trim().toUpperCase(),
+              courseTitle: finalCourseTitle || "Academic Lecture",
+              teacherId: teacherId || null,
+              teacherName: finalTeacherName || "Faculty Instructor",
+              room: room ? String(room).trim() : "401",
+              updatedAt: new Date()
+            },
+            $setOnInsert: {
+              createdAt: new Date()
+            }
+          },
+          { upsert: true }
+        );
+
+        const savedSlot = await routinesCollection.findOne({ day, semester: semNum, timeSlot: normalizedSlot });
+        res.json({ success: true, message: "Routine updated successfully.", routine: savedSlot });
+      } catch (err) {
+        console.error("Error saving routine slot:", err);
+        res.status(500).json({ error: "Failed to update routine slot." });
+      }
+    };
+
+    app.post('/api/routines', handleSaveRoutineSlot);
+    app.post('/api/admin/routine', handleSaveRoutineSlot);
+    app.put('/api/routines', handleSaveRoutineSlot);
+
+    app.delete('/api/routines/slot', async (req, res) => {
+      try {
+        const { day, semester, timeSlot } = req.query;
+        if (!day || !semester || !timeSlot) {
+          return res.status(400).json({ error: "Day, semester, and time slot are required" });
+        }
+        const semNum = parseInt(String(semester).match(/\d+/)?.[0] || semester, 10);
+        const result = await routinesCollection.deleteOne({ day, semester: semNum, timeSlot: String(timeSlot).trim() });
+        res.json({ success: true, message: "Routine slot deleted successfully", deletedCount: result.deletedCount });
+      } catch (err) {
+        res.status(500).json({ error: "Failed to delete routine slot" });
+      }
+    });
+
+    app.delete('/api/routines/:id', async (req, res) => {
+      try {
+        const { id } = req.params;
+        const result = await routinesCollection.deleteOne({ _id: new ObjectId(id) });
+        if (result.deletedCount === 0) return res.status(404).json({ error: "Routine slot not found" });
+        res.json({ success: true, message: "Routine slot deleted successfully" });
+      } catch (err) {
+        res.status(500).json({ error: "Failed to delete routine slot" });
+      }
+    });
+
+    // Seed sample routine helper
+    const buildSampleRoutinesList = (teachersList = []) => {
+      const sampleList = [];
+      const days = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday"];
+      const morningSlots = ["09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00", "12:00 - 01:00"];
+      const afternoonSlots = ["02:00 - 03:00", "03:00 - 04:00", "04:00 - 05:00"];
+      
+      const defaultTeachers = [
+        { name: "Dr. Kamrul Hasan", id: "T-101" },
+        { name: "Prof. M. A. Rahman", id: "T-102" },
+        { name: "Dr. John Smith", id: "T-103" },
+        { name: "Engr. Nusrat Sultana", id: "T-104" },
+        { name: "Mr. Tanvir Ahmed", id: "T-105" },
+        { name: "kao", id: "101" }
+      ];
+
+      const pool = teachersList.length > 0 
+        ? teachersList.map(t => ({ name: t.name, id: t.teacherId || String(t._id) }))
+        : defaultTeachers;
+
+      for (let sem = 1; sem <= 8; sem++) {
+        const courses = SEMESTER_COURSES[sem] || [];
+        const theoryCourses = courses.filter(c => !c.title.toLowerCase().includes("sessional") && !c.title.toLowerCase().includes("viva"));
+        const labCourses = courses.filter(c => c.title.toLowerCase().includes("sessional") || c.title.toLowerCase().includes("project"));
+
+        days.forEach((day, dIdx) => {
+          // Morning theory slots
+          const theorySlots = morningSlots.slice(0, 3);
+          theorySlots.forEach((slot, sIdx) => {
+            if (theoryCourses.length > 0) {
+              const course = theoryCourses[(dIdx * 2 + sIdx) % theoryCourses.length];
+              const teacher = pool[(sem + dIdx + sIdx) % pool.length];
+              sampleList.push({
+                day,
+                semester: sem,
+                timeSlot: slot,
+                courseCode: course.code,
+                courseTitle: course.title,
+                teacherId: teacher.id,
+                teacherName: teacher.name,
+                room: `Room ${400 + sem}`,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              });
+            }
+          });
+
+          // Afternoon practical/sessional slots on alternating days
+          if ((dIdx === 1 || dIdx === 3) && labCourses.length > 0) {
+            const labCourse = labCourses[(dIdx) % labCourses.length];
+            const teacher = pool[(sem + dIdx) % pool.length];
+            afternoonSlots.forEach((slot) => {
+              sampleList.push({
+                day,
+                semester: sem,
+                timeSlot: slot,
+                courseCode: labCourse.code,
+                courseTitle: labCourse.title,
+                teacherId: teacher.id,
+                teacherName: teacher.name,
+                room: `Software Lab ${(sem % 2) + 1}`,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              });
+            });
+          }
+        });
+      }
+      return sampleList;
+    };
+
+    app.post('/api/routines/seed-sample', async (req, res) => {
+      try {
+        const teachersList = await teachersCollection.find({}).toArray();
+        const sampleRoutines = buildSampleRoutinesList(teachersList);
+        await routinesCollection.deleteMany({});
+        const result = await routinesCollection.insertMany(sampleRoutines);
+        res.json({
+          success: true,
+          count: result.insertedCount,
+          message: `Successfully seeded ${result.insertedCount} routine slots for Semesters 1 to 8!`
+        });
+      } catch (err) {
+        console.error("Error seeding sample routines:", err);
+        res.status(500).json({ error: "Failed to seed sample routines" });
+      }
+    });
+
     // ── ADMIN BULK & MEMBER MANAGEMENT ────────────────────────
     app.post('/api/admin/students/approve-all', async (req, res) => {
       try {
@@ -676,6 +935,16 @@ async function run() {
         }
       }
       console.log('Seeded complete curriculum courses for Semesters 1 to 8 into MongoDB!');
+    }
+
+    const routineCount = await routinesCollection.countDocuments();
+    if (routineCount === 0) {
+      const teachersList = await teachersCollection.find({}).toArray();
+      const sampleRoutines = buildSampleRoutinesList(teachersList);
+      if (sampleRoutines.length > 0) {
+        await routinesCollection.insertMany(sampleRoutines);
+        console.log(`Auto-seeded ${sampleRoutines.length} routine slots for Semesters 1 to 8 into MongoDB!`);
+      }
     }
 
     console.log('Successfully connected to MongoDB!');

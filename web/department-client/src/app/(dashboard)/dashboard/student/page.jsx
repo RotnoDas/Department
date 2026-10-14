@@ -34,7 +34,9 @@ import {
   Link2,
   Image as ImageIcon,
   Search,
-  Filter
+  Filter,
+  Coffee,
+  RefreshCw
 } from "lucide-react";
 import { FaGithub, FaLinkedin } from "react-icons/fa";
 import toast from "react-hot-toast";
@@ -45,6 +47,18 @@ import {
   SEMESTER_LABELS 
 } from "@/data/courses";
 import Loading from "@/components/common/Loading";
+
+const ROUTINE_DAYS = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday"];
+const ROUTINE_TIME_SLOTS = [
+  "09:00 - 10:00",
+  "10:00 - 11:00",
+  "11:00 - 12:00",
+  "12:00 - 01:00",
+  "01:00 - 02:00",
+  "02:00 - 03:00",
+  "03:00 - 04:00",
+  "04:00 - 05:00",
+];
 
 const getServerUrl = () => {
   if (typeof window !== "undefined") {
@@ -124,6 +138,40 @@ export default function StudentDashboardPage() {
   const studentEnrolledSem = parseSemesterNum(profile?.semester || user?.semester);
   const [courseFilter, setCourseFilter] = useState("all");
   const [courseSearch, setCourseSearch] = useState("");
+  const [routines, setRoutines] = useState([]);
+  const [routineTab, setRoutineTab] = useState("grid"); // "grid" | "courses"
+  const [isRoutineLoading, setIsRoutineLoading] = useState(false);
+
+  const loadRoutines = async () => {
+    const sem = studentEnrolledSem || 1;
+    const serverUrl = getServerUrl();
+    setIsRoutineLoading(true);
+    try {
+      const res = await fetch(`${serverUrl}/api/routines?semester=${sem}`);
+      if (res.ok) {
+        const data = await res.json();
+        setRoutines(Array.isArray(data) ? data : (data.routines || []));
+      }
+    } catch (e) {
+      console.error("Error loading routine:", e);
+    } finally {
+      setIsRoutineLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (studentEnrolledSem) {
+      loadRoutines();
+    }
+  }, [studentEnrolledSem]);
+
+  const getStudentRoutineCell = (day, timeSlot) => {
+    return routines.find((r) => {
+      const isSlot = r.timeSlot === timeSlot ||
+        r.timeSlot?.replace(/^0/, "") === timeSlot?.replace(/^0/, "");
+      return r.day === day && isSlot;
+    });
+  };
 
   const loadProfile = async (showToast = false) => {
     if (!user?.email) return;
@@ -1175,136 +1223,289 @@ export default function StudentDashboardPage() {
             <span className="text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-xl">
               {semesterCourses.length} Enrolled Courses
             </span>
+            <button
+              onClick={loadRoutines}
+              disabled={isRoutineLoading}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
+              title="Refresh routine schedule"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRoutineLoading ? "animate-spin text-indigo-500" : ""}`} />
+              <span>Sync Routine</span>
+            </button>
           </div>
         </div>
 
-        {/* Filter & Search Bar */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
-          {/* Category Filter Pills */}
+        {/* View Mode Tabs: Weekly Routine Grid vs Curriculum Courses */}
+        <div className="flex items-center justify-between flex-wrap gap-3 pt-1">
           <div className="inline-flex items-center p-1 rounded-2xl bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/50 dark:border-slate-700/50 text-xs font-bold">
             <button
               type="button"
-              onClick={() => setCourseFilter("all")}
-              className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
-                courseFilter === "all"
+              onClick={() => setRoutineTab("grid")}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl transition-all cursor-pointer ${
+                routineTab === "grid"
                   ? "bg-indigo-600 text-white shadow-xs"
                   : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
               }`}
             >
-              All Courses ({semesterCourses.length})
+              <Calendar className="w-4 h-4" />
+              <span>Weekly Routine Grid</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                routineTab === "grid" ? "bg-white/20 text-white" : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400"
+              }`}>
+                {routines.length} Classes
+              </span>
             </button>
             <button
               type="button"
-              onClick={() => setCourseFilter("theory")}
-              className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
-                courseFilter === "theory"
+              onClick={() => setRoutineTab("courses")}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl transition-all cursor-pointer ${
+                routineTab === "courses"
                   ? "bg-indigo-600 text-white shadow-xs"
                   : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
               }`}
             >
-              Theory ({theoryCount})
-            </button>
-            <button
-              type="button"
-              onClick={() => setCourseFilter("lab")}
-              className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
-                courseFilter === "lab"
-                  ? "bg-indigo-600 text-white shadow-xs"
-                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-              }`}
-            >
-              Lab / Sessional ({labCount})
+              <BookOpen className="w-4 h-4" />
+              <span>Curriculum Courses Matrix</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                routineTab === "courses" ? "bg-white/20 text-white" : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400"
+              }`}>
+                {semesterCourses.length}
+              </span>
             </button>
           </div>
 
-          {/* Quick Course Search */}
-          <div className="relative max-w-xs sm:w-64">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Search course code or title..."
-              value={courseSearch}
-              onChange={(e) => setCourseSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-            {courseSearch && (
-              <button
-                type="button"
-                onClick={() => setCourseSearch("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+            {routineTab === "grid" ? "Saturday to Wednesday Academic Routine" : "Syllabus courses & credit distribution"}
+          </span>
         </div>
 
-        {/* Course Cards Grid */}
-        {filteredCourses.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-            {filteredCourses.map((c, i) => {
-              const timeSlots = ["09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00", "01:00 - 02:00", "02:00 - 03:00", "03:00 - 04:00"];
-              const isLab = c.type === "Sessional" || c.type === "Laboratory" || c.title?.toLowerCase().includes("sessional") || c.title?.toLowerCase().includes("lab");
-              const slotTime = timeSlots[i % timeSlots.length];
-              const roomLocation = isLab ? "Computer Lab 1 / Lab 2" : (i % 2 === 0 ? "Room 401 (Academic Block)" : "Room 402 (Academic Block)");
+        {/* ── Content View 1: Weekly Routine Timetable Grid ── */}
+        {routineTab === "grid" && (
+          <div className="space-y-4">
+            <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 shadow-xs">
+              <div className="overflow-x-auto scrollbar-thin">
+                <table className="w-full border-collapse text-left">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-slate-800/50 backdrop-blur-md">
+                      <th className="w-24 border-r border-slate-200 dark:border-white/10 py-4 px-3 text-center text-[10px] font-black tracking-widest text-slate-400 uppercase">
+                        Day
+                      </th>
+                      {ROUTINE_TIME_SLOTS.map((slot) => {
+                        const isBreak = slot === "01:00 - 02:00";
+                        return (
+                          <th
+                            key={slot}
+                            className={`${isBreak ? "w-16 px-1" : "min-w-[170px] px-3"} border-r border-slate-200 dark:border-white/10 py-3.5 text-center font-bold whitespace-nowrap last:border-0`}
+                          >
+                            <div className="flex flex-col items-center gap-1">
+                              <Clock className={`w-3.5 h-3.5 ${isBreak ? "text-amber-500/50" : "text-indigo-500"}`} />
+                              <span className={`text-xs font-black tracking-wider uppercase ${isBreak ? "text-amber-600 dark:text-amber-400 text-[10px]" : "text-slate-700 dark:text-slate-200"}`}>
+                                {isBreak ? "Lunch Break" : slot}
+                              </span>
+                            </div>
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                    {ROUTINE_DAYS.map((day) => (
+                      <tr
+                        key={day}
+                        className="group transition-colors hover:bg-indigo-50/20 dark:hover:bg-indigo-950/20"
+                      >
+                        <td className="w-24 border-r border-slate-200 dark:border-white/10 bg-slate-50/60 dark:bg-slate-800/40 p-4 text-center align-middle font-bold text-slate-800 dark:text-slate-200 text-xs uppercase tracking-wider">
+                          {day}
+                        </td>
 
-              return (
-                <div
-                  key={c.code || i}
-                  className="p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 hover:border-indigo-300 dark:hover:border-indigo-500/50 hover:shadow-md transition-all flex flex-col justify-between space-y-3"
-                >
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-md uppercase tracking-wider">
-                        {c.code}
-                      </span>
-                      <span className="text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-200/60 dark:bg-slate-700/60 px-2 py-0.5 rounded-md">
-                        {c.credits} Credits
-                      </span>
-                    </div>
-                    <h3 className="font-bold text-slate-900 dark:text-white text-sm leading-snug line-clamp-2">
-                      {c.title}
-                    </h3>
-                    <div className="inline-block">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        isLab 
-                          ? "bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800/50"
-                          : "bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50"
-                      }`}>
-                        {c.type || (isLab ? "Sessional / Practical" : "Theory")}
-                      </span>
-                    </div>
-                  </div>
+                        {ROUTINE_TIME_SLOTS.map((slot) => {
+                          const isBreak = slot === "01:00 - 02:00";
+                          if (isBreak) {
+                            return (
+                              <td
+                                key={slot}
+                                className="w-16 border-r border-slate-200 dark:border-white/10 bg-amber-50/30 dark:bg-amber-950/20 p-2 text-center align-middle"
+                              >
+                                <div className="flex flex-col items-center justify-center text-amber-500">
+                                  <Coffee className="w-4 h-4 mb-1 opacity-60" />
+                                  <span className="text-[9px] font-black tracking-widest text-amber-600 dark:text-amber-400 uppercase">
+                                    Break
+                                  </span>
+                                </div>
+                              </td>
+                            );
+                          }
 
-                  <div className="space-y-1.5 text-xs text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
-                    <div className="flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5 text-slate-400" />
-                      <span>{slotTime}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                      <span className="truncate">{roomLocation}</span>
-                    </div>
-                    <div className="text-[11px] text-slate-400 dark:text-slate-500 pt-1">
-                      Faculty Department Instructor
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+                          const cell = getStudentRoutineCell(day, slot);
+                          return (
+                            <td
+                              key={slot}
+                              className="border-r border-slate-200 dark:border-white/10 p-2.5 align-middle"
+                            >
+                              {cell && (cell.courseCode || cell.room) ? (
+                                <div className="p-3.5 rounded-xl bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 shadow-xs hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-md transition-all flex flex-col justify-between min-h-[105px]">
+                                  <div>
+                                    <div className="flex items-center justify-between gap-1">
+                                      <span className="font-mono font-black text-xs text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-0.5 rounded-md">
+                                        {cell.courseCode}
+                                      </span>
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded">
+                                        <MapPin className="w-3 h-3 text-indigo-500" />
+                                        <span>{cell.room || "Room"}</span>
+                                      </span>
+                                    </div>
+                                    {cell.courseTitle && (
+                                      <p className="text-xs font-bold text-slate-800 dark:text-slate-100 line-clamp-1 mt-2">
+                                        {cell.courseTitle}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <div className="pt-2 border-t border-slate-100 dark:border-slate-700/50 text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate">
+                                    {cell.teacherName || "Faculty Instructor"}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="h-full min-h-[105px] rounded-xl flex items-center justify-center text-slate-300 dark:text-slate-600 text-sm font-light">
+                                  -
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
-        ) : (
-          <div className="p-8 text-center rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-dashed border-slate-300 dark:border-slate-700 space-y-2">
-            <BookOpen className="w-8 h-8 text-slate-400 mx-auto" />
-            <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">No courses match your filter</h4>
-            <p className="text-xs text-slate-400">Try clearing the search query or selecting "All Courses".</p>
-            <button
-              type="button"
-              onClick={() => { setCourseFilter("all"); setCourseSearch(""); }}
-              className="mt-2 px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-bold cursor-pointer"
-            >
-              Reset Filters
-            </button>
+        )}
+
+        {/* ── Content View 2: Curriculum Syllabus Courses ── */}
+        {routineTab === "courses" && (
+          <div className="space-y-5">
+            {/* Filter & Search Bar */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
+              {/* Category Filter Pills */}
+              <div className="inline-flex items-center p-1 rounded-2xl bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/50 dark:border-slate-700/50 text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setCourseFilter("all")}
+                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                    courseFilter === "all"
+                      ? "bg-indigo-600 text-white shadow-xs"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                  }`}
+                >
+                  All Courses ({semesterCourses.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCourseFilter("theory")}
+                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                    courseFilter === "theory"
+                      ? "bg-indigo-600 text-white shadow-xs"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                  }`}
+                >
+                  Theory ({theoryCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCourseFilter("lab")}
+                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                    courseFilter === "lab"
+                      ? "bg-indigo-600 text-white shadow-xs"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                  }`}
+                >
+                  Lab / Sessional ({labCount})
+                </button>
+              </div>
+
+              {/* Quick Course Search */}
+              <div className="relative max-w-xs sm:w-64">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search course code or title..."
+                  value={courseSearch}
+                  onChange={(e) => setCourseSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                {courseSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setCourseSearch("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Course Cards Grid */}
+            {filteredCourses.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                {filteredCourses.map((c, i) => {
+                  const isLab = c.type === "Sessional" || c.type === "Laboratory" || c.title?.toLowerCase().includes("sessional") || c.title?.toLowerCase().includes("lab");
+
+                  return (
+                    <div
+                      key={c.code || i}
+                      className="p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 hover:border-indigo-300 dark:hover:border-indigo-500/50 hover:shadow-md transition-all flex flex-col justify-between space-y-3"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                            {c.code}
+                          </span>
+                          <span className="text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-200/60 dark:bg-slate-700/60 px-2 py-0.5 rounded-md">
+                            {c.credits} Credits
+                          </span>
+                        </div>
+                        <h3 className="font-bold text-slate-900 dark:text-white text-sm leading-snug line-clamp-2">
+                          {c.title}
+                        </h3>
+                        <div className="inline-block">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            isLab 
+                              ? "bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800/50"
+                              : "bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50"
+                          }`}>
+                            {c.type || (isLab ? "Sessional / Practical" : "Theory")}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5 text-xs text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
+                        <div className="flex items-center gap-1.5">
+                          <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                          <span className="truncate">{isLab ? "Software / Hardware Lab" : `Room ${400 + enrolledSemester}`}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 dark:text-slate-500 pt-0.5">
+                          Department Faculty Instructor
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="p-8 text-center rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-dashed border-slate-300 dark:border-slate-700 space-y-2">
+                <BookOpen className="w-8 h-8 text-slate-400 mx-auto" />
+                <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">No courses match your filter</h4>
+                <p className="text-xs text-slate-400">Try clearing the search query or selecting &quot;All Courses&quot;.</p>
+                <button
+                  type="button"
+                  onClick={() => { setCourseFilter("all"); setCourseSearch(""); }}
+                  className="mt-2 px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-bold cursor-pointer"
+                >
+                  Reset Filters
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

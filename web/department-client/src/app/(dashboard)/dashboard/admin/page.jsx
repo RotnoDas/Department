@@ -29,13 +29,41 @@ import {
   Send,
   AlertCircle,
   Sparkles,
-  FileText
+  FileText,
+  Edit3,
+  MapPin,
+  Save,
+  Coffee,
+  X,
+  User
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { SEMESTER_COURSES, SEMESTER_LABELS, SEMESTER_KEYS } from "@/data/courses";
 import Loading from "@/components/common/Loading";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
+
+const ROUTINE_DAYS = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday"];
+const ROUTINE_SEMESTERS = [
+  { id: 1, label: "1-1", full: "1st Semester" },
+  { id: 2, label: "1-2", full: "2nd Semester" },
+  { id: 3, label: "2-1", full: "3rd Semester" },
+  { id: 4, label: "2-2", full: "4th Semester" },
+  { id: 5, label: "3-1", full: "5th Semester" },
+  { id: 6, label: "3-2", full: "6th Semester" },
+  { id: 7, label: "4-1", full: "7th Semester" },
+  { id: 8, label: "4-2", full: "8th Semester" },
+];
+const ROUTINE_TIME_SLOTS = [
+  "09:00 - 10:00",
+  "10:00 - 11:00",
+  "11:00 - 12:00",
+  "12:00 - 01:00",
+  "01:00 - 02:00",
+  "02:00 - 03:00",
+  "03:00 - 04:00",
+  "04:00 - 05:00",
+];
 
 export default function AdminDashboardPage() {
   const { data: sessionData } = authClient.useSession();
@@ -53,9 +81,22 @@ export default function AdminDashboardPage() {
   const [employees, setEmployees] = useState([]);
   const [courses, setCourses] = useState([]);
   const [notices, setNotices] = useState([]);
+  const [routines, setRoutines] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("pending");
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Routine Studio states
+  const [selectedRoutineSemester, setSelectedRoutineSemester] = useState("1");
+  const [isSeedingRoutine, setIsSeedingRoutine] = useState(false);
+  const [editingRoutineCell, setEditingRoutineCell] = useState(null); // { day, semester, timeSlot }
+  const [routineFormData, setRoutineFormData] = useState({
+    courseCode: "",
+    teacherId: "",
+    teacherName: "",
+    room: "",
+  });
+  const [isSavingRoutine, setIsSavingRoutine] = useState(false);
 
   // Modal / Inline Form states
   const [showCourseForm, setShowCourseForm] = useState(false);
@@ -111,6 +152,13 @@ export default function AdminDashboardPage() {
         const data = await noticesRes.json();
         setNotices(data.notices || []);
       }
+
+      // 7. Fetch Academic Routines
+      const routineRes = await fetch(`${SERVER_URL}/api/routines`);
+      if (routineRes.ok) {
+        const rData = await routineRes.json();
+        setRoutines(Array.isArray(rData) ? rData : (rData.routines || []));
+      }
     } catch (err) {
       console.error("Failed to load dashboard data:", err);
       toast.error("Failed to fetch department statistics");
@@ -123,6 +171,130 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  // ── Routine Management Handlers ─────────────────────────
+  const getRoutineCell = (day, semester, timeSlot) => {
+    const semNum = Number(semester);
+    return routines.find((r) => {
+      const isSlot = r.timeSlot === timeSlot || 
+        r.timeSlot?.replace(/^0/, "") === timeSlot?.replace(/^0/, "");
+      return r.day === day && Number(r.semester) === semNum && isSlot;
+    });
+  };
+
+  const handleOpenEditRoutine = (day, semester, timeSlot) => {
+    const cell = getRoutineCell(day, semester, timeSlot);
+    setEditingRoutineCell({ day, semester: Number(semester), timeSlot });
+    if (cell) {
+      setRoutineFormData({
+        courseCode: cell.courseCode || "",
+        teacherId: cell.teacherId || "",
+        teacherName: cell.teacherName || "",
+        room: cell.room || "",
+      });
+    } else {
+      setRoutineFormData({
+        courseCode: "",
+        teacherId: "",
+        teacherName: "",
+        room: `Room ${400 + Number(semester)}`,
+      });
+    }
+  };
+
+  const handleSaveRoutineSlot = async () => {
+    if (!editingRoutineCell) return;
+    setIsSavingRoutine(true);
+    try {
+      const res = await fetch(`${SERVER_URL}/api/routines`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          day: editingRoutineCell.day,
+          semester: editingRoutineCell.semester,
+          timeSlot: editingRoutineCell.timeSlot,
+          courseCode: routineFormData.courseCode,
+          teacherId: routineFormData.teacherId || null,
+          teacherName: routineFormData.teacherName || "",
+          room: routineFormData.room || "",
+        }),
+      });
+
+      if (res.ok) {
+        toast.success(routineFormData.courseCode ? "Routine slot updated!" : "Routine slot cleared!");
+        setEditingRoutineCell(null);
+        const updated = await fetch(`${SERVER_URL}/api/routines`);
+        if (updated.ok) {
+          const data = await updated.json();
+          setRoutines(Array.isArray(data) ? data : (data.routines || []));
+        }
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || "Failed to update routine slot");
+      }
+    } catch (err) {
+      toast.error("Network error saving routine slot");
+    } finally {
+      setIsSavingRoutine(false);
+    }
+  };
+
+  const handleClearRoutineSlot = async () => {
+    if (!editingRoutineCell) return;
+    setIsSavingRoutine(true);
+    try {
+      const res = await fetch(`${SERVER_URL}/api/routines`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          day: editingRoutineCell.day,
+          semester: editingRoutineCell.semester,
+          timeSlot: editingRoutineCell.timeSlot,
+          courseCode: "",
+        }),
+      });
+      if (res.ok) {
+        toast.success("Class removed from schedule!");
+        setEditingRoutineCell(null);
+        const updated = await fetch(`${SERVER_URL}/api/routines`);
+        if (updated.ok) {
+          const data = await updated.json();
+          setRoutines(Array.isArray(data) ? data : (data.routines || []));
+        }
+      } else {
+        toast.error("Failed to clear routine slot");
+      }
+    } catch (err) {
+      toast.error("Error clearing routine slot");
+    } finally {
+      setIsSavingRoutine(false);
+    }
+  };
+
+  const handleSeedSampleRoutine = async () => {
+    if (!confirm("Populate standard academic routine for all 8 semesters? Any existing schedule will be replaced with standard departmental timetables.")) return;
+    setIsSeedingRoutine(true);
+    try {
+      const res = await fetch(`${SERVER_URL}/api/routines/seed-sample`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        toast.success(data.message || "Academic routine successfully generated!");
+        const updated = await fetch(`${SERVER_URL}/api/routines`);
+        if (updated.ok) {
+          const rData = await updated.json();
+          setRoutines(Array.isArray(rData) ? rData : (rData.routines || []));
+        }
+      } else {
+        toast.error("Failed to seed sample routines");
+      }
+    } catch (err) {
+      toast.error("Network error seeding routine");
+    } finally {
+      setIsSeedingRoutine(false);
+    }
+  };
 
   // Update single student status
   const handleUpdateStatus = async (studentId, newStatus) => {
@@ -683,6 +855,476 @@ export default function AdminDashboardPage() {
       </div>
       </div>
 
+      {/* ── Routine Management Studio ───────────────────────── */}
+      <div id="routine" className="p-7 sm:p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pb-2 border-b border-slate-100 dark:border-white/10">
+          <div>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+              <span>Academic Schedule Controller</span>
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              Class Routine & Master Timetable Studio
+            </h2>
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5">
+              Admin control for weekly departmental class routines across Semesters 1 to 8. Click any slot to assign course, teacher, and room.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              onClick={handleSeedSampleRoutine}
+              disabled={isSeedingRoutine}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 cursor-pointer shadow-sm disabled:opacity-60"
+              title="Populate standard routine for Semesters 1 to 8"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSeedingRoutine ? "animate-spin text-indigo-500" : ""}`} />
+              <span>{isSeedingRoutine ? "Generating Schedule..." : "Reset / Populate Standard Routine"}</span>
+            </button>
+            <button
+              onClick={fetchData}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-200/50 dark:shadow-none transition-all cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Sync Live</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Semester Filter Selector */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              Select Semester View:
+            </span>
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+              Total Scheduled Classes: <strong className="text-indigo-600 dark:text-indigo-400">{routines.length}</strong>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-thin">
+            <button
+              onClick={() => setSelectedRoutineSemester("all")}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                selectedRoutineSemester === "all"
+                  ? "bg-indigo-600 text-white shadow-sm shadow-indigo-300 dark:shadow-none"
+                  : "bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+              }`}
+            >
+              <span>All Semesters (Master Stack)</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                selectedRoutineSemester === "all" ? "bg-white/20 text-white" : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400"
+              }`}>
+                {routines.length}
+              </span>
+            </button>
+
+            {ROUTINE_SEMESTERS.map((sem) => {
+              const semSlotsCount = routines.filter((r) => Number(r.semester) === sem.id).length;
+              const isSelected = selectedRoutineSemester === String(sem.id);
+              return (
+                <button
+                  key={sem.id}
+                  onClick={() => setSelectedRoutineSemester(String(sem.id))}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                    isSelected
+                      ? "bg-indigo-600 text-white shadow-sm shadow-indigo-300 dark:shadow-none"
+                      : "bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                  }`}
+                >
+                  <span>{sem.full} ({sem.label})</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                    isSelected ? "bg-white/20 text-white" : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400"
+                  }`}>
+                    {semSlotsCount}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Timetable Schedule Grid */}
+        <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 shadow-xs">
+          <div className="overflow-x-auto scrollbar-thin">
+            <table className="w-full border-collapse text-left">
+              <thead>
+                <tr className="border-b border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-slate-800/50 backdrop-blur-md">
+                  <th className="w-20 border-r border-slate-200 dark:border-white/10 py-4 px-3 text-center text-[10px] font-black tracking-widest text-slate-400 uppercase">
+                    Day
+                  </th>
+                  {selectedRoutineSemester === "all" && (
+                    <th className="w-16 border-r border-slate-200 dark:border-white/10 py-4 px-2 text-center text-[10px] font-black tracking-widest text-slate-400 uppercase">
+                      Sem
+                    </th>
+                  )}
+                  {ROUTINE_TIME_SLOTS.map((slot) => {
+                    const isBreak = slot === "01:00 - 02:00";
+                    return (
+                      <th
+                        key={slot}
+                        className={`${isBreak ? "w-14 px-1" : "min-w-[170px] px-3"} border-r border-slate-200 dark:border-white/10 py-3.5 text-center font-bold whitespace-nowrap last:border-0`}
+                      >
+                        <div className="flex flex-col items-center gap-1">
+                          <Clock className={`w-3.5 h-3.5 ${isBreak ? "text-amber-500/50" : "text-indigo-500"}`} />
+                          <span className={`text-xs font-black tracking-wider uppercase ${isBreak ? "text-amber-600 dark:text-amber-400 text-[10px]" : "text-slate-700 dark:text-slate-200"}`}>
+                            {isBreak ? "Lunch Break" : slot}
+                          </span>
+                        </div>
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                {selectedRoutineSemester === "all" ? (
+                  // All Semesters Mode: Vertical Day column spanning all 8 semesters
+                  ROUTINE_DAYS.map((day, dIdx) => (
+                    <React.Fragment key={day}>
+                      {ROUTINE_SEMESTERS.map((sem, sIdx) => {
+                        const isFirstSemOfDay = sIdx === 0;
+                        return (
+                          <tr
+                            key={`${day}-${sem.id}`}
+                            className={`group transition-colors hover:bg-indigo-50/20 dark:hover:bg-indigo-950/20 ${
+                              isFirstSemOfDay && dIdx !== 0 ? "border-t-4 border-slate-200 dark:border-slate-700" : ""
+                            }`}
+                          >
+                            {isFirstSemOfDay && (
+                              <td
+                                rowSpan={ROUTINE_SEMESTERS.length}
+                                className="w-20 border-r border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-slate-800/30 p-2 text-center align-middle"
+                              >
+                                <div className="flex h-full items-center justify-center">
+                                  <span
+                                    className="text-xs font-black tracking-widest text-slate-800 dark:text-slate-200 uppercase"
+                                    style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+                                  >
+                                    {day}
+                                  </span>
+                                </div>
+                              </td>
+                            )}
+                            <td className="w-16 border-r border-slate-200 dark:border-white/10 bg-slate-50/20 dark:bg-slate-800/10 p-2 text-center align-middle">
+                              <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                                {sem.label}
+                              </span>
+                            </td>
+
+                            {ROUTINE_TIME_SLOTS.map((slot) => {
+                              const isBreak = slot === "01:00 - 02:00";
+                              if (isBreak) {
+                                if (isFirstSemOfDay) {
+                                  return (
+                                    <td
+                                      key={slot}
+                                      rowSpan={ROUTINE_SEMESTERS.length}
+                                      className="w-14 border-r border-slate-200 dark:border-white/10 bg-amber-50/20 dark:bg-amber-950/10 p-1 text-center align-middle"
+                                    >
+                                      <div className="flex h-full flex-col items-center justify-center text-amber-500/40">
+                                        <Coffee className="w-4 h-4 mb-1" />
+                                        <span
+                                          className="text-[9px] font-black tracking-[0.4em] text-amber-600/60 dark:text-amber-400/60 uppercase"
+                                          style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+                                        >
+                                          BREAK
+                                        </span>
+                                      </div>
+                                    </td>
+                                  );
+                                }
+                                return null;
+                              }
+
+                              const cell = getRoutineCell(day, sem.id, slot);
+                              return (
+                                <td
+                                  key={slot}
+                                  onClick={() => handleOpenEditRoutine(day, sem.id, slot)}
+                                  className="border-r border-slate-200 dark:border-white/10 p-2 cursor-pointer transition-all hover:bg-indigo-50/40 dark:hover:bg-indigo-950/30"
+                                >
+                                  {cell && (cell.courseCode || cell.room) ? (
+                                    <div className="relative group/cell p-3 rounded-xl bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 shadow-xs hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-md transition-all flex flex-col justify-between min-h-[92px]">
+                                      <div>
+                                        <div className="flex items-center justify-between gap-1">
+                                          <span className="font-mono font-black text-xs text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded">
+                                            {cell.courseCode}
+                                          </span>
+                                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">
+                                            <MapPin className="w-2.5 h-2.5 text-indigo-500" />
+                                            <span>{cell.room || "Room"}</span>
+                                          </span>
+                                        </div>
+                                        {cell.courseTitle && (
+                                          <p className="text-[11px] font-semibold text-slate-800 dark:text-slate-200 line-clamp-1 mt-1.5">
+                                            {cell.courseTitle}
+                                          </p>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center justify-between pt-1 text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                                        <span className="truncate">{cell.teacherName || "Instructor"}</span>
+                                        <Edit3 className="w-3 h-3 text-indigo-400 opacity-0 group-hover/cell:opacity-100 transition-opacity" />
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="h-full min-h-[92px] rounded-xl border border-dashed border-slate-200 dark:border-slate-700/60 flex flex-col items-center justify-center text-slate-300 dark:text-slate-600 hover:border-indigo-400 dark:hover:border-indigo-500 hover:text-indigo-500 dark:hover:text-indigo-400 transition-all p-2 group/empty">
+                                      <PlusCircle className="w-4 h-4 group-hover/empty:scale-110 transition-transform" />
+                                      <span className="text-[10px] font-bold mt-1 opacity-0 group-hover/empty:opacity-100 transition-opacity">
+                                        Assign
+                                      </span>
+                                    </div>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
+                  ))
+                ) : (
+                  // Single Semester Mode: Row per Day
+                  ROUTINE_DAYS.map((day) => {
+                    const currentSemId = Number(selectedRoutineSemester);
+                    return (
+                      <tr
+                        key={day}
+                        className="group transition-colors hover:bg-indigo-50/20 dark:hover:bg-indigo-950/20"
+                      >
+                        <td className="w-24 border-r border-slate-200 dark:border-white/10 bg-slate-50/60 dark:bg-slate-800/40 p-4 text-center align-middle font-bold text-slate-800 dark:text-slate-200 text-xs uppercase tracking-wider">
+                          {day}
+                        </td>
+
+                        {ROUTINE_TIME_SLOTS.map((slot) => {
+                          const isBreak = slot === "01:00 - 02:00";
+                          if (isBreak) {
+                            return (
+                              <td
+                                key={slot}
+                                className="w-16 border-r border-slate-200 dark:border-white/10 bg-amber-50/30 dark:bg-amber-950/20 p-2 text-center align-middle"
+                              >
+                                <div className="flex flex-col items-center justify-center text-amber-500">
+                                  <Coffee className="w-4 h-4 mb-1 opacity-60" />
+                                  <span className="text-[9px] font-black tracking-widest text-amber-600 dark:text-amber-400 uppercase">
+                                    Break
+                                  </span>
+                                </div>
+                              </td>
+                            );
+                          }
+
+                          const cell = getRoutineCell(day, currentSemId, slot);
+                          return (
+                            <td
+                              key={slot}
+                              onClick={() => handleOpenEditRoutine(day, currentSemId, slot)}
+                              className="border-r border-slate-200 dark:border-white/10 p-2.5 cursor-pointer transition-all hover:bg-indigo-50/40 dark:hover:bg-indigo-950/30"
+                            >
+                              {cell && (cell.courseCode || cell.room) ? (
+                                <div className="relative group/cell p-3.5 rounded-xl bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 shadow-xs hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-md transition-all flex flex-col justify-between min-h-[105px]">
+                                  <div>
+                                    <div className="flex items-center justify-between gap-1">
+                                      <span className="font-mono font-black text-xs text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-0.5 rounded-md">
+                                        {cell.courseCode}
+                                      </span>
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded">
+                                        <MapPin className="w-3 h-3 text-indigo-500" />
+                                        <span>{cell.room || "Room"}</span>
+                                      </span>
+                                    </div>
+                                    {cell.courseTitle && (
+                                      <p className="text-xs font-bold text-slate-800 dark:text-slate-100 line-clamp-1 mt-2">
+                                        {cell.courseTitle}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-700/50 text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                                    <span className="truncate">{cell.teacherName || "Instructor"}</span>
+                                    <Edit3 className="w-3.5 h-3.5 text-indigo-400 opacity-0 group-hover/cell:opacity-100 transition-opacity" />
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="h-full min-h-[105px] rounded-xl border border-dashed border-slate-200 dark:border-slate-700/60 flex flex-col items-center justify-center text-slate-300 dark:text-slate-600 hover:border-indigo-400 dark:hover:border-indigo-500 hover:text-indigo-500 dark:hover:text-indigo-400 transition-all p-3 group/empty">
+                                  <PlusCircle className="w-5 h-5 group-hover/empty:scale-110 transition-transform" />
+                                  <span className="text-[11px] font-bold mt-1.5 opacity-0 group-hover/empty:opacity-100 transition-opacity">
+                                    Assign Class
+                                  </span>
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Edit Class Modal */}
+        {editingRoutineCell && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in">
+            <div className="relative max-w-md w-full p-6 sm:p-7 rounded-[2rem] bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 shadow-2xl space-y-5">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-white/10">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
+                    <Edit3 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
+                      Edit Routine Slot
+                    </h3>
+                    <p className="text-[11px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider">
+                      {editingRoutineCell.day} • {editingRoutineCell.timeSlot} • Semester {editingRoutineCell.semester} ({ROUTINE_SEMESTERS.find(s=>s.id===editingRoutineCell.semester)?.label})
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setEditingRoutineCell(null)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Form Controls */}
+              <div className="space-y-4">
+                {/* Course Selection */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Academic Course
+                  </label>
+                  <select
+                    value={routineFormData.courseCode}
+                    onChange={(e) => {
+                      const code = e.target.value;
+                      const matchedCourse = courses.find((c) => c.code === code);
+                      const matchedTeacher = matchedCourse?.faculty ? teachers.find((t) => t.name === matchedCourse.faculty) : null;
+                      setRoutineFormData({
+                        ...routineFormData,
+                        courseCode: code,
+                        teacherId: matchedTeacher?.teacherId || routineFormData.teacherId || "",
+                        teacherName: matchedCourse?.faculty || routineFormData.teacherName || "",
+                      });
+                    }}
+                    className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  >
+                    <option value="">-- No Class / Vacate Slot --</option>
+                    {(SEMESTER_COURSES[editingRoutineCell.semester] || []).map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {c.code}: {c.title} ({c.credits} Cr)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Teacher Selection */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Assigned Faculty / Instructor
+                  </label>
+                  <select
+                    value={routineFormData.teacherName}
+                    onChange={(e) => {
+                      const selectedName = e.target.value;
+                      const selectedTeacher = teachers.find((t) => t.name === selectedName);
+                      setRoutineFormData({
+                        ...routineFormData,
+                        teacherName: selectedName,
+                        teacherId: selectedTeacher?.teacherId || selectedTeacher?._id || "",
+                      });
+                    }}
+                    className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  >
+                    <option value="">Select Department Instructor</option>
+                    {teachers.map((t) => (
+                      <option key={t._id || t.email} value={t.name}>
+                        {t.name} ({t.designation || "Faculty"})
+                      </option>
+                    ))}
+                    <option value="Faculty Department Instructor">Department Faculty Pool</option>
+                  </select>
+                </div>
+
+                {/* Room Location */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Classroom / Lab Location
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Room 401 or Software Lab 1"
+                    value={routineFormData.room}
+                    onChange={(e) => setRoutineFormData({ ...routineFormData, room: e.target.value })}
+                    className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  />
+                  {/* Quick Preset Badges */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    {Array.from(new Set([
+                      `Room ${400 + Number(editingRoutineCell.semester)}`,
+                      "Room 401",
+                      "Room 402",
+                      "Room 403",
+                      "Software Lab 1",
+                      "Hardware Lab"
+                    ])).map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setRoutineFormData({ ...routineFormData, room: preset })}
+                        className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer"
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-white/10">
+                {getRoutineCell(editingRoutineCell.day, editingRoutineCell.semester, editingRoutineCell.timeSlot) ? (
+                  <button
+                    type="button"
+                    onClick={handleClearRoutineSlot}
+                    disabled={isSavingRoutine}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Clear Slot</span>
+                  </button>
+                ) : (
+                  <div />
+                )}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingRoutineCell(null)}
+                    disabled={isSavingRoutine}
+                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveRoutineSlot}
+                    disabled={isSavingRoutine}
+                    className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-200/50 dark:shadow-none transition-all cursor-pointer disabled:opacity-60"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>{isSavingRoutine ? "Saving..." : "Save Routine Slot"}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Curriculum & Courses Section */}
       <div id="courses" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
@@ -872,7 +1514,7 @@ export default function AdminDashboardPage() {
             <div className="space-y-1">
               <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">No courses match the selected criteria</h4>
               <p className="text-xs text-slate-400 dark:text-slate-500">
-                Try selecting "All Semesters", clearing your search query, or synchronizing the standard syllabus.
+                Try selecting &quot;All Semesters&quot;, clearing your search query, or synchronizing the standard syllabus.
               </p>
             </div>
             <div className="pt-2 flex justify-center gap-3">
