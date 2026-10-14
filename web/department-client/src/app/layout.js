@@ -22,7 +22,7 @@ export default function RootLayout({ children }) {
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${outfit.variable} ${geistMono.variable} h-full antialiased font-sans scroll-smooth`}
+      className={`${outfit.variable} ${geistMono.variable} h-full antialiased font-sans`}
     >
       <head>
         <script
