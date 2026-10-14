@@ -9,7 +9,21 @@ import Link from "next/link";
 export default function DashboardLayout({ children }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const { data: sessionData, isPending } = authClient.useSession();
+  const [dbUser, setDbUser] = useState(null);
   const user = sessionData?.user;
+
+  React.useEffect(() => {
+    if (user?.email && !user?.role) {
+      fetch(`${process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000"}/api/users/${user.email}`)
+        .then((res) => res.ok ? res.json() : null)
+        .then((data) => {
+          if (data?.user) setDbUser(data.user);
+        })
+        .catch(() => {});
+    }
+  }, [user?.email, user?.role]);
+
+  const activeUser = dbUser ? { ...user, ...dbUser } : user;
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#030712] text-slate-900 dark:text-slate-100 font-sans selection:bg-indigo-100 dark:selection:bg-indigo-900/40 selection:text-indigo-900 dark:selection:text-indigo-200 relative flex flex-col lg:flex-row transition-colors duration-300">
@@ -46,7 +60,7 @@ export default function DashboardLayout({ children }) {
       <DashboardSidebar 
         isOpen={isSidebarOpen} 
         setIsOpen={setIsSidebarOpen} 
-        user={user} 
+        user={activeUser} 
       />
 
       {/* Main Content Area */}

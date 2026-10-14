@@ -474,7 +474,8 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* Main Section: Student Approvals & Directory */}
-      <div id="pending" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors">
+      <div id="students" className="scroll-mt-6">
+        <div id="pending" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-bold text-slate-900 dark:text-white">Student Admissions & Verification Hub</h2>
@@ -667,9 +668,10 @@ export default function AdminDashboardPage() {
           )}
         </div>
       </div>
+      </div>
 
       {/* Curriculum & Courses Section */}
-      <div id="courses" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors">
+      <div id="courses" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5">
@@ -919,7 +921,7 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* Notice Board Dispatcher Section */}
-      <div id="notices" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors">
+      <div id="notices" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -1051,7 +1053,7 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* Faculty and Staff Sections */}
-      <div id="directory" className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div id="directory" className="grid grid-cols-1 lg:grid-cols-2 gap-8 scroll-mt-6">
         {/* Faculty Roster */}
         <div id="teachers" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-4 transition-colors">
           <div className="flex items-center justify-between">

@@ -16,7 +16,7 @@ export default function DashboardRedirect() {
       } else {
         const role = sessionData.user.role;
         const email = (sessionData.user.email || "").toLowerCase().trim();
-        if (role === "admin" || email === "admin@cse.edu") {
+        if (role === "admin" || email === "admin@cse.edu" || email.includes("admin")) {
           router.push("/dashboard/admin");
         } else if (role === "teacher" || email.endsWith("@teacher.cse.edu") || (email.endsWith("@cse.edu") && !email.includes("student") && !email.includes("staff") && !email.includes("admin"))) {
           router.push("/dashboard/teacher");

@@ -115,7 +115,7 @@ export default function StudentDashboardPage() {
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       {/* Student Profile Hero Card */}
-      <div className="p-8 rounded-[2rem] bg-gradient-to-r from-indigo-900 via-purple-900 to-slate-900 text-white shadow-xl relative overflow-hidden">
+      <div id="profile" className="p-8 rounded-[2rem] bg-gradient-to-r from-indigo-900 via-purple-900 to-slate-900 text-white shadow-xl relative overflow-hidden scroll-mt-6">
         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="flex items-center gap-5">
             <div className="h-20 w-20 rounded-3xl bg-white/10 backdrop-blur-md flex items-center justify-center text-indigo-300 font-extrabold text-2xl border border-white/20 shadow-inner">
@@ -243,7 +243,7 @@ export default function StudentDashboardPage() {
           </div>
         </div>
 
-        <div className="p-6 rounded-2xl bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm flex flex-col justify-between space-y-4 transition-colors">
+        <div id="checkin" className="p-6 rounded-2xl bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm flex flex-col justify-between space-y-4 transition-colors scroll-mt-6">
           <div>
             <span className="text-xs font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider">Live Geofence Check-in</span>
             <h4 className="text-sm font-bold text-slate-900 dark:text-white mt-1">Mark Classroom Presence</h4>
@@ -263,7 +263,7 @@ export default function StudentDashboardPage() {
       </div>
 
       {/* Routine & Semester Courses (Semesters 1 to 8) */}
-      <div id="routine" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors">
+      <div id="routine" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5">

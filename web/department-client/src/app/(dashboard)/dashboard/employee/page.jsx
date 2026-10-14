@@ -98,16 +98,14 @@ export default function EmployeeDashboardPage() {
   }, [user?.email]);
 
   const handleToggleTaskStatus = (taskId) => {
+    const targetTask = tasks.find((t) => t.id === taskId);
+    if (!targetTask) return;
+    const nextStatus = targetTask.status === "Pending" ? "In Progress" : targetTask.status === "In Progress" ? "Resolved" : "Pending";
+
     setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id === taskId) {
-          const nextStatus = t.status === "Pending" ? "In Progress" : t.status === "In Progress" ? "Resolved" : "Pending";
-          toast.success(`Task ${t.id} status updated to: ${nextStatus}`);
-          return { ...t, status: nextStatus };
-        }
-        return t;
-      })
+      prev.map((t) => (t.id === taskId ? { ...t, status: nextStatus } : t))
     );
+    toast.success(`Task ${taskId} status updated to: ${nextStatus}`);
   };
 
   const handleLogShift = () => {
@@ -215,7 +213,7 @@ export default function EmployeeDashboardPage() {
       </div>
 
       {/* Quick Action & Shift Status Bar */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div id="shift" className="grid grid-cols-1 md:grid-cols-4 gap-4 scroll-mt-6">
         <div className="p-5 rounded-2xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm flex items-center justify-between transition-colors">
           <div className="space-y-1">
             <span className="text-xs font-semibold text-slate-400 dark:text-slate-400 uppercase tracking-wider">Today's Shift</span>
@@ -278,7 +276,7 @@ export default function EmployeeDashboardPage() {
       </div>
 
       {/* Lab Facilities & Workstation Live Status */}
-      <div className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors">
+      <div id="inventory" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">

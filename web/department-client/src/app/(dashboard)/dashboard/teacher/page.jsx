@@ -95,7 +95,7 @@ export default function TeacherDashboardPage() {
       </div>
 
       {/* Routine & Today's Classes */}
-      <div id="routine" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors">
+      <div id="routine" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-slate-900 dark:text-white">Today's Class Schedule</h2>
@@ -147,7 +147,7 @@ export default function TeacherDashboardPage() {
       </div>
 
       {/* Materials & Assignment Center */}
-      <div id="materials" className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div id="materials" className="grid grid-cols-1 lg:grid-cols-2 gap-8 scroll-mt-6">
         <div className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-4 transition-colors">
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2">
@@ -178,7 +178,7 @@ export default function TeacherDashboardPage() {
           </div>
         </div>
 
-        <div id="attendance" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-4 transition-colors">
+        <div id="attendance" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-4 transition-colors scroll-mt-6">
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2">
               <UserCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />

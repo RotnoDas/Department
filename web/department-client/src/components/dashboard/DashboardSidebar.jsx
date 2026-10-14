@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
@@ -23,57 +23,108 @@ import {
   ShieldCheck, 
   Bell, 
   Layers,
+  Wrench,
+  CheckCircle2,
+  Compass,
   X
 } from "lucide-react";
 
 export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
   const pathname = usePathname();
   const router = useRouter();
-  const role = user?.role || "student";
+  const [currentHash, setCurrentHash] = useState("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setCurrentHash(window.location.hash);
+      const handleHashChange = () => setCurrentHash(window.location.hash);
+      window.addEventListener("hashchange", handleHashChange);
+      return () => window.removeEventListener("hashchange", handleHashChange);
+    }
+  }, []);
+
+  // Resilient role determination:
+  // 1. Current route pathname (if on /dashboard/admin, ALWAYS render admin navigation)
+  // 2. User session role
+  // 3. User email patterns
+  const resolveRole = () => {
+    if (pathname?.startsWith("/dashboard/admin")) return "admin";
+    if (pathname?.startsWith("/dashboard/teacher")) return "teacher";
+    if (pathname?.startsWith("/dashboard/employee")) return "employee";
+    if (pathname?.startsWith("/dashboard/student")) return "student";
+
+    if (user?.role) return user.role;
+
+    const email = (user?.email || "").toLowerCase().trim();
+    if (email === "admin@cse.edu" || email.includes("admin")) return "admin";
+    if (email.endsWith("@teacher.cse.edu") || (email.endsWith("@cse.edu") && !email.includes("student") && !email.includes("staff") && !email.includes("employee"))) return "teacher";
+    if (email.endsWith("@employee.cse.edu") || email.endsWith("@staff.cse.edu")) return "employee";
+    if (email.endsWith("@student.cse.edu")) return "student";
+
+    return "student";
+  };
+
+  const role = resolveRole();
 
   const handleLogout = async () => {
     await authClient.signOut();
     router.push("/login");
   };
 
-  // Define navigation items based on role
+  // Define tailored navigation items strictly scoped to the active role
   const getNavItems = () => {
     switch (role) {
       case "admin":
         return [
           { name: "Overview", href: "/dashboard/admin", icon: LayoutDashboard },
-          { name: "Pending Approvals", href: "/dashboard/admin#pending", icon: UserCheck },
-          { name: "Curriculum & Courses", href: "/dashboard/admin#courses", icon: BookOpen },
-          { name: "Notice Dispatcher", href: "/dashboard/admin#notices", icon: Bell },
+          { name: "Student Approvals", href: "/dashboard/admin#pending", icon: UserCheck },
           { name: "Student Directory", href: "/dashboard/admin#students", icon: GraduationCap },
+          { name: "Curriculum Matrix (1-8)", href: "/dashboard/admin#courses", icon: BookOpen },
+          { name: "Notice Dispatcher", href: "/dashboard/admin#notices", icon: Bell },
           { name: "Faculty & Staff", href: "/dashboard/admin#directory", icon: Users },
         ];
       case "teacher":
         return [
           { name: "Faculty Hub", href: "/dashboard/teacher", icon: LayoutDashboard },
-          { name: "My Schedule", href: "/dashboard/teacher#routine", icon: Clock },
-          { name: "Attendance Sessions", href: "/dashboard/teacher#attendance", icon: UserCheck },
+          { name: "Today's Routine", href: "/dashboard/teacher#routine", icon: Clock },
           { name: "Course Materials", href: "/dashboard/teacher#materials", icon: BookOpen },
+          { name: "Attendance Sessions", href: "/dashboard/teacher#attendance", icon: UserCheck },
         ];
       case "employee":
         return [
           { name: "Staff Desk", href: "/dashboard/employee", icon: LayoutDashboard },
-          { name: "My Profile", href: "/dashboard/employee#profile", icon: Briefcase },
-          { name: "Section Tasks", href: "/dashboard/employee#tasks", icon: Layers },
-          { name: "Notices & Logs", href: "/dashboard/employee#notices", icon: Bell },
+          { name: "Shift Check-in", href: "/dashboard/employee#shift", icon: Clock },
+          { name: "Lab Infrastructure", href: "/dashboard/employee#inventory", icon: Layers },
+          { name: "Maintenance Tasks", href: "/dashboard/employee#tasks", icon: Wrench },
         ];
       case "student":
       default:
         return [
           { name: "Student Portal", href: "/dashboard/student", icon: LayoutDashboard },
+          { name: "Semester Curriculum", href: "/dashboard/student#routine", icon: BookOpen },
+          { name: "Geofence Check-in", href: "/dashboard/student#checkin", icon: UserCheck },
           { name: "Academic Profile", href: "/dashboard/student#profile", icon: GraduationCap },
-          { name: "Attendance & Roll", href: "/dashboard/student#attendance", icon: UserCheck },
-          { name: "Class Routine", href: "/dashboard/student#routine", icon: Clock },
         ];
     }
   };
 
   const navItems = getNavItems();
+
+  const handleNavClick = (e, item) => {
+    setIsOpen(false);
+    if (item.href.includes("#")) {
+      const [itemPath, hash] = item.href.split("#");
+      if (pathname === itemPath) {
+        e.preventDefault();
+        const targetEl = document.getElementById(hash);
+        if (targetEl) {
+          targetEl.scrollIntoView({ behavior: "smooth", block: "start" });
+          window.history.pushState(null, "", item.href);
+          setCurrentHash(`#${hash}`);
+        }
+      }
+    }
+  };
 
   const getRoleBadge = () => {
     switch (role) {
@@ -90,6 +141,20 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
   };
 
   const badge = getRoleBadge();
+
+  const displayName = user?.name || (
+    role === "admin" ? "System Administrator" :
+    role === "teacher" ? "Faculty Member" :
+    role === "employee" ? "Staff Officer" :
+    "Student"
+  );
+
+  const displayEmail = user?.email || (
+    role === "admin" ? "admin@cse.edu" :
+    role === "teacher" ? "faculty@cse.edu" :
+    role === "employee" ? "staff@cse.edu" :
+    "student@student.cse.edu"
+  );
 
   return (
     <>
@@ -135,15 +200,15 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
           {/* User Card */}
           <div className="mt-6 p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/80 border border-slate-100/80 dark:border-slate-700/80 shadow-xs">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-500 to-sky-400 text-white font-bold text-sm shadow-sm">
-                {user?.name ? user.name.charAt(0).toUpperCase() : "U"}
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 text-white font-bold text-sm shadow-sm">
+                {displayName.charAt(0).toUpperCase()}
               </div>
               <div className="flex flex-col overflow-hidden">
                 <span className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                  {user?.name || "User"}
+                  {displayName}
                 </span>
                 <span className="text-[11px] font-medium text-slate-400 dark:text-slate-400 truncate">
-                  {user?.email}
+                  {displayEmail}
                 </span>
               </div>
             </div>
@@ -152,41 +217,52 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
                 {badge.label}
               </span>
               <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                user?.status === "approved" 
+                role === "admin" || role === "teacher" || role === "employee" || user?.status === "approved"
                   ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400" 
                   : "bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400"
               }`}>
-                {user?.status === "approved" ? "Verified" : "Pending"}
+                {role === "admin" || role === "teacher" || role === "employee" || user?.status === "approved" ? "Active" : "Pending"}
               </span>
             </div>
           </div>
         </div>
 
         {/* Navigation Items */}
-        <div className="flex-1 overflow-y-auto px-4 py-6 space-y-1.5">
-          <div className="px-3 pb-2 text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase">
-            Navigation
+        <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+          <div>
+            <div className="px-3 pb-2 text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase">
+              {role.toUpperCase()} NAVIGATION
+            </div>
+            <div className="space-y-1">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const hasHash = item.href.includes("#");
+                const itemPath = hasHash ? item.href.split("#")[0] : item.href;
+                const itemHash = hasHash ? `#${item.href.split("#")[1]}` : "";
+                
+                const isActive = hasHash 
+                  ? pathname === itemPath && currentHash === itemHash
+                  : pathname === item.href && (!currentHash || currentHash === "#");
+
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    onClick={(e) => handleNavClick(e, item)}
+                    className={`
+                      flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer
+                      ${isActive 
+                        ? "bg-indigo-600 text-white shadow-md shadow-indigo-200/60 dark:shadow-indigo-900/40" 
+                        : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"}
+                    `}
+                  >
+                    <Icon className={`w-4 h-4 ${isActive ? "text-white" : "text-slate-400 dark:text-slate-400"}`} />
+                    <span>{item.name}</span>
+                  </Link>
+                );
+              })}
+            </div>
           </div>
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = pathname === item.href || (item.href.includes("#") && pathname.startsWith(item.href.split("#")[0]));
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                onClick={() => setIsOpen(false)}
-                className={`
-                  flex items-center gap-3 px-3.5 py-3 rounded-xl font-semibold text-sm transition-all duration-200
-                  ${isActive 
-                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-200/60 dark:shadow-indigo-900/40" 
-                    : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"}
-                `}
-              >
-                <Icon className={`w-5 h-5 ${isActive ? "text-white" : "text-slate-400 dark:text-slate-400"}`} />
-                <span>{item.name}</span>
-              </Link>
-            );
-          })}
         </div>
 
         {/* Bottom Actions */}
@@ -199,14 +275,14 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
 
           <Link
             href="/"
-            className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl font-medium text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-white transition-colors"
+            className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl font-medium text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-white transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>Back to Main Site</span>
           </Link>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-2.5 w-full px-3.5 py-2.5 rounded-xl font-medium text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+            className="flex items-center gap-2.5 w-full px-3.5 py-2 rounded-xl font-medium text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
           >
             <LogOut className="w-4 h-4" />
             <span>Sign Out</span>
