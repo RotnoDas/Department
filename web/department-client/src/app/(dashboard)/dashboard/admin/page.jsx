@@ -35,11 +35,15 @@ import {
   Save,
   Coffee,
   X,
-  User
+  User,
+  Lock,
+  ShieldAlert,
+  Check
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { SEMESTER_COURSES, SEMESTER_LABELS, SEMESTER_KEYS } from "@/data/courses";
 import Loading from "@/components/common/Loading";
+import { AdminAnalyticsCharts } from "@/components/dashboard/DashboardCharts";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
@@ -172,14 +176,79 @@ export default function AdminDashboardPage() {
     fetchData();
   }, []);
 
-  // ── Routine Management Handlers ─────────────────────────
+  // ── Routine Management Handlers & Conflict Detection ────
+  const isTimeSlotMatch = (slot1, slot2) => {
+    if (!slot1 || !slot2) return false;
+    const s1 = String(slot1).trim().replace(/^0/, "");
+    const s2 = String(slot2).trim().replace(/^0/, "");
+    return s1 === s2;
+  };
+
   const getRoutineCell = (day, semester, timeSlot) => {
     const semNum = Number(semester);
     return routines.find((r) => {
-      const isSlot = r.timeSlot === timeSlot || 
-        r.timeSlot?.replace(/^0/, "") === timeSlot?.replace(/^0/, "");
-      return r.day === day && Number(r.semester) === semNum && isSlot;
+      return r.day === day && Number(r.semester) === semNum && isTimeSlotMatch(r.timeSlot, timeSlot);
     });
+  };
+
+  // Find if a classroom/lab is booked by another semester at this day & time slot
+  const getSlotRoomConflict = (day, timeSlot, semester, roomName) => {
+    if (!roomName || !String(roomName).trim()) return null;
+    const normalizedRoom = String(roomName).trim().toLowerCase();
+    const semNum = Number(semester);
+    return routines.find((r) => {
+      if (Number(r.semester) === semNum) return false;
+      if (r.day !== day) return false;
+      if (!isTimeSlotMatch(r.timeSlot, timeSlot)) return false;
+      if (!r.room) return false;
+      return r.room.trim().toLowerCase() === normalizedRoom && Boolean(r.courseCode);
+    });
+  };
+
+  // Find if an instructor is busy teaching another class at this day & time slot
+  const getSlotTeacherConflict = (day, timeSlot, semester, teacherName) => {
+    if (!teacherName || !String(teacherName).trim()) return null;
+    const normalizedTeacher = String(teacherName).trim().toLowerCase();
+    if (normalizedTeacher.includes("pool") || normalizedTeacher.includes("faculty")) return null;
+    const semNum = Number(semester);
+    return routines.find((r) => {
+      if (Number(r.semester) === semNum) return false;
+      if (r.day !== day) return false;
+      if (!isTimeSlotMatch(r.timeSlot, timeSlot)) return false;
+      if (!r.teacherName) return false;
+      return r.teacherName.trim().toLowerCase() === normalizedTeacher && Boolean(r.courseCode);
+    });
+  };
+
+  // List all occupied rooms at a specific day and time slot
+  const getOccupiedRoomsAtSlot = (day, timeSlot, semester) => {
+    const semNum = Number(semester);
+    return routines.filter((r) => {
+      if (Number(r.semester) === semNum) return false;
+      if (r.day !== day) return false;
+      if (!isTimeSlotMatch(r.timeSlot, timeSlot)) return false;
+      return r.room && Boolean(r.courseCode);
+    }).map(r => ({
+      room: r.room,
+      semester: r.semester,
+      courseCode: r.courseCode,
+      courseTitle: r.courseTitle
+    }));
+  };
+
+  // List all busy instructors at a specific day and time slot
+  const getBusyTeachersAtSlot = (day, timeSlot, semester) => {
+    const semNum = Number(semester);
+    return routines.filter((r) => {
+      if (Number(r.semester) === semNum) return false;
+      if (r.day !== day) return false;
+      if (!isTimeSlotMatch(r.timeSlot, timeSlot)) return false;
+      return r.teacherName && !r.teacherName.toLowerCase().includes("pool") && Boolean(r.courseCode);
+    }).map(r => ({
+      teacherName: r.teacherName,
+      semester: r.semester,
+      courseCode: r.courseCode
+    }));
   };
 
   const handleOpenEditRoutine = (day, semester, timeSlot) => {
@@ -204,6 +273,35 @@ export default function AdminDashboardPage() {
 
   const handleSaveRoutineSlot = async () => {
     if (!editingRoutineCell) return;
+
+    // Check client-side Room conflict
+    if (routineFormData.room && routineFormData.courseCode) {
+      const roomConflict = getSlotRoomConflict(
+        editingRoutineCell.day,
+        editingRoutineCell.timeSlot,
+        editingRoutineCell.semester,
+        routineFormData.room
+      );
+      if (roomConflict) {
+        toast.error(`Room Conflict: ${routineFormData.room} is already booked on ${editingRoutineCell.day} at ${editingRoutineCell.timeSlot} by Semester ${roomConflict.semester}! Please choose another room.`, { duration: 6000 });
+        return;
+      }
+    }
+
+    // Check client-side Teacher conflict
+    if (routineFormData.teacherName && routineFormData.courseCode) {
+      const teacherConflict = getSlotTeacherConflict(
+        editingRoutineCell.day,
+        editingRoutineCell.timeSlot,
+        editingRoutineCell.semester,
+        routineFormData.teacherName
+      );
+      if (teacherConflict) {
+        toast.error(`Instructor Conflict: ${routineFormData.teacherName} is already scheduled with Semester ${teacherConflict.semester} on ${editingRoutineCell.day} at ${editingRoutineCell.timeSlot}!`, { duration: 6000 });
+        return;
+      }
+    }
+
     setIsSavingRoutine(true);
     try {
       const res = await fetch(`${SERVER_URL}/api/routines`, {
@@ -221,7 +319,7 @@ export default function AdminDashboardPage() {
       });
 
       if (res.ok) {
-        toast.success(routineFormData.courseCode ? "Routine slot updated!" : "Routine slot cleared!");
+        toast.success(routineFormData.courseCode ? "Routine slot updated successfully!" : "Routine slot cleared!");
         setEditingRoutineCell(null);
         const updated = await fetch(`${SERVER_URL}/api/routines`);
         if (updated.ok) {
@@ -230,7 +328,7 @@ export default function AdminDashboardPage() {
         }
       } else {
         const err = await res.json().catch(() => ({}));
-        toast.error(err.error || "Failed to update routine slot");
+        toast.error(err.error || "Failed to update routine slot", { duration: 6000 });
       }
     } catch (err) {
       toast.error("Network error saving routine slot");
@@ -658,6 +756,17 @@ export default function AdminDashboardPage() {
         </div>
       </div>
 
+      {/* Institutional Analytics & Resource Studio */}
+      <div id="analytics" className="scroll-mt-6">
+        <AdminAnalyticsCharts 
+          stats={stats} 
+          students={students} 
+          routines={routines} 
+          courses={courses} 
+          teachers={teachers} 
+        />
+      </div>
+
       {/* Main Section: Student Approvals & Directory */}
       <div id="students" className="scroll-mt-6">
         <div id="pending" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
@@ -898,9 +1007,36 @@ export default function AdminDashboardPage() {
             <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               Select Semester View:
             </span>
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-              Total Scheduled Classes: <strong className="text-indigo-600 dark:text-indigo-400">{routines.length}</strong>
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                Total Classes: <strong className="text-indigo-600 dark:text-indigo-400">{routines.length}</strong>
+              </span>
+              {(() => {
+                const roomMap = {};
+                let conflictCount = 0;
+                for (const r of routines) {
+                  if (!r.room || !r.courseCode) continue;
+                  const key = `${r.day}__${r.timeSlot?.trim().replace(/^0/, "")}__${r.room?.trim()}`.toLowerCase();
+                  if (roomMap[key]) conflictCount++;
+                  else roomMap[key] = true;
+                }
+                if (conflictCount === 0) {
+                  return (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+                      <Check className="w-3 h-3 text-emerald-500" />
+                      <span>Zero Room Conflicts (All Rooms Clear)</span>
+                    </span>
+                  );
+                } else {
+                  return (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-[11px] font-bold text-rose-700 dark:text-rose-400 animate-pulse">
+                      <AlertCircle className="w-3 h-3 text-rose-500" />
+                      <span>{conflictCount} Room Conflict{conflictCount > 1 ? "s" : ""} Detected</span>
+                    </span>
+                  );
+                }
+              })()}
+            </div>
           </div>
 
           <div className="flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-thin">
@@ -1044,30 +1180,47 @@ export default function AdminDashboardPage() {
                                   onClick={() => handleOpenEditRoutine(day, sem.id, slot)}
                                   className="border-r border-slate-200 dark:border-white/10 p-2 cursor-pointer transition-all hover:bg-indigo-50/40 dark:hover:bg-indigo-950/30"
                                 >
-                                  {cell && (cell.courseCode || cell.room) ? (
-                                    <div className="relative group/cell p-3 rounded-xl bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 shadow-xs hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-md transition-all flex flex-col justify-between min-h-[92px]">
-                                      <div>
-                                        <div className="flex items-center justify-between gap-1">
-                                          <span className="font-mono font-black text-xs text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded">
-                                            {cell.courseCode}
-                                          </span>
-                                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">
-                                            <MapPin className="w-2.5 h-2.5 text-indigo-500" />
-                                            <span>{cell.room || "Room"}</span>
-                                          </span>
+                                  {cell && (cell.courseCode || cell.room) ? (() => {
+                                    const cellRoomConflict = cell.room && cell.courseCode ? getSlotRoomConflict(day, slot, sem.id, cell.room) : null;
+                                    return (
+                                      <div className={`relative group/cell p-3 rounded-xl bg-white dark:bg-slate-800/90 border shadow-xs hover:shadow-md transition-all flex flex-col justify-between min-h-[92px] ${
+                                        cellRoomConflict
+                                          ? "border-rose-400 dark:border-rose-600 bg-rose-50/20"
+                                          : "border-slate-200/80 dark:border-slate-700/80 hover:border-indigo-400 dark:hover:border-indigo-500"
+                                      }`}>
+                                        <div>
+                                          <div className="flex items-center justify-between gap-1">
+                                            <span className="font-mono font-black text-xs text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded">
+                                              {cell.courseCode}
+                                            </span>
+                                            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                              cellRoomConflict
+                                                ? "bg-rose-100 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300 border border-rose-300 dark:border-rose-800"
+                                                : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
+                                            }`}>
+                                              <MapPin className={`w-2.5 h-2.5 ${cellRoomConflict ? "text-rose-500" : "text-indigo-500"}`} />
+                                              <span>{cell.room || "Room"}</span>
+                                            </span>
+                                          </div>
+                                          {cell.courseTitle && (
+                                            <p className="text-[11px] font-semibold text-slate-800 dark:text-slate-200 line-clamp-1 mt-1.5">
+                                              {cell.courseTitle}
+                                            </p>
+                                          )}
+                                          {cellRoomConflict && (
+                                            <div className="mt-1 flex items-center gap-1 text-[9px] font-bold text-rose-600 dark:text-rose-400">
+                                              <AlertCircle className="w-2.5 h-2.5 text-rose-500 flex-shrink-0" />
+                                              <span className="truncate">Conflict: Sem {cellRoomConflict.semester}</span>
+                                            </div>
+                                          )}
                                         </div>
-                                        {cell.courseTitle && (
-                                          <p className="text-[11px] font-semibold text-slate-800 dark:text-slate-200 line-clamp-1 mt-1.5">
-                                            {cell.courseTitle}
-                                          </p>
-                                        )}
+                                        <div className="flex items-center justify-between pt-1 text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                                          <span className="truncate">{cell.teacherName || "Instructor"}</span>
+                                          <Edit3 className="w-3 h-3 text-indigo-400 opacity-0 group-hover/cell:opacity-100 transition-opacity" />
+                                        </div>
                                       </div>
-                                      <div className="flex items-center justify-between pt-1 text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                                        <span className="truncate">{cell.teacherName || "Instructor"}</span>
-                                        <Edit3 className="w-3 h-3 text-indigo-400 opacity-0 group-hover/cell:opacity-100 transition-opacity" />
-                                      </div>
-                                    </div>
-                                  ) : (
+                                    );
+                                  })() : (
                                     <div className="h-full min-h-[92px] rounded-xl border border-dashed border-slate-200 dark:border-slate-700/60 flex flex-col items-center justify-center text-slate-300 dark:text-slate-600 hover:border-indigo-400 dark:hover:border-indigo-500 hover:text-indigo-500 dark:hover:text-indigo-400 transition-all p-2 group/empty">
                                       <PlusCircle className="w-4 h-4 group-hover/empty:scale-110 transition-transform" />
                                       <span className="text-[10px] font-bold mt-1 opacity-0 group-hover/empty:opacity-100 transition-opacity">
@@ -1121,30 +1274,47 @@ export default function AdminDashboardPage() {
                               onClick={() => handleOpenEditRoutine(day, currentSemId, slot)}
                               className="border-r border-slate-200 dark:border-white/10 p-2.5 cursor-pointer transition-all hover:bg-indigo-50/40 dark:hover:bg-indigo-950/30"
                             >
-                              {cell && (cell.courseCode || cell.room) ? (
-                                <div className="relative group/cell p-3.5 rounded-xl bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 shadow-xs hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-md transition-all flex flex-col justify-between min-h-[105px]">
-                                  <div>
-                                    <div className="flex items-center justify-between gap-1">
-                                      <span className="font-mono font-black text-xs text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-0.5 rounded-md">
-                                        {cell.courseCode}
-                                      </span>
-                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded">
-                                        <MapPin className="w-3 h-3 text-indigo-500" />
-                                        <span>{cell.room || "Room"}</span>
-                                      </span>
+                              {cell && (cell.courseCode || cell.room) ? (() => {
+                                const cellRoomConflict = cell.room && cell.courseCode ? getSlotRoomConflict(day, slot, currentSemId, cell.room) : null;
+                                return (
+                                  <div className={`relative group/cell p-3.5 rounded-xl bg-white dark:bg-slate-800/90 border shadow-xs hover:shadow-md transition-all flex flex-col justify-between min-h-[105px] ${
+                                    cellRoomConflict
+                                      ? "border-rose-400 dark:border-rose-600 bg-rose-50/20"
+                                      : "border-slate-200/80 dark:border-slate-700/80 hover:border-indigo-400 dark:hover:border-indigo-500"
+                                  }`}>
+                                    <div>
+                                      <div className="flex items-center justify-between gap-1">
+                                        <span className="font-mono font-black text-xs text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-0.5 rounded-md">
+                                          {cell.courseCode}
+                                        </span>
+                                        <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded ${
+                                          cellRoomConflict
+                                            ? "bg-rose-100 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300 border border-rose-300 dark:border-rose-800"
+                                            : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
+                                        }`}>
+                                          <MapPin className={`w-3 h-3 ${cellRoomConflict ? "text-rose-500" : "text-indigo-500"}`} />
+                                          <span>{cell.room || "Room"}</span>
+                                        </span>
+                                      </div>
+                                      {cell.courseTitle && (
+                                        <p className="text-xs font-bold text-slate-800 dark:text-slate-100 line-clamp-1 mt-2">
+                                          {cell.courseTitle}
+                                        </p>
+                                      )}
+                                      {cellRoomConflict && (
+                                        <div className="mt-1.5 flex items-center gap-1 text-[10px] font-bold text-rose-600 dark:text-rose-400">
+                                          <AlertCircle className="w-3 h-3 text-rose-500 flex-shrink-0" />
+                                          <span className="truncate">Conflict: Room with Sem {cellRoomConflict.semester}</span>
+                                        </div>
+                                      )}
                                     </div>
-                                    {cell.courseTitle && (
-                                      <p className="text-xs font-bold text-slate-800 dark:text-slate-100 line-clamp-1 mt-2">
-                                        {cell.courseTitle}
-                                      </p>
-                                    )}
+                                    <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-700/50 text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                                      <span className="truncate">{cell.teacherName || "Instructor"}</span>
+                                      <Edit3 className="w-3.5 h-3.5 text-indigo-400 opacity-0 group-hover/cell:opacity-100 transition-opacity" />
+                                    </div>
                                   </div>
-                                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-700/50 text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                                    <span className="truncate">{cell.teacherName || "Instructor"}</span>
-                                    <Edit3 className="w-3.5 h-3.5 text-indigo-400 opacity-0 group-hover/cell:opacity-100 transition-opacity" />
-                                  </div>
-                                </div>
-                              ) : (
+                                );
+                              })() : (
                                 <div className="h-full min-h-[105px] rounded-xl border border-dashed border-slate-200 dark:border-slate-700/60 flex flex-col items-center justify-center text-slate-300 dark:text-slate-600 hover:border-indigo-400 dark:hover:border-indigo-500 hover:text-indigo-500 dark:hover:text-indigo-400 transition-all p-3 group/empty">
                                   <PlusCircle className="w-5 h-5 group-hover/empty:scale-110 transition-transform" />
                                   <span className="text-[11px] font-bold mt-1.5 opacity-0 group-hover/empty:opacity-100 transition-opacity">
@@ -1165,164 +1335,298 @@ export default function AdminDashboardPage() {
         </div>
 
         {/* Edit Class Modal */}
-        {editingRoutineCell && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in">
-            <div className="relative max-w-md w-full p-6 sm:p-7 rounded-[2rem] bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 shadow-2xl space-y-5">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-white/10">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
-                    <Edit3 className="w-5 h-5" />
+        {editingRoutineCell && (() => {
+          const currentRoomConflict = routineFormData.room && routineFormData.courseCode
+            ? getSlotRoomConflict(editingRoutineCell.day, editingRoutineCell.timeSlot, editingRoutineCell.semester, routineFormData.room)
+            : null;
+
+          const currentTeacherConflict = routineFormData.teacherName && routineFormData.courseCode
+            ? getSlotTeacherConflict(editingRoutineCell.day, editingRoutineCell.timeSlot, editingRoutineCell.semester, routineFormData.teacherName)
+            : null;
+
+          const occupiedRoomsAtCurrentSlot = getOccupiedRoomsAtSlot(
+            editingRoutineCell.day,
+            editingRoutineCell.timeSlot,
+            editingRoutineCell.semester
+          );
+
+          const busyTeachersAtCurrentSlot = getBusyTeachersAtSlot(
+            editingRoutineCell.day,
+            editingRoutineCell.timeSlot,
+            editingRoutineCell.semester
+          );
+
+          const roomPresets = Array.from(new Set([
+            `Room ${400 + Number(editingRoutineCell.semester)}`,
+            "Room 401",
+            "Room 402",
+            "Room 403",
+            "Room 404",
+            "Room 405",
+            "Room 406",
+            "Room 407",
+            "Room 408",
+            "Software Lab 1",
+            "Software Lab 2",
+            "Software Lab 3",
+            "Hardware & Microprocessor Lab",
+            "Digital Electronics Lab",
+            "Network & Cyber Security Lab",
+            "AI & Data Science Lab",
+            "Robotics & Embedded Systems Lab"
+          ]));
+
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in">
+              <div className="relative max-w-lg w-full p-6 sm:p-7 rounded-[2rem] bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 shadow-2xl space-y-5 max-h-[92vh] overflow-y-auto">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-white/10">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
+                      <Edit3 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
+                        Edit Routine Slot
+                      </h3>
+                      <p className="text-[11px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider">
+                        {editingRoutineCell.day} • {editingRoutineCell.timeSlot} • Semester {editingRoutineCell.semester} ({ROUTINE_SEMESTERS.find(s=>s.id===editingRoutineCell.semester)?.label})
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
-                      Edit Routine Slot
-                    </h3>
-                    <p className="text-[11px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider">
-                      {editingRoutineCell.day} • {editingRoutineCell.timeSlot} • Semester {editingRoutineCell.semester} ({ROUTINE_SEMESTERS.find(s=>s.id===editingRoutineCell.semester)?.label})
+                  <button
+                    onClick={() => setEditingRoutineCell(null)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Conflict Warnings */}
+                {currentRoomConflict && (
+                  <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/60 text-rose-800 dark:text-rose-200 space-y-1 animate-in fade-in">
+                    <div className="flex items-center gap-1.5 font-bold text-xs">
+                      <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                      <span>Room Conflict: Double-Booking Not Permitted</span>
+                    </div>
+                    <p className="text-[11px] leading-relaxed text-rose-700 dark:text-rose-300">
+                      <strong>&quot;{currentRoomConflict.room}&quot;</strong> is already booked at this exact time ({editingRoutineCell.timeSlot}) on {editingRoutineCell.day} by <strong>Semester {currentRoomConflict.semester}</strong> ({currentRoomConflict.courseCode}{currentRoomConflict.courseTitle ? ` • ${currentRoomConflict.courseTitle}` : ""}). Another class cannot be held in this room at that time.
+                    </p>
+                    <p className="text-[10px] font-semibold text-rose-600 dark:text-rose-400 pt-0.5">
+                      💡 Please select an unoccupied classroom or lab below to save.
                     </p>
                   </div>
-                </div>
-                <button
-                  onClick={() => setEditingRoutineCell(null)}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Form Controls */}
-              <div className="space-y-4">
-                {/* Course Selection */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                    Academic Course
-                  </label>
-                  <select
-                    value={routineFormData.courseCode}
-                    onChange={(e) => {
-                      const code = e.target.value;
-                      const matchedCourse = courses.find((c) => c.code === code);
-                      const matchedTeacher = matchedCourse?.faculty ? teachers.find((t) => t.name === matchedCourse.faculty) : null;
-                      setRoutineFormData({
-                        ...routineFormData,
-                        courseCode: code,
-                        teacherId: matchedTeacher?.teacherId || routineFormData.teacherId || "",
-                        teacherName: matchedCourse?.faculty || routineFormData.teacherName || "",
-                      });
-                    }}
-                    className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                  >
-                    <option value="">-- No Class / Vacate Slot --</option>
-                    {(SEMESTER_COURSES[editingRoutineCell.semester] || []).map((c) => (
-                      <option key={c.code} value={c.code}>
-                        {c.code}: {c.title} ({c.credits} Cr)
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Teacher Selection */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                    Assigned Faculty / Instructor
-                  </label>
-                  <select
-                    value={routineFormData.teacherName}
-                    onChange={(e) => {
-                      const selectedName = e.target.value;
-                      const selectedTeacher = teachers.find((t) => t.name === selectedName);
-                      setRoutineFormData({
-                        ...routineFormData,
-                        teacherName: selectedName,
-                        teacherId: selectedTeacher?.teacherId || selectedTeacher?._id || "",
-                      });
-                    }}
-                    className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                  >
-                    <option value="">Select Department Instructor</option>
-                    {teachers.map((t) => (
-                      <option key={t._id || t.email} value={t.name}>
-                        {t.name} ({t.designation || "Faculty"})
-                      </option>
-                    ))}
-                    <option value="Faculty Department Instructor">Department Faculty Pool</option>
-                  </select>
-                </div>
-
-                {/* Room Location */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                    Classroom / Lab Location
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Room 401 or Software Lab 1"
-                    value={routineFormData.room}
-                    onChange={(e) => setRoutineFormData({ ...routineFormData, room: e.target.value })}
-                    className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                  />
-                  {/* Quick Preset Badges */}
-                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                    {Array.from(new Set([
-                      `Room ${400 + Number(editingRoutineCell.semester)}`,
-                      "Room 401",
-                      "Room 402",
-                      "Room 403",
-                      "Software Lab 1",
-                      "Hardware Lab"
-                    ])).map((preset) => (
-                      <button
-                        key={preset}
-                        type="button"
-                        onClick={() => setRoutineFormData({ ...routineFormData, room: preset })}
-                        className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer"
-                      >
-                        {preset}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-white/10">
-                {getRoutineCell(editingRoutineCell.day, editingRoutineCell.semester, editingRoutineCell.timeSlot) ? (
-                  <button
-                    type="button"
-                    onClick={handleClearRoutineSlot}
-                    disabled={isSavingRoutine}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 text-xs font-bold transition-colors cursor-pointer"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Clear Slot</span>
-                  </button>
-                ) : (
-                  <div />
                 )}
 
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setEditingRoutineCell(null)}
-                    disabled={isSavingRoutine}
-                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold transition-colors cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSaveRoutineSlot}
-                    disabled={isSavingRoutine}
-                    className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-200/50 dark:shadow-none transition-all cursor-pointer disabled:opacity-60"
-                  >
-                    <Save className="w-3.5 h-3.5" />
-                    <span>{isSavingRoutine ? "Saving..." : "Save Routine Slot"}</span>
-                  </button>
+                {currentTeacherConflict && (
+                  <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900/60 text-amber-800 dark:text-amber-200 space-y-1 animate-in fade-in">
+                    <div className="flex items-center gap-1.5 font-bold text-xs">
+                      <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                      <span>Instructor Conflict: Simultaneous Classes</span>
+                    </div>
+                    <p className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-300">
+                      <strong>{currentTeacherConflict.teacherName}</strong> is already assigned to teach <strong>Semester {currentTeacherConflict.semester}</strong> ({currentTeacherConflict.courseCode}) on {editingRoutineCell.day} at {editingRoutineCell.timeSlot}. An instructor cannot teach two classes at the same time.
+                    </p>
+                  </div>
+                )}
+
+                {/* Form Controls */}
+                <div className="space-y-4">
+                  {/* Course Selection */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      Academic Course
+                    </label>
+                    <select
+                      value={routineFormData.courseCode}
+                      onChange={(e) => {
+                        const code = e.target.value;
+                        const matchedCourse = courses.find((c) => c.code === code);
+                        const matchedTeacher = matchedCourse?.faculty ? teachers.find((t) => t.name === matchedCourse.faculty) : null;
+                        setRoutineFormData({
+                          ...routineFormData,
+                          courseCode: code,
+                          teacherId: matchedTeacher?.teacherId || routineFormData.teacherId || "",
+                          teacherName: matchedCourse?.faculty || routineFormData.teacherName || "",
+                        });
+                      }}
+                      className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    >
+                      <option value="">-- No Class / Vacate Slot --</option>
+                      {(SEMESTER_COURSES[editingRoutineCell.semester] || []).map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.code}: {c.title} ({c.credits} Cr)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Teacher Selection */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      Assigned Faculty / Instructor
+                    </label>
+                    <select
+                      value={routineFormData.teacherName}
+                      onChange={(e) => {
+                        const selectedName = e.target.value;
+                        const selectedTeacher = teachers.find((t) => t.name === selectedName);
+                        setRoutineFormData({
+                          ...routineFormData,
+                          teacherName: selectedName,
+                          teacherId: selectedTeacher?.teacherId || selectedTeacher?._id || "",
+                        });
+                      }}
+                      className={`w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 ${
+                        currentTeacherConflict
+                          ? "border-amber-400 focus:border-amber-500 focus:ring-amber-500"
+                          : "border-slate-200 dark:border-slate-700 focus:border-indigo-500 focus:ring-indigo-500"
+                      }`}
+                    >
+                      <option value="">Select Department Instructor</option>
+                      {teachers.map((t) => {
+                        const isBusy = busyTeachersAtCurrentSlot.find(b => b.teacherName.trim().toLowerCase() === t.name.trim().toLowerCase());
+                        return (
+                          <option key={t._id || t.email} value={t.name}>
+                            {t.name} ({t.designation || "Faculty"}) {isBusy ? `⚠️ [Busy: Sem ${isBusy.semester}]` : "✓ [Available]"}
+                          </option>
+                        );
+                      })}
+                      <option value="Faculty Department Instructor">Department Faculty Pool</option>
+                    </select>
+                  </div>
+
+                  {/* Room Location */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        Classroom / Lab Location
+                      </label>
+                      {occupiedRoomsAtCurrentSlot.length > 0 && (
+                        <span className="text-[10px] font-semibold text-rose-500 dark:text-rose-400">
+                          {occupiedRoomsAtCurrentSlot.length} room(s) booked at this hour
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="e.g. Room 401 or Software Lab 1"
+                      value={routineFormData.room}
+                      onChange={(e) => setRoutineFormData({ ...routineFormData, room: e.target.value })}
+                      className={`w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 ${
+                        currentRoomConflict
+                          ? "border-rose-400 focus:border-rose-500 focus:ring-rose-500 bg-rose-50/20"
+                          : "border-slate-200 dark:border-slate-700 focus:border-indigo-500 focus:ring-indigo-500"
+                      }`}
+                    />
+
+                    {/* Quick Preset Room Buttons with Occupancy Badges */}
+                    <div className="space-y-1.5 pt-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Select Available Room:
+                      </span>
+                      <div className="flex flex-wrap items-center gap-1.5 max-h-32 overflow-y-auto p-1 rounded-xl bg-slate-50/50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                        {roomPresets.map((preset) => {
+                          const isBooked = occupiedRoomsAtCurrentSlot.find(o => o.room.trim().toLowerCase() === preset.trim().toLowerCase());
+                          const isSelected = routineFormData.room?.trim().toLowerCase() === preset.trim().toLowerCase();
+
+                          if (isBooked) {
+                            return (
+                              <button
+                                key={preset}
+                                type="button"
+                                onClick={() => {
+                                  setRoutineFormData({ ...routineFormData, room: preset });
+                                  toast.error(`${preset} is booked by Semester ${isBooked.semester} at this time!`, { id: "room-conflict-warn" });
+                                }}
+                                className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-all cursor-pointer flex items-center gap-1 ${
+                                  isSelected
+                                    ? "bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-700 ring-2 ring-rose-400"
+                                    : "bg-rose-50/50 dark:bg-rose-950/30 text-rose-500/80 dark:text-rose-400/80 border-rose-200/50 dark:border-rose-900/40 hover:bg-rose-100"
+                                }`}
+                                title={`${preset} is booked on ${editingRoutineCell.day} at ${editingRoutineCell.timeSlot} by Semester ${isBooked.semester}`}
+                              >
+                                <span className="line-through">{preset}</span>
+                                <span className="text-[8px] px-1 py-0.2 rounded bg-rose-200/70 dark:bg-rose-900/90 font-mono text-rose-800 dark:text-rose-200">
+                                  Sem {isBooked.semester}
+                                </span>
+                              </button>
+                            );
+                          }
+
+                          return (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => setRoutineFormData({ ...routineFormData, room: preset })}
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-all cursor-pointer flex items-center gap-1 ${
+                                isSelected
+                                  ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
+                                  : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                              }`}
+                            >
+                              <span>{preset}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-white/10">
+                  {getRoutineCell(editingRoutineCell.day, editingRoutineCell.semester, editingRoutineCell.timeSlot) ? (
+                    <button
+                      type="button"
+                      onClick={handleClearRoutineSlot}
+                      disabled={isSavingRoutine}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Clear Slot</span>
+                    </button>
+                  ) : (
+                    <div />
+                  )}
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditingRoutineCell(null)}
+                      disabled={isSavingRoutine}
+                      className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveRoutineSlot}
+                      disabled={isSavingRoutine || Boolean(currentRoomConflict) || Boolean(currentTeacherConflict)}
+                      className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                        currentRoomConflict
+                          ? "bg-rose-400 dark:bg-rose-500 text-white cursor-not-allowed opacity-80"
+                          : currentTeacherConflict
+                          ? "bg-amber-500 text-white cursor-not-allowed opacity-80"
+                          : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-200/50 dark:shadow-none cursor-pointer"
+                      }`}
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      <span>
+                        {isSavingRoutine
+                          ? "Saving..."
+                          : currentRoomConflict
+                          ? "Room Conflict (Select Another Room)"
+                          : currentTeacherConflict
+                          ? "Teacher Busy (Select Another)"
+                          : "Save Routine Slot"}
+                      </span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
 
       {/* Curriculum & Courses Section */}

@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import Loading from "@/components/common/Loading";
+import { EmployeeAnalyticsCharts } from "@/components/dashboard/DashboardCharts";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
@@ -284,6 +285,11 @@ export default function EmployeeDashboardPage() {
             <PlusCircle className="w-5 h-5" />
           </button>
         </div>
+      </div>
+
+      {/* Hardware Fleet & Maintenance Analytics */}
+      <div id="analytics" className="scroll-mt-6">
+        <EmployeeAnalyticsCharts tasks={tasks} labFacilities={labFacilities} />
       </div>
 
       {/* Lab Facilities & Workstation Live Status */}

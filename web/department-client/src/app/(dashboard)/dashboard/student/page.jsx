@@ -47,6 +47,7 @@ import {
   SEMESTER_LABELS 
 } from "@/data/courses";
 import Loading from "@/components/common/Loading";
+import { StudentAnalyticsCharts } from "@/components/dashboard/DashboardCharts";
 
 const ROUTINE_DAYS = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday"];
 const ROUTINE_TIME_SLOTS = [
@@ -1140,6 +1141,15 @@ export default function StudentDashboardPage() {
         )}
       </div>
 
+
+      {/* Academic Performance & Routine Workload Visualizations */}
+      <div id="analytics" className="scroll-mt-6">
+        <StudentAnalyticsCharts 
+          enrolledSemester={enrolledSemester} 
+          routineCount={routines.length} 
+          semesterCredits={semesterCredits} 
+        />
+      </div>
 
       {/* Attendance & Geofence Mark Center */}
       <div id="attendance" className="grid grid-cols-1 md:grid-cols-3 gap-6">

@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import Loading from "@/components/common/Loading";
+import { TeacherAnalyticsCharts } from "@/components/dashboard/DashboardCharts";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
@@ -155,6 +156,11 @@ export default function TeacherDashboardPage() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Faculty Workload & Engagement Studio */}
+      <div id="analytics" className="scroll-mt-6">
+        <TeacherAnalyticsCharts teacherSchedule={teacherSchedule} />
       </div>
 
       {/* Materials & Assignment Center */}

@@ -6,6 +6,16 @@ const { SEMESTER_COURSES } = require('../data/courses');
 
 const router = express.Router();
 
+const escapeRegex = (str) => String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Helper to normalize and get time slot representation variants (e.g. "09:00 - 10:00" vs "9:00 - 10:00")
+const getTimeSlotVariants = (slot) => {
+  const normalized = String(slot).trim();
+  const withoutLeadingZero = normalized.replace(/^0/, '');
+  const withLeadingZero = normalized.startsWith('0') ? normalized : '0' + normalized;
+  return Array.from(new Set([normalized, withoutLeadingZero, withLeadingZero]));
+};
+
 // GET all routines with query filters
 router.get('/', async (req, res) => {
   try {
@@ -46,6 +56,103 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /api/routines/occupied - Check occupied rooms & busy teachers for day & timeSlot
+router.get('/occupied', async (req, res) => {
+  try {
+    const { routines } = getCollections();
+    const { day, timeSlot, excludeSemester } = req.query;
+    if (!day || !timeSlot) {
+      return res.status(400).json({ error: "Day and timeSlot are required" });
+    }
+
+    const slotVariants = getTimeSlotVariants(timeSlot);
+    const query = {
+      day: day,
+      timeSlot: { $in: slotVariants }
+    };
+
+    if (excludeSemester !== undefined && excludeSemester !== null && excludeSemester !== "") {
+      const exSem = parseInt(String(excludeSemester).match(/\d+/)?.[0] || excludeSemester, 10);
+      if (!isNaN(exSem)) {
+        query.semester = { $ne: exSem };
+      }
+    }
+
+    const occupiedSlots = await routines.find(query).toArray();
+    const occupiedRooms = occupiedSlots.map(s => ({
+      room: s.room,
+      semester: s.semester,
+      courseCode: s.courseCode,
+      courseTitle: s.courseTitle
+    }));
+
+    const busyTeachers = occupiedSlots
+      .filter(s => s.teacherName && !s.teacherName.toLowerCase().includes("pool"))
+      .map(s => ({
+        teacherName: s.teacherName,
+        teacherId: s.teacherId,
+        semester: s.semester,
+        courseCode: s.courseCode
+      }));
+
+    res.json({ success: true, count: occupiedSlots.length, occupiedRooms, busyTeachers });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch occupied resources" });
+  }
+});
+
+// GET /api/routines/conflicts - Detect any current conflicts in database
+router.get('/conflicts', async (req, res) => {
+  try {
+    const { routines } = getCollections();
+    const allRoutines = await routines.find({}).toArray();
+
+    const roomMap = {};
+    const teacherMap = {};
+    const conflicts = [];
+
+    for (const r of allRoutines) {
+      if (r.room) {
+        const roomKey = `${r.day}__${r.timeSlot?.trim()}__${r.room?.trim()}`.toLowerCase();
+        if (roomMap[roomKey]) {
+          conflicts.push({
+            type: "room",
+            room: r.room,
+            day: r.day,
+            timeSlot: r.timeSlot,
+            slot1: roomMap[roomKey],
+            slot2: r,
+            message: `Room "${r.room}" is double-booked on ${r.day} at ${r.timeSlot} between Semester ${roomMap[roomKey].semester} (${roomMap[roomKey].courseCode}) and Semester ${r.semester} (${r.courseCode}).`
+          });
+        } else {
+          roomMap[roomKey] = r;
+        }
+      }
+
+      if (r.teacherName && !r.teacherName.toLowerCase().includes("faculty") && !r.teacherName.toLowerCase().includes("pool")) {
+        const teacherKey = `${r.day}__${r.timeSlot?.trim()}__${r.teacherName?.trim()}`.toLowerCase();
+        if (teacherMap[teacherKey]) {
+          conflicts.push({
+            type: "teacher",
+            teacherName: r.teacherName,
+            day: r.day,
+            timeSlot: r.timeSlot,
+            slot1: teacherMap[teacherKey],
+            slot2: r,
+            message: `Instructor "${r.teacherName}" is scheduled at the same time on ${r.day} at ${r.timeSlot} for Semester ${teacherMap[teacherKey].semester} and Semester ${r.semester}.`
+          });
+        } else {
+          teacherMap[teacherKey] = r;
+        }
+      }
+    }
+
+    res.json({ success: true, count: conflicts.length, conflicts });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to detect conflicts" });
+  }
+});
+
 // GET /api/admin/routine alias (returns raw array)
 const handleAdminGetRoutine = async (req, res) => {
   try {
@@ -80,7 +187,7 @@ const handleStudentGetRoutine = async (req, res) => {
   }
 };
 
-// Shared Save/Update Routine Slot handler
+// Shared Save/Update Routine Slot handler with Room & Teacher Conflict Validation
 const handleSaveRoutineSlot = async (req, res) => {
   try {
     const { routines, courses, teachers } = getCollections();
@@ -92,12 +199,15 @@ const handleSaveRoutineSlot = async (req, res) => {
     const semNumMatch = String(semester).match(/\d+/);
     const semNum = semNumMatch ? parseInt(semNumMatch[0], 10) : Number(semester);
     const normalizedSlot = String(timeSlot).trim();
+    const slotVariants = getTimeSlotVariants(normalizedSlot);
 
     // If courseCode is empty or 'CLEAR', vacate the slot
     if (!courseCode || courseCode.trim() === "" || courseCode.toUpperCase() === "CLEAR") {
       await routines.deleteOne({ day, semester: semNum, timeSlot: normalizedSlot });
       return res.json({ success: true, message: "Class slot removed/cleared successfully." });
     }
+
+    const finalRoom = room ? String(room).trim() : `Room ${400 + semNum}`;
 
     let finalCourseTitle = courseTitle || "";
     let finalTeacherName = teacherName || "";
@@ -120,6 +230,53 @@ const handleSaveRoutineSlot = async (req, res) => {
       if (dbTeacher) finalTeacherName = dbTeacher.name;
     }
 
+    // ── 1. ROOM CONFLICT VALIDATION ──────────────────────────────────────────
+    // In a day and time slot, a room can ONLY host one class. Check other semesters!
+    if (finalRoom) {
+      const roomRegex = new RegExp(`^${escapeRegex(finalRoom)}$`, 'i');
+      const existingRoomConflict = await routines.findOne({
+        day: day,
+        timeSlot: { $in: slotVariants },
+        semester: { $ne: semNum },
+        room: roomRegex
+      });
+
+      if (existingRoomConflict) {
+        return res.status(409).json({
+          error: `Room Conflict: "${finalRoom}" is already booked on ${day} at ${normalizedSlot} by Semester ${existingRoomConflict.semester} (${existingRoomConflict.courseCode}${existingRoomConflict.courseTitle ? ' - ' + existingRoomConflict.courseTitle : ''}). Another class cannot be held in this room at that time.`,
+          conflictType: 'room',
+          conflict: existingRoomConflict
+        });
+      }
+    }
+
+    // ── 2. TEACHER CONFLICT VALIDATION ───────────────────────────────────────
+    // An instructor cannot teach two classes at the exact same day and time slot.
+    if (finalTeacherName && !finalTeacherName.toLowerCase().includes("faculty") && !finalTeacherName.toLowerCase().includes("pool")) {
+      const teacherRegex = new RegExp(`^${escapeRegex(finalTeacherName)}$`, 'i');
+      const teacherQuery = {
+        day: day,
+        timeSlot: { $in: slotVariants },
+        semester: { $ne: semNum },
+        $or: [
+          { teacherName: teacherRegex }
+        ]
+      };
+      if (teacherId) {
+        teacherQuery.$or.push({ teacherId: teacherId });
+      }
+
+      const existingTeacherConflict = await routines.findOne(teacherQuery);
+      if (existingTeacherConflict) {
+        return res.status(409).json({
+          error: `Instructor Conflict: "${finalTeacherName}" is already scheduled to teach Semester ${existingTeacherConflict.semester} (${existingTeacherConflict.courseCode}${existingTeacherConflict.courseTitle ? ' - ' + existingTeacherConflict.courseTitle : ''}) on ${day} at ${normalizedSlot}. An instructor cannot teach two classes at the same time.`,
+          conflictType: 'teacher',
+          conflict: existingTeacherConflict
+        });
+      }
+    }
+
+    // ── 3. UPDATE / UPSERT ROUTINE SLOT ──────────────────────────────────────
     await routines.updateOne(
       { day, semester: semNum, timeSlot: normalizedSlot },
       {
@@ -131,7 +288,7 @@ const handleSaveRoutineSlot = async (req, res) => {
           courseTitle: finalCourseTitle || "Academic Lecture",
           teacherId: teacherId || null,
           teacherName: finalTeacherName || "Faculty Instructor",
-          room: room ? String(room).trim() : "401",
+          room: finalRoom,
           updatedAt: new Date()
         },
         $setOnInsert: {
@@ -181,7 +338,7 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// POST seed sample routines
+// POST seed sample routines (with 0 room and 0 teacher conflicts)
 router.post('/seed-sample', async (req, res) => {
   try {
     const { routines, teachers } = getCollections();
@@ -192,7 +349,7 @@ router.post('/seed-sample', async (req, res) => {
     res.json({
       success: true,
       count: result.insertedCount,
-      message: `Successfully seeded ${result.insertedCount} routine slots for Semesters 1 to 8!`
+      message: `Successfully seeded ${result.insertedCount} conflict-free routine slots for Semesters 1 to 8!`
     });
   } catch (err) {
     console.error("Error seeding sample routines:", err);
