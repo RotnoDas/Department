@@ -86,8 +86,13 @@ const RegisterPage = () => {
                 return;
             }
 
-            // If a student registered, their status is pending; sign out the auto-session so they must wait for admin approval
-            if (payload.role === "student" || payload.email.endsWith("@student.cse.edu")) {
+            // If a student or teacher registered, their status is pending; sign out the auto-session so they must wait for admin approval
+            if (
+                payload.role === "student" || 
+                payload.role === "teacher" || 
+                payload.email.endsWith("@student.cse.edu") || 
+                payload.email.endsWith("@teacher.cse.edu")
+            ) {
                 await authClient.signOut();
             }
 
@@ -107,6 +112,7 @@ const RegisterPage = () => {
     // Dedicated Success Page when account is registered
     if (isSuccess && registeredData) {
         const isStudent = registeredData.role === "student" || registeredData.email.endsWith("@student.cse.edu");
+        const isTeacher = registeredData.role === "teacher" || registeredData.email.endsWith("@teacher.cse.edu");
 
         return (
             <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#030712] flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans selection:bg-emerald-100 dark:selection:bg-emerald-900/40 selection:text-emerald-900 dark:selection:text-emerald-200 transition-colors duration-300">
@@ -150,7 +156,13 @@ const RegisterPage = () => {
                         {/* Status Pill Badge */}
                         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/60 border border-amber-200/80 dark:border-amber-800/80 text-xs font-bold text-amber-700 dark:text-amber-300 mb-4 shadow-xs">
                             <Clock className="w-3.5 h-3.5 animate-pulse" />
-                            <span>{isStudent ? "Registration Received • Awaiting Approval" : "Account Created • Pending Verification"}</span>
+                            <span>
+                                {isStudent
+                                    ? "Student Registration Received • Awaiting Approval"
+                                    : isTeacher
+                                    ? "Faculty Registration Received • Awaiting Admin Approval"
+                                    : "Account Created • Pending Verification"}
+                            </span>
                         </div>
 
                         {/* Headline */}
@@ -159,7 +171,7 @@ const RegisterPage = () => {
                         </h1>
 
                         <p className="mt-2.5 text-sm sm:text-base leading-relaxed font-semibold text-slate-600 dark:text-slate-300 max-w-md mx-auto">
-                            Hi <span className="font-bold text-indigo-600 dark:text-indigo-400">{registeredData.name || "Student"}</span>, your account has been registered. Now please wait for department administrator approval.
+                            Hi <span className="font-bold text-indigo-600 dark:text-indigo-400">{registeredData.name || (isTeacher ? "Faculty Member" : "Student")}</span>, your registration has been submitted. Please wait for department administrator verification.
                         </p>
 
                         {/* Account Snapshot Box */}
@@ -167,7 +179,7 @@ const RegisterPage = () => {
                             <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-200/60 dark:border-white/5">
                                 <span className="font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Academic Role</span>
                                 <span className="font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wide">
-                                    {registeredData.role || "student"}
+                                    {registeredData.role || (isTeacher ? "Teacher" : "Student")}
                                 </span>
                             </div>
 
@@ -183,6 +195,15 @@ const RegisterPage = () => {
                                     <span className="font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Roll / Student ID</span>
                                     <span className="font-mono font-bold text-slate-700 dark:text-slate-200">
                                         {registeredData.studentId}
+                                    </span>
+                                </div>
+                            )}
+
+                            {registeredData.teacherId && (
+                                <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-200/60 dark:border-white/5">
+                                    <span className="font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Teacher ID</span>
+                                    <span className="font-mono font-bold text-slate-700 dark:text-slate-200">
+                                        {registeredData.teacherId}
                                     </span>
                                 </div>
                             )}
@@ -203,7 +224,9 @@ const RegisterPage = () => {
                                 <span>What happens next?</span>
                             </p>
                             <p className="leading-relaxed text-slate-600 dark:text-slate-400">
-                                The department administrator will review and verify your student records in the admin dashboard. Once approved, you can log in to access your student dashboard, courses, routines, and attendance.
+                                {isTeacher
+                                    ? "The department administrator will verify your faculty appointment and credentials in the admin dashboard. Once verified and approved, you can log in to view assigned routines, dispatch study materials, and launch classroom attendance sessions."
+                                    : "The department administrator will review and verify your student records in the admin dashboard. Once approved, you can log in to access your student dashboard, courses, routines, and attendance."}
                             </p>
                         </div>
 

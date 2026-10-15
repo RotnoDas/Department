@@ -34,6 +34,8 @@ const LoginPage = () => {
             const role = sessionData.user.role;
             const isStudent = role === "student" || cleanEmail.endsWith("@student.cse.edu");
 
+            const isTeacher = role === "teacher" || cleanEmail.endsWith("@teacher.cse.edu") || (cleanEmail.endsWith("@cse.edu") && !cleanEmail.includes("student") && !cleanEmail.includes("staff") && !cleanEmail.includes("admin"));
+
             if (isStudent) {
                 // Verify student approval before auto-redirecting
                 fetch(`${SERVER_URL}/api/students/email/${cleanEmail}`)
@@ -53,6 +55,28 @@ const LoginPage = () => {
                     })
                     .catch(() => {
                         window.location.href = `/pending?email=${encodeURIComponent(cleanEmail)}`;
+                    });
+                return;
+            }
+
+            if (isTeacher) {
+                // Verify teacher approval before auto-redirecting
+                fetch(`${SERVER_URL}/api/teachers/email/${cleanEmail}`)
+                    .then((res) => {
+                        if (!res.ok) throw new Error("Teacher record not found");
+                        return res.json();
+                    })
+                    .then((teacher) => {
+                        if (teacher?.status === "pending") {
+                            window.location.href = `/pending?email=${encodeURIComponent(cleanEmail)}`;
+                        } else if (teacher?.status === "rejected") {
+                            window.location.href = `/rejected?email=${encodeURIComponent(cleanEmail)}`;
+                        } else {
+                            window.location.href = "/dashboard/teacher";
+                        }
+                    })
+                    .catch(() => {
+                        window.location.href = "/dashboard/teacher";
                     });
                 return;
             }
@@ -113,6 +137,32 @@ const LoginPage = () => {
 
             toast.success("Welcome! Entering student dashboard...");
             window.location.href = "/dashboard/student";
+            return;
+        }
+
+        const isTeacher = email.endsWith("@teacher.cse.edu") || signInData?.user?.role === "teacher" || (email.endsWith("@cse.edu") && !email.includes("student") && !email.includes("staff") && !email.includes("admin"));
+
+        if (isTeacher) {
+            // Check teacher approval status from database
+            try {
+                const res = await fetch(`${SERVER_URL}/api/teachers/email/${email}`);
+                if (res.ok) {
+                    const teacher = await res.json();
+                    if (teacher.status === "pending") {
+                        window.location.href = `/pending?email=${encodeURIComponent(email)}`;
+                        return;
+                    }
+                    if (teacher.status === "rejected") {
+                        window.location.href = `/rejected?email=${encodeURIComponent(email)}`;
+                        return;
+                    }
+                }
+            } catch (err) {
+                console.warn("Error checking teacher status:", err);
+            }
+
+            toast.success("Welcome! Entering faculty workspace...");
+            window.location.href = "/dashboard/teacher";
             return;
         }
 

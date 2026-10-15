@@ -50,7 +50,7 @@ export const auth = betterAuth({
             role = "employee";
           }
 
-          const status = role === "student" ? "pending" : "approved";
+          const status = (role === "student" || role === "teacher") ? "pending" : "approved";
 
           return {
             data: {
@@ -107,7 +107,7 @@ export const auth = betterAuth({
                     specialization: user.specialization || "",
                     officeRoom: user.officeRoom || "",
                     joiningDate: user.joiningDate || "",
-                    status: user.status || "approved",
+                    status: user.status || "pending",
                     updatedAt: now,
                   },
                   $setOnInsert: {

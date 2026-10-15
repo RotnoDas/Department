@@ -77,7 +77,11 @@ export default function AdminDashboardPage() {
     pendingStudents: 0,
     approvedStudents: 0,
     totalTeachers: 0,
+    pendingTeachers: 0,
+    approvedTeachers: 0,
     totalEmployees: 0,
+    pendingEmployees: 0,
+    approvedEmployees: 0,
     totalUsers: 0,
   });
   const [students, setStudents] = useState([]);
@@ -89,6 +93,10 @@ export default function AdminDashboardPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("pending");
   const [searchQuery, setSearchQuery] = useState("");
+  const [teacherTab, setTeacherTab] = useState("all");
+  const [teacherSearch, setTeacherSearch] = useState("");
+  const [employeeTab, setEmployeeTab] = useState("all");
+  const [employeeSearch, setEmployeeSearch] = useState("");
 
   // Routine Studio states
   const [selectedRoutineSemester, setSelectedRoutineSemester] = useState("1");
@@ -452,6 +460,149 @@ export default function AdminDashboardPage() {
     }
   };
 
+  // Update single teacher status
+  const handleUpdateTeacherStatus = async (teacherId, newStatus) => {
+    try {
+      const res = await fetch(`${SERVER_URL}/api/teachers/status/${teacherId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (res.ok) {
+        toast.success(`Faculty registration status set to ${newStatus}!`);
+        await fetchData();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Failed to update teacher status");
+      }
+    } catch (err) {
+      toast.error("Network error while updating teacher status");
+    }
+  };
+
+  // Bulk Approve all pending teachers
+  const handleApproveAllTeachers = async () => {
+    if (!confirm("Are you sure you want to approve ALL pending faculty registrations?")) return;
+    try {
+      const res = await fetch(`${SERVER_URL}/api/admin/teachers/approve-all`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        toast.success(data.message || "All pending faculty approved!");
+        fetchData();
+      } else {
+        toast.error("Failed to approve all faculty");
+      }
+    } catch (err) {
+      toast.error("Network error during bulk faculty approval");
+    }
+  };
+
+  // Delete teacher record
+  const handleDeleteTeacher = async (teacherId, teacherName) => {
+    if (!confirm(`Are you sure you want to delete the record for ${teacherName || 'this faculty member'}?`)) return;
+    try {
+      const res = await fetch(`${SERVER_URL}/api/teachers/${teacherId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        toast.success("Teacher record deleted successfully");
+        fetchData();
+      } else {
+        toast.error("Failed to delete teacher");
+      }
+    } catch (err) {
+      toast.error("Error deleting teacher record");
+    }
+  };
+
+  // Update single employee status
+  const handleUpdateEmployeeStatus = async (employeeId, newStatus) => {
+    try {
+      const res = await fetch(`${SERVER_URL}/api/employees/status/${employeeId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (res.ok) {
+        toast.success(`Staff member registration status set to ${newStatus}!`);
+        await fetchData();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Failed to update employee status");
+      }
+    } catch (err) {
+      toast.error("Network error while updating employee status");
+    }
+  };
+
+  // Bulk Approve all pending employees
+  const handleApproveAllEmployees = async () => {
+    if (!confirm("Are you sure you want to approve ALL pending staff registrations?")) return;
+    try {
+      const res = await fetch(`${SERVER_URL}/api/admin/employees/approve-all`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        toast.success(data.message || "All pending staff members approved!");
+        fetchData();
+      } else {
+        toast.error("Failed to approve all employees");
+      }
+    } catch (err) {
+      toast.error("Network error during bulk employee approval");
+    }
+  };
+
+  // Delete employee record
+  const handleDeleteEmployee = async (employeeId, employeeName) => {
+    if (!confirm(`Are you sure you want to delete the record for ${employeeName || 'this staff member'}?`)) return;
+    try {
+      const res = await fetch(`${SERVER_URL}/api/employees/${employeeId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        toast.success("Staff record deleted successfully");
+        fetchData();
+      } else {
+        toast.error("Failed to delete staff member");
+      }
+    } catch (err) {
+      toast.error("Error deleting staff record");
+    }
+  };
+
+  // Export employees to CSV
+  const handleExportEmployees = () => {
+    if (employees.length === 0) {
+      toast.error("No staff records to export");
+      return;
+    }
+    const headers = ["Name", "Email", "Employee ID", "Designation", "Department", "Phone", "Status"];
+    const rows = employees.map(emp => [
+      `"${emp.name || ''}"`,
+      `"${emp.email || ''}"`,
+      `"${emp.employeeId || ''}"`,
+      `"${emp.designation || ''}"`,
+      `"${emp.department || ''}"`,
+      `"${emp.phone || ''}"`,
+      `"${emp.status || 'approved'}"`
+    ]);
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `CSE_Staff_Directory_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Staff directory exported as CSV!");
+  };
+
   // Create course
   const handleCreateCourse = async (e) => {
     e.preventDefault();
@@ -596,7 +747,7 @@ export default function AdminDashboardPage() {
       toast.error("No faculty records to export");
       return;
     }
-    const headers = ["Name", "Email", "Teacher ID", "Designation", "Specialization", "Office Room", "Phone"];
+    const headers = ["Name", "Email", "Teacher ID", "Designation", "Specialization", "Office Room", "Phone", "Status"];
     const rows = teachers.map(t => [
       `"${t.name || ''}"`,
       `"${t.email || ''}"`,
@@ -604,7 +755,8 @@ export default function AdminDashboardPage() {
       `"${t.designation || ''}"`,
       `"${t.specialization || ''}"`,
       `"${t.officeRoom || ''}"`,
-      `"${t.phone || ''}"`
+      `"${t.phone || ''}"`,
+      `"${t.status || 'approved'}"`
     ]);
     const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
     const encodedUri = encodeURI(csvContent);
@@ -620,11 +772,47 @@ export default function AdminDashboardPage() {
   const filteredStudents = students.filter(s => {
     if (activeTab === "pending") return s.status === "pending";
     if (activeTab === "approved") return s.status === "approved";
+    if (activeTab === "rejected") return s.status === "rejected";
     return true;
   }).filter(s => 
-    s.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.studentId?.toLowerCase().includes(searchQuery.toLowerCase())
+    (s.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (s.email || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (s.studentId || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (s.batch || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (s.semester || "").toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const pendingTeachersCount = teachers.filter(t => t.status === "pending").length;
+  const approvedTeachersCount = teachers.filter(t => t.status !== "pending" && t.status !== "rejected").length;
+
+  const filteredTeachers = teachers.filter(t => {
+    if (teacherTab === "pending") return t.status === "pending";
+    if (teacherTab === "approved") return t.status !== "pending" && t.status !== "rejected";
+    if (teacherTab === "rejected") return t.status === "rejected";
+    return true;
+  }).filter(t => 
+    (t.name || "").toLowerCase().includes(teacherSearch.toLowerCase()) ||
+    (t.email || "").toLowerCase().includes(teacherSearch.toLowerCase()) ||
+    (t.teacherId || "").toLowerCase().includes(teacherSearch.toLowerCase()) ||
+    (t.designation || "").toLowerCase().includes(teacherSearch.toLowerCase()) ||
+    (t.specialization || "").toLowerCase().includes(teacherSearch.toLowerCase()) ||
+    (t.officeRoom || "").toLowerCase().includes(teacherSearch.toLowerCase())
+  );
+
+  const pendingEmployeesCount = employees.filter(e => e.status === "pending").length;
+  const approvedEmployeesCount = employees.filter(e => e.status !== "pending" && e.status !== "rejected").length;
+
+  const filteredEmployees = employees.filter(e => {
+    if (employeeTab === "pending") return e.status === "pending";
+    if (employeeTab === "approved") return e.status !== "pending" && e.status !== "rejected";
+    if (employeeTab === "rejected") return e.status === "rejected";
+    return true;
+  }).filter(e => 
+    (e.name || "").toLowerCase().includes(employeeSearch.toLowerCase()) ||
+    (e.email || "").toLowerCase().includes(employeeSearch.toLowerCase()) ||
+    (e.employeeId || "").toLowerCase().includes(employeeSearch.toLowerCase()) ||
+    (e.designation || "").toLowerCase().includes(employeeSearch.toLowerCase()) ||
+    (e.department || "").toLowerCase().includes(employeeSearch.toLowerCase())
   );
 
   const filteredCourses = courses.filter((c) => {
@@ -728,7 +916,13 @@ export default function AdminDashboardPage() {
         </div>
 
         {/* Faculty Teachers */}
-        <div className="p-6 rounded-3xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm hover:shadow-md dark:shadow-none transition-shadow">
+        <div className="p-6 rounded-3xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm hover:shadow-md dark:shadow-none transition-shadow relative overflow-hidden">
+          {(stats.pendingTeachers > 0 || pendingTeachersCount > 0) && (
+            <div className="absolute top-3 right-3 flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400">Faculty Members</span>
             <div className="h-10 w-10 rounded-xl bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center">
@@ -736,13 +930,25 @@ export default function AdminDashboardPage() {
             </div>
           </div>
           <div className="mt-4 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-slate-900 dark:text-white">{stats.totalTeachers}</span>
-            <span className="text-xs font-semibold text-sky-600 dark:text-sky-400">Teaching Staff</span>
+            <span className="text-3xl font-black text-slate-900 dark:text-white">{stats.totalTeachers || teachers.length}</span>
+            {(stats.pendingTeachers > 0 || pendingTeachersCount > 0) ? (
+              <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 font-bold">
+                {stats.pendingTeachers || pendingTeachersCount} Requires Verification
+              </span>
+            ) : (
+              <span className="text-xs font-semibold text-sky-600 dark:text-sky-400">Teaching Staff</span>
+            )}
           </div>
         </div>
 
         {/* Staff Employees */}
-        <div className="p-6 rounded-3xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm hover:shadow-md dark:shadow-none transition-shadow">
+        <div className="p-6 rounded-3xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm hover:shadow-md dark:shadow-none transition-shadow relative overflow-hidden">
+          {(stats.pendingEmployees > 0 || pendingEmployeesCount > 0) && (
+            <div className="absolute top-3 right-3 flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400">Department Staff</span>
             <div className="h-10 w-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
@@ -750,8 +956,14 @@ export default function AdminDashboardPage() {
             </div>
           </div>
           <div className="mt-4 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-slate-900 dark:text-white">{stats.totalEmployees}</span>
-            <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Officers & Staff</span>
+            <span className="text-3xl font-black text-slate-900 dark:text-white">{stats.totalEmployees || employees.length}</span>
+            {(stats.pendingEmployees > 0 || pendingEmployeesCount > 0) ? (
+              <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 font-bold">
+                {stats.pendingEmployees || pendingEmployeesCount} Requires Verification
+              </span>
+            ) : (
+              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Officers & Staff</span>
+            )}
           </div>
         </div>
       </div>
@@ -767,201 +979,490 @@ export default function AdminDashboardPage() {
         />
       </div>
 
-      {/* Main Section: Student Approvals & Directory */}
+      {/* ── Student Admissions & Verification Hub ─────────────────── */}
       <div id="students" className="scroll-mt-6">
         <div id="pending" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Student Admissions & Verification Hub</h2>
-            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5">
-              Review and approve pending accounts, manage verified students, or export CSV records.
-            </p>
-          </div>
-
-          <div className="flex items-center flex-wrap gap-2.5">
-            {stats.pendingStudents > 0 && (
-              <button
-                onClick={handleApproveAll}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-200 dark:shadow-none transition-all cursor-pointer"
-              >
-                <CheckCheck className="w-4 h-4" />
-                <span>Approve All Pending ({stats.pendingStudents})</span>
-              </button>
-            )}
-            <button
-              onClick={handleExportStudents}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Export CSV</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Tab & Search Bar */}
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-2">
-          <div className="flex items-center gap-1.5 p-1 bg-slate-100/80 dark:bg-slate-800/80 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 self-start">
-            <button
-              onClick={() => setActiveTab("pending")}
-              className={`px-3.5 py-1.5 rounded-lg transition-all ${
-                activeTab === "pending" 
-                  ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs font-bold" 
-                  : "hover:text-slate-900 dark:hover:text-white"
-              }`}
-            >
-              Pending ({stats.pendingStudents})
-            </button>
-            <button
-              onClick={() => setActiveTab("approved")}
-              className={`px-3.5 py-1.5 rounded-lg transition-all ${
-                activeTab === "approved" 
-                  ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs font-bold" 
-                  : "hover:text-slate-900 dark:hover:text-white"
-              }`}
-            >
-              Approved ({stats.approvedStudents})
-            </button>
-            <button
-              onClick={() => setActiveTab("all")}
-              className={`px-3.5 py-1.5 rounded-lg transition-all ${
-                activeTab === "all" 
-                  ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs font-bold" 
-                  : "hover:text-slate-900 dark:hover:text-white"
-              }`}
-            >
-              All Students ({stats.totalStudents})
-            </button>
-          </div>
-
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
-            <input
-              type="text"
-              placeholder="Search by name, roll, or email..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full h-10 pl-11 pr-4 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-1 focus:ring-indigo-500 transition-all"
-            />
-          </div>
-        </div>
-
-        {/* Students Table */}
-        <div id="students" className="overflow-x-auto">
-          {filteredStudents.length === 0 ? (
-            <div className="text-center py-16 text-slate-400 dark:text-slate-500 space-y-2">
-              <UserCheck className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600" />
-              <p className="font-semibold text-sm">No student registrations found for this filter.</p>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5">
+                <GraduationCap className="w-3.5 h-3.5 text-indigo-500" />
+                <span>Undergraduate Admissions & Student Verification</span>
+              </div>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2.5">
+                <span>Student Admissions & Verification Hub</span>
+                {stats.pendingStudents > 0 && (
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 font-extrabold flex items-center gap-1 border border-amber-300 dark:border-amber-700 animate-pulse">
+                    <Clock className="w-3 h-3" />
+                    <span>{stats.pendingStudents} Pending</span>
+                  </span>
+                )}
+              </h2>
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5">
+                Review and approve pending student accounts, verify session credentials, manage enrolled students, or export student rosters.
+              </p>
             </div>
-          ) : (
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 dark:border-white/10 text-[11px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider">
-                  <th className="pb-3 px-4">Student Details</th>
-                  <th className="pb-3 px-4">Academic Info</th>
-                  <th className="pb-3 px-4">Contact</th>
-                  <th className="pb-3 px-4">Status</th>
-                  <th className="pb-3 px-4 text-right">Moderation Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-white/10">
-                {filteredStudents.map((student) => (
-                  <tr key={student._id || student.userId} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/50 transition-colors">
-                    {/* Name & Email */}
-                    <td className="py-4 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 shrink-0 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold flex items-center justify-center text-sm">
-                          {student.name ? student.name.charAt(0).toUpperCase() : "S"}
-                        </div>
-                        <div>
-                          <div className="font-bold text-slate-900 dark:text-white">{student.name}</div>
-                          <div className="text-xs text-slate-400 dark:text-slate-400 flex items-center gap-1">
-                            <Mail className="w-3 h-3" />
-                            {student.email}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
 
-                    {/* Academic Info */}
-                    <td className="py-4 px-4">
-                      <div className="flex flex-col gap-0.5 text-xs">
-                        <span className="font-bold text-slate-700 dark:text-slate-200">Roll: {student.studentId || "N/A"}</span>
-                        <span className="text-slate-500 dark:text-slate-400">Batch {student.batch || "N/A"} • Sem {student.semester || "N/A"}</span>
-                        <span className="text-slate-400 dark:text-slate-500 text-[11px]">Session: {student.session || "N/A"}</span>
-                      </div>
-                    </td>
+            <div className="flex items-center flex-wrap gap-2.5">
+              {stats.pendingStudents > 0 && (
+                <button
+                  onClick={handleApproveAll}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-200 dark:shadow-none transition-all cursor-pointer"
+                >
+                  <CheckCheck className="w-4 h-4" />
+                  <span>Approve All Pending ({stats.pendingStudents})</span>
+                </button>
+              )}
+              <button
+                onClick={handleExportStudents}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Export CSV</span>
+              </button>
+            </div>
+          </div>
 
-                    {/* Contact */}
-                    <td className="py-4 px-4">
-                      <div className="flex flex-col gap-0.5 text-xs text-slate-600 dark:text-slate-300">
-                        <span className="flex items-center gap-1">
-                          <Phone className="w-3 h-3 text-slate-400" />
-                          {student.phone || "N/A"}
-                        </span>
-                        <span className="text-slate-400 dark:text-slate-500 text-[11px]">{student.address || "Pabna"}</span>
-                      </div>
-                    </td>
+          {/* Tab & Search Bar */}
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-2">
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100/80 dark:bg-slate-800/80 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 self-start">
+              <button
+                onClick={() => setActiveTab("pending")}
+                className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  activeTab === "pending" 
+                    ? "bg-white dark:bg-slate-700 text-amber-600 dark:text-amber-400 shadow-xs font-bold" 
+                    : "hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                Pending ({stats.pendingStudents})
+              </button>
+              <button
+                onClick={() => setActiveTab("approved")}
+                className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  activeTab === "approved" 
+                    ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs font-bold" 
+                    : "hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                Approved ({stats.approvedStudents})
+              </button>
+              <button
+                onClick={() => setActiveTab("all")}
+                className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  activeTab === "all" 
+                    ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-bold" 
+                    : "hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                All Students ({stats.totalStudents || students.length})
+              </button>
+            </div>
 
-                    {/* Status Badge */}
-                    <td className="py-4 px-4">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold tracking-wider uppercase ${
-                        student.status === "approved" 
-                          ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200 dark:ring-emerald-800" 
-                          : student.status === "rejected"
-                          ? "bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 ring-1 ring-rose-200 dark:ring-rose-800"
-                          : "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 ring-1 ring-amber-200 dark:ring-amber-800"
-                      }`}>
-                        {student.status === "approved" ? <CheckCircle2 className="w-3 h-3" /> :
-                         student.status === "rejected" ? <XCircle className="w-3 h-3" /> :
-                         <Clock className="w-3 h-3" />}
-                        {student.status}
-                      </span>
-                    </td>
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+              <input
+                type="text"
+                placeholder="Search students by name, roll, email, or batch..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full h-10 pl-11 pr-4 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-1 focus:ring-indigo-500 transition-all"
+              />
+            </div>
+          </div>
 
-                    {/* Actions */}
-                    <td className="py-4 px-4 text-right">
-                      <div className="inline-flex items-center gap-2">
-                        {student.status === "pending" ? (
-                          <>
-                            <button
-                              onClick={() => handleUpdateStatus(student._id || student.userId || student.studentId || student.email, "approved")}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>Approve</span>
-                            </button>
-                            <button
-                              onClick={() => handleUpdateStatus(student._id || student.userId || student.studentId || student.email, "rejected")}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-300 text-xs font-bold transition-colors cursor-pointer"
-                            >
-                              <XCircle className="w-3.5 h-3.5" />
-                              <span>Reject</span>
-                            </button>
-                          </>
-                        ) : (
-                          <button
-                            onClick={() => handleUpdateStatus(student._id || student.userId || student.studentId || student.email, student.status === "approved" ? "pending" : "approved")}
-                            className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
-                          >
-                            Reset to {student.status === "approved" ? "Pending" : "Approved"}
-                          </button>
-                        )}
-                        <button
-                          onClick={() => handleDeleteStudent(student._id || student.userId || student.studentId || student.email, student.name)}
-                          className="p-1.5 rounded-lg text-slate-400 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
-                          title="Delete Record"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
+          {/* Students Table */}
+          <div className="overflow-x-auto">
+            {filteredStudents.length === 0 ? (
+              <div className="text-center py-16 text-slate-400 dark:text-slate-500 space-y-2">
+                <UserCheck className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600" />
+                <p className="font-semibold text-sm">No student registrations found for this filter.</p>
+              </div>
+            ) : (
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 dark:border-white/10 text-[11px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider">
+                    <th className="pb-3 px-4">Student Member</th>
+                    <th className="pb-3 px-4">Academic & Roll</th>
+                    <th className="pb-3 px-4">Batch & Session</th>
+                    <th className="pb-3 px-4">Contact Info</th>
+                    <th className="pb-3 px-4">Status</th>
+                    <th className="pb-3 px-4 text-right">Moderation Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-white/10">
+                  {filteredStudents.map((student) => {
+                    const isPending = student.status === "pending";
+                    const isRejected = student.status === "rejected";
+                    const isApproved = student.status === "approved" || (!isPending && !isRejected);
+                    const studentIdentifier = student._id || student.userId || student.studentId || student.email;
+
+                    return (
+                      <tr key={student._id || student.userId || student.studentId || student.email} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/50 transition-colors">
+                        {/* Student Member Details */}
+                        <td className="py-4 px-4">
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 shrink-0 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold flex items-center justify-center text-sm ring-1 ring-indigo-200 dark:ring-indigo-800/60">
+                              {student.name ? student.name.charAt(0).toUpperCase() : "S"}
+                            </div>
+                            <div>
+                              <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                                <span>{student.name}</span>
+                                {student.semester && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold">
+                                    Sem {student.semester}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-xs text-slate-400 dark:text-slate-400 flex items-center gap-1">
+                                <Mail className="w-3 h-3" />
+                                {student.email}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Academic & Roll */}
+                        <td className="py-4 px-4">
+                          <div className="flex flex-col gap-0.5 text-xs">
+                            <span className="font-bold text-slate-800 dark:text-slate-200">
+                              Roll: {student.studentId || "N/A"}
+                            </span>
+                            <span className="text-slate-500 dark:text-slate-400">
+                              Undergraduate CSE
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Batch & Session */}
+                        <td className="py-4 px-4">
+                          <div className="flex flex-col gap-0.5 text-xs text-slate-600 dark:text-slate-300">
+                            <span className="font-semibold text-slate-700 dark:text-slate-200">
+                              Batch {student.batch || "N/A"}
+                            </span>
+                            <span className="text-slate-400 dark:text-slate-500 text-[11px]">
+                              Session: {student.session || "N/A"}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Contact Info */}
+                        <td className="py-4 px-4">
+                          <div className="flex flex-col gap-0.5 text-xs text-slate-600 dark:text-slate-300">
+                            <span className="flex items-center gap-1">
+                              <Phone className="w-3 h-3 text-slate-400" />
+                              {student.phone || "Not specified"}
+                            </span>
+                            <span className="flex items-center gap-1 text-slate-400 dark:text-slate-500 text-[11px]">
+                              <MapPin className="w-3 h-3 text-slate-400" />
+                              {student.address || "Pabna"}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Status Badge */}
+                        <td className="py-4 px-4">
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold tracking-wider uppercase ${
+                            isApproved
+                              ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200 dark:ring-emerald-800"
+                              : isRejected
+                              ? "bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 ring-1 ring-rose-200 dark:ring-rose-800"
+                              : "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 ring-1 ring-amber-200 dark:ring-amber-800"
+                          }`}>
+                            {isApproved ? <CheckCircle2 className="w-3 h-3" /> :
+                             isRejected ? <XCircle className="w-3 h-3" /> :
+                             <Clock className="w-3 h-3" />}
+                            {isApproved ? "approved" : isRejected ? "rejected" : "pending"}
+                          </span>
+                        </td>
+
+                        {/* Moderation Actions */}
+                        <td className="py-4 px-4 text-right">
+                          <div className="inline-flex items-center gap-2">
+                            {isPending ? (
+                              <>
+                                <button
+                                  onClick={() => handleUpdateStatus(studentIdentifier, "approved")}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  <span>Approve</span>
+                                </button>
+                                <button
+                                  onClick={() => handleUpdateStatus(studentIdentifier, "rejected")}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-300 text-xs font-bold transition-colors cursor-pointer"
+                                >
+                                  <XCircle className="w-3.5 h-3.5" />
+                                  <span>Reject</span>
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                onClick={() => handleUpdateStatus(studentIdentifier, isApproved ? "pending" : "approved")}
+                                className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
+                              >
+                                Reset to {isApproved ? "Pending" : "Approved"}
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDeleteStudent(studentIdentifier, student.name)}
+                              className="p-1.5 rounded-lg text-slate-400 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                              title="Delete Student Record"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* ── Faculty Admissions & Verification Hub ─────────────────── */}
+      <div id="faculty" className="scroll-mt-6">
+        <div id="faculty-pending" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-50 dark:bg-sky-950/60 text-xs font-semibold text-sky-600 dark:text-sky-400 mb-1.5">
+                <Presentation className="w-3.5 h-3.5 text-sky-500" />
+                <span>Academic Staff & Faculty Verification</span>
+              </div>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2.5">
+                <span>Faculty Admissions & Verification Hub</span>
+                {pendingTeachersCount > 0 && (
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 font-extrabold flex items-center gap-1 border border-amber-300 dark:border-amber-700 animate-pulse">
+                    <Clock className="w-3 h-3" />
+                    <span>{pendingTeachersCount} Pending</span>
+                  </span>
+                )}
+              </h2>
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5">
+                Review and approve pending faculty accounts, verify academic credentials, manage verified professors, or export faculty roster.
+              </p>
+            </div>
+
+            <div className="flex items-center flex-wrap gap-2.5">
+              {pendingTeachersCount > 0 && (
+                <button
+                  onClick={handleApproveAllTeachers}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-200 dark:shadow-none transition-all cursor-pointer"
+                >
+                  <CheckCheck className="w-4 h-4" />
+                  <span>Approve All Pending ({pendingTeachersCount})</span>
+                </button>
+              )}
+              <button
+                onClick={handleExportFaculty}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Export CSV</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Tab & Search Bar */}
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-2">
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100/80 dark:bg-slate-800/80 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 self-start">
+              <button
+                onClick={() => setTeacherTab("pending")}
+                className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  teacherTab === "pending"
+                    ? "bg-white dark:bg-slate-700 text-amber-600 dark:text-amber-400 shadow-xs font-bold"
+                    : "hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                Pending ({pendingTeachersCount})
+              </button>
+              <button
+                onClick={() => setTeacherTab("approved")}
+                className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  teacherTab === "approved"
+                    ? "bg-white dark:bg-slate-700 text-sky-600 dark:text-sky-400 shadow-xs font-bold"
+                    : "hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                Approved ({approvedTeachersCount})
+              </button>
+              <button
+                onClick={() => setTeacherTab("all")}
+                className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  teacherTab === "all"
+                    ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-bold"
+                    : "hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                All Faculty ({teachers.length})
+              </button>
+            </div>
+
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+              <input
+                type="text"
+                placeholder="Search faculty by name, email, designation, or ID..."
+                value={teacherSearch}
+                onChange={(e) => setTeacherSearch(e.target.value)}
+                className="w-full h-10 pl-11 pr-4 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none focus:border-sky-500 dark:focus:border-sky-400 focus:ring-1 focus:ring-sky-500 transition-all"
+              />
+            </div>
+          </div>
+
+          {/* Faculty Table */}
+          <div className="overflow-x-auto">
+            {filteredTeachers.length === 0 ? (
+              <div className="text-center py-16 text-slate-400 dark:text-slate-500 space-y-2">
+                <Presentation className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600" />
+                <p className="font-semibold text-sm">No faculty records found for this filter.</p>
+              </div>
+            ) : (
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 dark:border-white/10 text-[11px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider">
+                    <th className="pb-3 px-4">Faculty Member</th>
+                    <th className="pb-3 px-4">Academic & Designation</th>
+                    <th className="pb-3 px-4">Office & ID</th>
+                    <th className="pb-3 px-4">Contact</th>
+                    <th className="pb-3 px-4">Status</th>
+                    <th className="pb-3 px-4 text-right">Moderation Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-white/10">
+                  {filteredTeachers.map((teacher) => {
+                    const isPending = teacher.status === "pending";
+                    const isRejected = teacher.status === "rejected";
+                    const isApproved = teacher.status === "approved" || (!isPending && !isRejected);
+                    const teacherIdentifier = teacher._id || teacher.userId || teacher.teacherId || teacher.email;
+
+                    return (
+                      <tr key={teacher._id || teacher.teacherId || teacher.email} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/50 transition-colors">
+                        {/* Faculty Member Details */}
+                        <td className="py-4 px-4">
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 shrink-0 rounded-xl bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 font-bold flex items-center justify-center text-sm ring-1 ring-sky-200 dark:ring-sky-800/60">
+                              {teacher.name ? teacher.name.charAt(0).toUpperCase() : "T"}
+                            </div>
+                            <div>
+                              <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                                <span>{teacher.name}</span>
+                                {teacher.designation?.toLowerCase().includes("head") && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold">
+                                    Head
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-xs text-slate-400 dark:text-slate-400 flex items-center gap-1">
+                                <Mail className="w-3 h-3" />
+                                {teacher.email}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Academic & Designation */}
+                        <td className="py-4 px-4">
+                          <div className="flex flex-col gap-0.5 text-xs">
+                            <span className="font-bold text-slate-800 dark:text-slate-200">
+                              {teacher.designation || "Assistant Professor"}
+                            </span>
+                            <span className="text-slate-500 dark:text-slate-400">
+                              Dept. of {teacher.department || "CSE"}
+                            </span>
+                            {teacher.specialization && (
+                              <span className="text-sky-600 dark:text-sky-400 text-[11px] font-medium">
+                                {teacher.specialization}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Office & ID */}
+                        <td className="py-4 px-4">
+                          <div className="flex flex-col gap-0.5 text-xs text-slate-600 dark:text-slate-300">
+                            <span className="flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-200">
+                              <MapPin className="w-3 h-3 text-slate-400" />
+                              {teacher.officeRoom || "Faculty Lounge"}
+                            </span>
+                            <span className="text-slate-400 dark:text-slate-500 text-[11px]">
+                              ID: {teacher.teacherId || "N/A"}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Contact */}
+                        <td className="py-4 px-4">
+                          <div className="flex flex-col gap-0.5 text-xs text-slate-600 dark:text-slate-300">
+                            <span className="flex items-center gap-1">
+                              <Phone className="w-3 h-3 text-slate-400" />
+                              {teacher.phone || "Not specified"}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Status Badge */}
+                        <td className="py-4 px-4">
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold tracking-wider uppercase ${
+                            isApproved
+                              ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200 dark:ring-emerald-800"
+                              : isRejected
+                              ? "bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 ring-1 ring-rose-200 dark:ring-rose-800"
+                              : "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 ring-1 ring-amber-200 dark:ring-amber-800"
+                          }`}>
+                            {isApproved ? <CheckCircle2 className="w-3 h-3" /> :
+                             isRejected ? <XCircle className="w-3 h-3" /> :
+                             <Clock className="w-3 h-3" />}
+                            {isApproved ? "approved" : isRejected ? "rejected" : "pending"}
+                          </span>
+                        </td>
+
+                        {/* Moderation Actions */}
+                        <td className="py-4 px-4 text-right">
+                          <div className="inline-flex items-center gap-2">
+                            {isPending ? (
+                              <>
+                                <button
+                                  onClick={() => handleUpdateTeacherStatus(teacherIdentifier, "approved")}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  <span>Approve</span>
+                                </button>
+                                <button
+                                  onClick={() => handleUpdateTeacherStatus(teacherIdentifier, "rejected")}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-300 text-xs font-bold transition-colors cursor-pointer"
+                                >
+                                  <XCircle className="w-3.5 h-3.5" />
+                                  <span>Reject</span>
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                onClick={() => handleUpdateTeacherStatus(teacherIdentifier, isApproved ? "pending" : "approved")}
+                                className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
+                              >
+                                Reset to {isApproved ? "Pending" : "Approved"}
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDeleteTeacher(teacherIdentifier, teacher.name)}
+                              className="p-1.5 rounded-lg text-slate-400 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                              title="Delete Faculty Record"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* ── Routine Management Studio ───────────────────────── */}
@@ -2011,67 +2512,259 @@ export default function AdminDashboardPage() {
         </div>
       </div>
 
-      {/* Faculty and Staff Sections */}
-      <div id="directory" className="grid grid-cols-1 lg:grid-cols-2 gap-8 scroll-mt-6">
-        {/* Faculty Roster */}
-        <div id="teachers" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-4 transition-colors">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Presentation className="w-5 h-5 text-sky-600 dark:text-sky-400" />
-              <h3 className="font-bold text-lg text-slate-900 dark:text-white">Faculty Members ({teachers.length})</h3>
+      {/* ── Staff & Employee Verification Hub ─────────────────── */}
+      <div id="directory" className="scroll-mt-6 space-y-6">
+        <div id="employees" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-xs font-semibold text-emerald-600 dark:text-emerald-400 mb-1.5">
+                <Briefcase className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Non-Teaching Staff & Operational Verification</span>
+              </div>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2.5">
+                <span>Staff & Employee Verification Hub</span>
+                {pendingEmployeesCount > 0 && (
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 font-extrabold flex items-center gap-1 border border-amber-300 dark:border-amber-700 animate-pulse">
+                    <Clock className="w-3 h-3" />
+                    <span>{pendingEmployeesCount} Pending</span>
+                  </span>
+                )}
+              </h2>
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5">
+                Review and approve non-teaching staff registrations, manage laboratory officers and attendants, or export department staff rosters.
+              </p>
             </div>
-            <button
-              onClick={handleExportFaculty}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/60 text-xs font-bold transition-all cursor-pointer"
-            >
-              <Download className="w-3 h-3" />
-              <span>Export CSV</span>
-            </button>
+
+            <div className="flex items-center flex-wrap gap-2.5">
+              {pendingEmployeesCount > 0 && (
+                <button
+                  onClick={handleApproveAllEmployees}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-200 dark:shadow-none transition-all cursor-pointer"
+                >
+                  <CheckCheck className="w-4 h-4" />
+                  <span>Approve All Pending ({pendingEmployeesCount})</span>
+                </button>
+              )}
+              <button
+                onClick={handleExportEmployees}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Export CSV</span>
+              </button>
+            </div>
           </div>
 
-          <div className="divide-y divide-slate-100 dark:divide-white/10 max-h-80 overflow-y-auto">
-            {teachers.map(teacher => (
-              <div key={teacher._id} className="py-3.5 flex items-center justify-between">
-                <div>
-                  <h4 className="font-bold text-sm text-slate-900 dark:text-white">{teacher.name}</h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">{teacher.designation || "Faculty"} • {teacher.specialization || "CSE"}</p>
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500">{teacher.email}</p>
-                </div>
-                <div className="text-right text-xs">
-                  <span className="font-semibold text-slate-700 dark:text-slate-300">{teacher.officeRoom || "Academic Bldg"}</span>
-                  <div className="text-[11px] text-slate-400 dark:text-slate-500">ID: {teacher.teacherId || "N/A"}</div>
-                </div>
+          {/* Tab & Search Bar */}
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-2">
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100/80 dark:bg-slate-800/80 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 self-start">
+              <button
+                onClick={() => setEmployeeTab("pending")}
+                className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  employeeTab === "pending"
+                    ? "bg-white dark:bg-slate-700 text-amber-600 dark:text-amber-400 shadow-xs font-bold"
+                    : "hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                Pending ({pendingEmployeesCount})
+              </button>
+              <button
+                onClick={() => setEmployeeTab("approved")}
+                className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  employeeTab === "approved"
+                    ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-xs font-bold"
+                    : "hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                Approved ({approvedEmployeesCount})
+              </button>
+              <button
+                onClick={() => setEmployeeTab("all")}
+                className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  employeeTab === "all"
+                    ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-bold"
+                    : "hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                All Staff ({employees.length})
+              </button>
+            </div>
+
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+              <input
+                type="text"
+                placeholder="Search staff by name, email, designation, department, or ID..."
+                value={employeeSearch}
+                onChange={(e) => setEmployeeSearch(e.target.value)}
+                className="w-full h-10 pl-11 pr-4 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none focus:border-emerald-500 dark:focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500 transition-all"
+              />
+            </div>
+          </div>
+
+          {/* Employees Table */}
+          <div className="overflow-x-auto">
+            {filteredEmployees.length === 0 ? (
+              <div className="text-center py-16 text-slate-400 dark:text-slate-500 space-y-2">
+                <Briefcase className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600" />
+                <p className="font-semibold text-sm">No department staff records found for this filter.</p>
               </div>
-            ))}
+            ) : (
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 dark:border-white/10 text-[11px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider">
+                    <th className="pb-3 px-4">Staff Member</th>
+                    <th className="pb-3 px-4">Role & Department</th>
+                    <th className="pb-3 px-4">Office & Staff ID</th>
+                    <th className="pb-3 px-4">Contact</th>
+                    <th className="pb-3 px-4">Status</th>
+                    <th className="pb-3 px-4 text-right">Moderation Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-white/10">
+                  {filteredEmployees.map((emp) => {
+                    const isPending = emp.status === "pending";
+                    const isRejected = emp.status === "rejected";
+                    const isApproved = emp.status === "approved" || (!isPending && !isRejected);
+                    const empIdentifier = emp._id || emp.userId || emp.employeeId || emp.email;
+
+                    return (
+                      <tr key={emp._id || emp.employeeId || emp.email} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/50 transition-colors">
+                        {/* Staff Member Details */}
+                        <td className="py-4 px-4">
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 shrink-0 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 font-bold flex items-center justify-center text-sm ring-1 ring-emerald-200 dark:ring-emerald-800/60">
+                              {emp.name ? emp.name.charAt(0).toUpperCase() : "S"}
+                            </div>
+                            <div>
+                              <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                                <span>{emp.name}</span>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 font-bold">
+                                  Staff
+                                </span>
+                              </div>
+                              <div className="text-xs text-slate-400 dark:text-slate-400 flex items-center gap-1">
+                                <Mail className="w-3 h-3" />
+                                {emp.email}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Role & Department */}
+                        <td className="py-4 px-4">
+                          <div className="flex flex-col gap-0.5 text-xs">
+                            <span className="font-bold text-slate-800 dark:text-slate-200">
+                              {emp.designation || "Staff Officer"}
+                            </span>
+                            <span className="text-slate-500 dark:text-slate-400">
+                              {emp.department || "Operations & Maintenance"}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Office & Staff ID */}
+                        <td className="py-4 px-4">
+                          <div className="flex flex-col gap-0.5 text-xs text-slate-600 dark:text-slate-300">
+                            <span className="flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-200">
+                              <MapPin className="w-3 h-3 text-slate-400" />
+                              {emp.officeRoom || "Academic Staff Desk"}
+                            </span>
+                            <span className="text-slate-400 dark:text-slate-500 text-[11px]">
+                              ID: {emp.employeeId || "N/A"}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Contact */}
+                        <td className="py-4 px-4">
+                          <div className="flex flex-col gap-0.5 text-xs text-slate-600 dark:text-slate-300">
+                            <span className="flex items-center gap-1">
+                              <Phone className="w-3 h-3 text-slate-400" />
+                              {emp.phone || "Not specified"}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Status Badge */}
+                        <td className="py-4 px-4">
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold tracking-wider uppercase ${
+                            isApproved
+                              ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200 dark:ring-emerald-800"
+                              : isRejected
+                              ? "bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 ring-1 ring-rose-200 dark:ring-rose-800"
+                              : "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 ring-1 ring-amber-200 dark:ring-amber-800"
+                          }`}>
+                            {isApproved ? <CheckCircle2 className="w-3 h-3" /> :
+                             isRejected ? <XCircle className="w-3 h-3" /> :
+                             <Clock className="w-3 h-3" />}
+                            {isApproved ? "approved" : isRejected ? "rejected" : "pending"}
+                          </span>
+                        </td>
+
+                        {/* Moderation Actions */}
+                        <td className="py-4 px-4 text-right">
+                          <div className="inline-flex items-center gap-2">
+                            {isPending ? (
+                              <>
+                                <button
+                                  onClick={() => handleUpdateEmployeeStatus(empIdentifier, "approved")}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  <span>Approve</span>
+                                </button>
+                                <button
+                                  onClick={() => handleUpdateEmployeeStatus(empIdentifier, "rejected")}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-300 text-xs font-bold transition-colors cursor-pointer"
+                                >
+                                  <XCircle className="w-3.5 h-3.5" />
+                                  <span>Reject</span>
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                onClick={() => handleUpdateEmployeeStatus(empIdentifier, isApproved ? "pending" : "approved")}
+                                className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
+                              >
+                                Reset to {isApproved ? "Pending" : "Approved"}
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDeleteEmployee(empIdentifier, emp.name)}
+                              className="p-1.5 rounded-lg text-slate-400 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                              title="Delete Staff Record"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
 
-        {/* Employees Roster */}
-        <div id="employees" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-4 transition-colors">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Briefcase className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-              <h3 className="font-bold text-lg text-slate-900 dark:text-white">Staff Members ({employees.length})</h3>
+        {/* Department Operations & Administrative Desk Summary Bar */}
+        <div className="p-6 rounded-[2rem] bg-gradient-to-r from-indigo-50/70 via-white to-emerald-50/70 dark:from-slate-900/90 dark:via-slate-900/80 dark:to-slate-800/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+              <ShieldCheck className="w-5 h-5" />
             </div>
-            <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-1 rounded-md">
-              Non-Teaching Staff
-            </span>
+            <div>
+              <h4 className="font-bold text-sm text-slate-900 dark:text-white">CSE Department Administrative & Operations Registry</h4>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Academic Building, Room 401 • ext. 4401 • admin@cse.edu</p>
+            </div>
           </div>
-
-          <div className="divide-y divide-slate-100 dark:divide-white/10 max-h-80 overflow-y-auto">
-            {employees.map(emp => (
-              <div key={emp._id} className="py-3.5 flex items-center justify-between">
-                <div>
-                  <h4 className="font-bold text-sm text-slate-900 dark:text-white">{emp.name}</h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">{emp.designation || "Staff"} • {emp.department || "Office"}</p>
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500">{emp.email}</p>
-                </div>
-                <div className="text-right text-xs">
-                  <span className="font-semibold text-slate-700 dark:text-slate-300">{emp.employeeId || "Staff ID"}</span>
-                  <div className="text-[11px] text-slate-400 dark:text-slate-500">{emp.phone || "N/A"}</div>
-                </div>
-              </div>
-            ))}
+          <div className="flex items-center gap-3 text-xs font-semibold">
+            <a href="#students" className="text-indigo-600 dark:text-indigo-400 hover:underline">Student Approvals ↑</a>
+            <span className="text-slate-300 dark:text-slate-600">•</span>
+            <a href="#faculty" className="text-sky-600 dark:text-sky-400 hover:underline">Faculty Approvals ↑</a>
+            <span className="text-slate-300 dark:text-slate-600">•</span>
+            <a href="#routine" className="text-slate-600 dark:text-slate-400 hover:underline">Academic Routine ↑</a>
           </div>
         </div>
       </div>

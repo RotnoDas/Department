@@ -28,6 +28,7 @@ export default function PendingApprovalPage() {
   const router = useRouter();
   const { data: sessionData, isPending: isSessionLoading } = authClient.useSession();
   const [student, setStudent] = useState(null);
+  const [isTeacher, setIsTeacher] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
 
@@ -42,30 +43,47 @@ export default function PendingApprovalPage() {
 
     if (showFeedback) setIsChecking(true);
     try {
-      const res = await fetch(`${SERVER_URL}/api/students/email/${targetEmail}`);
-      if (res.ok) {
-        const data = await res.json();
-        setStudent(data);
+      // First try student endpoint
+      let res = await fetch(`${SERVER_URL}/api/students/email/${targetEmail}`);
+      let isTeacherRecord = false;
+      let data = null;
 
-        if (data.status === "approved") {
-          toast.success("Account Approved! Redirecting to student dashboard...");
+      if (res.ok) {
+        data = await res.json();
+      } else {
+        // Fallback to teacher endpoint
+        const teacherRes = await fetch(`${SERVER_URL}/api/teachers/email/${targetEmail}`);
+        if (teacherRes.ok) {
+          data = await teacherRes.json();
+          isTeacherRecord = true;
+        }
+      }
+
+      if (data) {
+        setStudent(data);
+        setIsTeacher(isTeacherRecord || Boolean(data.teacherId));
+
+        if (data.status === "approved" || (isTeacherRecord && data.status !== "pending" && data.status !== "rejected")) {
+          toast.success(`Account Approved! Redirecting to ${isTeacherRecord ? "faculty workspace" : "student dashboard"}...`);
           setTimeout(() => {
-            router.push("/dashboard/student");
+            router.push(isTeacherRecord ? "/dashboard/teacher" : "/dashboard/student");
           }, 1200);
           return;
         }
 
         if (data.status === "rejected") {
-          router.push("/rejected");
+          router.push(`/rejected?email=${encodeURIComponent(targetEmail)}`);
           return;
         }
 
         if (showFeedback) {
           toast("Status: Still Pending Administrator Approval.", { icon: "⏳" });
         }
+      } else {
+        if (showFeedback) toast.error("Account record not found in system.");
       }
     } catch (e) {
-      console.error("Error checking student approval status:", e);
+      console.error("Error checking approval status:", e);
       if (showFeedback) toast.error("Could not reach verification server. Please retry.");
     } finally {
       setIsLoadingProfile(false);
@@ -170,7 +188,7 @@ export default function PendingApprovalPage() {
                     variants={itemVariants}
                     className="mt-3 text-sm sm:text-base leading-relaxed font-semibold text-slate-600 dark:text-slate-300"
                   >
-                    Hi <span className="font-bold text-indigo-600 dark:text-indigo-400">{activeName}</span>! Your student registration is currently pending approval by the department administrator.
+                    Hi <span className="font-bold text-indigo-600 dark:text-indigo-400">{activeName}</span>! Your {isTeacher ? "faculty registration" : "student registration"} is currently pending approval by the department administrator.
                   </motion.p>
                 </header>
 
@@ -195,10 +213,10 @@ export default function PendingApprovalPage() {
                     </div>
                     <div className="overflow-hidden">
                       <p className="text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase">
-                        Roll / Student ID
+                        {isTeacher ? "Faculty ID" : "Roll / Student ID"}
                       </p>
                       <p className="truncate font-mono text-xs font-bold text-slate-800 dark:text-slate-200">
-                        {activeStudentId}
+                        {student?.teacherId || activeStudentId}
                       </p>
                     </div>
                   </div>
@@ -212,7 +230,7 @@ export default function PendingApprovalPage() {
                         Academic Department
                       </p>
                       <p className="text-xs font-bold tracking-wider text-slate-800 dark:text-slate-200 uppercase">
-                        CSE • {activeBatch}
+                        CSE • {isTeacher ? (student?.designation || "Faculty Member") : activeBatch}
                       </p>
                     </div>
                   </div>

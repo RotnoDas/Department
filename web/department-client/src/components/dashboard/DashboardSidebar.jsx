@@ -80,11 +80,11 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
           { name: "Overview", href: "/dashboard/admin", icon: LayoutDashboard },
           { name: "Institutional Analytics", href: "/dashboard/admin#analytics", icon: BarChart3 },
           { name: "Student Approvals", href: "/dashboard/admin#pending", icon: UserCheck },
-          { name: "Student Directory", href: "/dashboard/admin#students", icon: GraduationCap },
+          { name: "Faculty Approvals", href: "/dashboard/admin#faculty", icon: Presentation },
           { name: "Class Routine", href: "/dashboard/admin#routine", icon: Calendar },
           { name: "Curriculum Matrix (1-8)", href: "/dashboard/admin#courses", icon: BookOpen },
           { name: "Notice Dispatcher", href: "/dashboard/admin#notices", icon: Bell },
-          { name: "Faculty & Staff", href: "/dashboard/admin#directory", icon: Users },
+          { name: "Department Staff", href: "/dashboard/admin#directory", icon: Users },
         ];
       case "teacher":
         return [
