@@ -159,4 +159,138 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// Shared Teacher Profile Update Handler
+const handleTeacherProfileUpdate = async (req, res) => {
+  try {
+    const { teachers, users, routines } = getCollections();
+    let identifier = req.params.email || req.params.id;
+    if (!identifier) {
+      return res.status(400).json({ error: "Teacher identifier (email or ID) is required" });
+    }
+    let decodedIdentifier = identifier;
+    try {
+      decodedIdentifier = decodeURIComponent(identifier);
+    } catch (e) {}
+
+    const query = {
+      $or: [
+        { email: decodedIdentifier },
+        { email: identifier },
+        { userId: decodedIdentifier },
+        { userId: identifier },
+        { teacherId: decodedIdentifier },
+        { teacherId: identifier }
+      ]
+    };
+    try {
+      if (ObjectId.isValid(identifier)) {
+        query.$or.push({ _id: new ObjectId(identifier) });
+      }
+    } catch (e) {}
+
+    const teacher = await teachers.findOne(query);
+    if (!teacher) {
+      return res.status(404).json({ error: "Teacher profile not found" });
+    }
+
+    const {
+      name,
+      phone,
+      teacherId,
+      designation,
+      specialization,
+      officeRoom,
+      joiningDate,
+      bio,
+      address,
+      bloodGroup,
+      education,
+      researchInterests,
+      github,
+      linkedin,
+      googleScholar,
+      website,
+      image,
+      avatar,
+      photo
+    } = req.body;
+
+    const updateFields = {
+      updatedAt: new Date()
+    };
+
+    if (name !== undefined) updateFields.name = typeof name === 'string' ? name.trim() : name;
+    if (phone !== undefined) updateFields.phone = typeof phone === 'string' ? phone.trim() : phone;
+    if (teacherId !== undefined) updateFields.teacherId = typeof teacherId === 'string' ? teacherId.trim() : teacherId;
+    if (designation !== undefined) updateFields.designation = typeof designation === 'string' ? designation.trim() : designation;
+    if (specialization !== undefined) updateFields.specialization = typeof specialization === 'string' ? specialization.trim() : specialization;
+    if (officeRoom !== undefined) updateFields.officeRoom = typeof officeRoom === 'string' ? officeRoom.trim() : officeRoom;
+    if (joiningDate !== undefined) updateFields.joiningDate = typeof joiningDate === 'string' ? joiningDate.trim() : joiningDate;
+    if (bio !== undefined) updateFields.bio = typeof bio === 'string' ? bio.trim() : bio;
+    if (address !== undefined) updateFields.address = typeof address === 'string' ? address.trim() : address;
+    if (bloodGroup !== undefined) updateFields.bloodGroup = typeof bloodGroup === 'string' ? bloodGroup.trim() : bloodGroup;
+    if (education !== undefined) updateFields.education = typeof education === 'string' ? education.trim() : education;
+    if (researchInterests !== undefined) updateFields.researchInterests = typeof researchInterests === 'string' ? researchInterests.trim() : researchInterests;
+    if (github !== undefined) updateFields.github = typeof github === 'string' ? github.trim() : github;
+    if (linkedin !== undefined) updateFields.linkedin = typeof linkedin === 'string' ? linkedin.trim() : linkedin;
+    if (googleScholar !== undefined) updateFields.googleScholar = typeof googleScholar === 'string' ? googleScholar.trim() : googleScholar;
+    if (website !== undefined) updateFields.website = typeof website === 'string' ? website.trim() : website;
+
+    const profileImage = image !== undefined ? image : (avatar !== undefined ? avatar : photo);
+    if (profileImage !== undefined) {
+      updateFields.image = typeof profileImage === 'string' ? profileImage.trim() : profileImage;
+    }
+
+    await teachers.updateOne({ _id: teacher._id }, { $set: updateFields });
+
+    // Sync with users collection for Better Auth session consistency
+    const targetEmail = teacher.email || identifier;
+    if (targetEmail) {
+      const userSyncFields = { updatedAt: new Date() };
+      if (updateFields.name !== undefined) userSyncFields.name = updateFields.name;
+      if (updateFields.phone !== undefined) userSyncFields.phone = updateFields.phone;
+      if (updateFields.teacherId !== undefined) userSyncFields.teacherId = updateFields.teacherId;
+      if (updateFields.designation !== undefined) userSyncFields.designation = updateFields.designation;
+      if (updateFields.specialization !== undefined) userSyncFields.specialization = updateFields.specialization;
+      if (updateFields.officeRoom !== undefined) userSyncFields.officeRoom = updateFields.officeRoom;
+      if (updateFields.image !== undefined) userSyncFields.image = updateFields.image;
+
+      await users.updateOne(
+        { email: targetEmail },
+        { $set: userSyncFields }
+      );
+    }
+
+    // Sync routine timetable teacher name / teacher ID if updated
+    if (routines && (updateFields.name !== undefined || updateFields.teacherId !== undefined)) {
+      const routineMatch = {
+        $or: [
+          { teacherId: teacher.teacherId || String(teacher._id) },
+          { teacherName: teacher.name }
+        ]
+      };
+      const routineUpdate = { $set: { updatedAt: new Date() } };
+      if (updateFields.name) routineUpdate.$set.teacherName = updateFields.name;
+      if (updateFields.teacherId) routineUpdate.$set.teacherId = updateFields.teacherId;
+      await routines.updateMany(routineMatch, routineUpdate);
+    }
+
+    const updatedTeacher = await teachers.findOne({ _id: teacher._id });
+    res.json({
+      success: true,
+      message: "Faculty profile updated successfully!",
+      teacher: updatedTeacher
+    });
+  } catch (err) {
+    console.error("Error updating teacher profile:", err);
+    res.status(500).json({ error: "Failed to update faculty profile" });
+  }
+};
+
+// Mount profile update routes
+router.put('/profile/:email', handleTeacherProfileUpdate);
+router.patch('/profile/:email', handleTeacherProfileUpdate);
+router.put('/:id', handleTeacherProfileUpdate);
+router.patch('/:id', handleTeacherProfileUpdate);
+
 module.exports = router;

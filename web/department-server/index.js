@@ -73,6 +73,7 @@ app.use('/api/routines', routineRoutes);
 app.get('/api/admin/routine', routineRoutes.handleAdminGetRoutine);
 app.post('/api/admin/routine', routineRoutes.handleSaveRoutineSlot);
 app.get('/api/student/routine', routineRoutes.handleStudentGetRoutine);
+app.get('/api/teacher/routine', routineRoutes.handleTeacherGetRoutine);
 
 // ── ROOT & HEALTH ─────────────────────────────────────────────
 app.get('/', (req, res) => {

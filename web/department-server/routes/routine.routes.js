@@ -36,16 +36,29 @@ router.get('/', async (req, res) => {
     }
 
     if (teacherId) {
-      query.teacherId = teacherId;
+      query.$or = [
+        { teacherId: teacherId },
+        { teacherName: { $regex: escapeRegex(teacherId), $options: 'i' } }
+      ];
+    }
+
+    if (req.query.teacherName) {
+      query.teacherName = { $regex: escapeRegex(req.query.teacherName), $options: 'i' };
     }
 
     if (search) {
-      query.$or = [
+      const searchConditions = [
         { courseCode: { $regex: search, $options: 'i' } },
         { courseTitle: { $regex: search, $options: 'i' } },
         { teacherName: { $regex: search, $options: 'i' } },
         { room: { $regex: search, $options: 'i' } }
       ];
+      if (query.$or) {
+        query.$and = [{ $or: query.$or }, { $or: searchConditions }];
+        delete query.$or;
+      } else {
+        query.$or = searchConditions;
+      }
     }
 
     const routineList = await routines.find(query).sort({ day: 1, semester: 1, timeSlot: 1 }).toArray();
@@ -184,6 +197,36 @@ const handleStudentGetRoutine = async (req, res) => {
     res.json(routineList);
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch student routine" });
+  }
+};
+
+// GET /api/teacher/routine alias (returns raw array of classes assigned to teacher)
+const handleTeacherGetRoutine = async (req, res) => {
+  try {
+    const { routines } = getCollections();
+    const { teacherId, teacherName, email, day } = req.query;
+    const query = {};
+    if (day && day !== "all") query.day = day;
+
+    const orConditions = [];
+    if (teacherId) orConditions.push({ teacherId });
+    if (teacherName) {
+      orConditions.push({ teacherName: { $regex: `^${escapeRegex(teacherName.trim())}$`, $options: 'i' } });
+      orConditions.push({ teacherName: { $regex: escapeRegex(teacherName.trim()), $options: 'i' } });
+    }
+    if (email) {
+      orConditions.push({ teacherEmail: email });
+    }
+
+    if (orConditions.length > 0) {
+      query.$or = orConditions;
+    }
+
+    const routineList = await routines.find(query).sort({ day: 1, timeSlot: 1 }).toArray();
+    res.json(routineList);
+  } catch (err) {
+    console.error("Error fetching teacher routine:", err);
+    res.status(500).json({ error: "Failed to fetch teacher routine" });
   }
 };
 
@@ -338,18 +381,18 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// POST seed sample routines (with 0 room and 0 teacher conflicts)
+// POST seed sample routines (with 0 room and 0 teacher conflicts for Semesters 7 & 8)
 router.post('/seed-sample', async (req, res) => {
   try {
     const { routines, teachers } = getCollections();
-    const teachersList = await teachers.find({}).toArray();
+    const teachersList = await teachers.find({ status: { $ne: 'rejected' } }).toArray();
     const sampleRoutines = buildSampleRoutinesList(teachersList);
     await routines.deleteMany({});
     const result = await routines.insertMany(sampleRoutines);
     res.json({
       success: true,
       count: result.insertedCount,
-      message: `Successfully seeded ${result.insertedCount} conflict-free routine slots for Semesters 1 to 8!`
+      message: `Successfully generated ${result.insertedCount} conflict-free routine slots for Semesters 7 & 8 distributed among registered faculty!`
     });
   } catch (err) {
     console.error("Error seeding sample routines:", err);
@@ -360,4 +403,5 @@ router.post('/seed-sample', async (req, res) => {
 module.exports = router;
 module.exports.handleAdminGetRoutine = handleAdminGetRoutine;
 module.exports.handleStudentGetRoutine = handleStudentGetRoutine;
+module.exports.handleTeacherGetRoutine = handleTeacherGetRoutine;
 module.exports.handleSaveRoutineSlot = handleSaveRoutineSlot;

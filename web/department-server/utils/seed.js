@@ -1,97 +1,138 @@
 const { SEMESTER_COURSES, SEMESTER_LABELS } = require('../data/courses');
 
-// Helper to construct sample weekly routine across 8 semesters with ZERO room & teacher conflicts
+// Helper to construct weekly routine for Semesters 7 & 8 strictly distributed among registered teachers with ZERO room & teacher conflicts
 const buildSampleRoutinesList = (teachersList = []) => {
   const sampleList = [];
   const days = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday"];
-  const morningSlots = ["09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00", "12:00 - 01:00"];
+  const morningSlots = ["09:00 - 10:00", "10:00 - 11:00", "11:00 - 12:00"];
   const afternoonSlots = ["02:00 - 03:00", "03:00 - 04:00", "04:00 - 05:00"];
 
-  const defaultTeachers = [
-    { name: "Dr. Kamrul Hasan", id: "T-101" },
-    { name: "Prof. M. A. Rahman", id: "T-102" },
-    { name: "Dr. John Smith", id: "T-103" },
-    { name: "Engr. Nusrat Sultana", id: "T-104" },
-    { name: "Mr. Tanvir Ahmed", id: "T-105" },
-    { name: "Dr. Farhana Yasmin", id: "T-106" },
-    { name: "Dr. Tariqul Islam", id: "T-107" },
-    { name: "Prof. Shamsul Alam", id: "T-108" },
-    { name: "kao", id: "101" }
-  ];
+  // Filter for approved registered teachers, fallback if none
+  const activeTeachers = Array.isArray(teachersList) && teachersList.length > 0
+    ? teachersList.filter(t => t.name && !t.name.includes("Faculty Department Instructor") && !t.name.includes("Dept Faculty Member"))
+    : [];
 
-  // Distinct dedicated lab for each semester to eliminate any room overlap
-  const semesterLabs = {
-    1: "Software Lab 1",
-    2: "Software Lab 2",
-    3: "Digital Electronics Lab",
-    4: "Hardware & Microprocessor Lab",
-    5: "Network & Cyber Security Lab",
-    6: "Software Lab 3",
-    7: "AI & Data Science Lab",
-    8: "Robotics & Embedded Systems Lab"
-  };
+  const registeredPool = activeTeachers.length > 0
+    ? activeTeachers
+    : (teachersList.length > 0 ? teachersList : [{ name: "Registered Faculty Member", teacherId: "T-REG" }]);
 
-  // Combine given teachers with defaultTeachers ensuring at least 8 unique teachers
-  const mergedPool = [...teachersList];
-  for (const dt of defaultTeachers) {
-    if (!mergedPool.some(t => t.name === dt.name)) {
-      mergedPool.push(dt);
-    }
-  }
+  const sem7Courses = (SEMESTER_COURSES[7] || []).filter(c => 
+    !c.title.toLowerCase().includes("sessional") && 
+    !c.title.toLowerCase().includes("viva") && 
+    !c.title.toLowerCase().includes("thesis")
+  );
+  const sem8Courses = (SEMESTER_COURSES[8] || []).filter(c => 
+    !c.title.toLowerCase().includes("sessional") && 
+    !c.title.toLowerCase().includes("viva") && 
+    !c.title.toLowerCase().includes("thesis")
+  );
 
-  // Morning theory classes
+  const sem7Labs = (SEMESTER_COURSES[7] || []).filter(c => 
+    c.title.toLowerCase().includes("sessional") || 
+    c.title.toLowerCase().includes("project") || 
+    c.title.toLowerCase().includes("thesis")
+  );
+  const sem8Labs = (SEMESTER_COURSES[8] || []).filter(c => 
+    c.title.toLowerCase().includes("sessional") || 
+    c.title.toLowerCase().includes("project") || 
+    c.title.toLowerCase().includes("thesis")
+  );
+
+  let teacherCursor = 0;
+
   days.forEach((day, dIdx) => {
-    const theorySlots = morningSlots.slice(0, 3);
-    theorySlots.forEach((slot, sIdx) => {
-      // For this slot across all 8 semesters, assign distinct theory classrooms (Room 401-408) & distinct teachers
-      for (let sem = 1; sem <= 8; sem++) {
-        const courses = SEMESTER_COURSES[sem] || [];
-        const theoryCourses = courses.filter(c => !c.title.toLowerCase().includes("sessional") && !c.title.toLowerCase().includes("viva"));
-        if (theoryCourses.length > 0) {
-          const course = theoryCourses[(dIdx * 2 + sIdx + sem) % theoryCourses.length];
-          // Teacher offset ensures unique instructor for each semester at this exact slot
-          const teacher = mergedPool[(sem - 1 + dIdx * 3 + sIdx) % mergedPool.length];
-          sampleList.push({
-            day,
-            semester: sem,
-            timeSlot: slot,
-            courseCode: course.code,
-            courseTitle: course.title,
-            teacherId: teacher.teacherId || teacher.id || String(teacher._id),
-            teacherName: teacher.name,
-            room: `Room ${400 + sem}`,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          });
-        }
-      }
+    // 3 morning theory slots per day
+    morningSlots.forEach((slot, sIdx) => {
+      const c7 = sem7Courses[(dIdx * 3 + sIdx) % sem7Courses.length];
+      const c8 = sem8Courses[(dIdx * 3 + sIdx) % sem8Courses.length];
+
+      // Assign distinct registered teachers to Sem 7 and Sem 8 to prevent any conflict
+      const t7 = registeredPool[teacherCursor % registeredPool.length];
+      const t8 = registeredPool[(teacherCursor + 1) % registeredPool.length];
+      teacherCursor = (teacherCursor + 2) % registeredPool.length;
+
+      sampleList.push({
+        day,
+        semester: 7,
+        timeSlot: slot,
+        courseCode: c7.code,
+        courseTitle: c7.title,
+        teacherId: t7.teacherId || t7.id || (t7._id ? String(t7._id) : null),
+        teacherName: t7.name,
+        room: "Room 407",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      sampleList.push({
+        day,
+        semester: 8,
+        timeSlot: slot,
+        courseCode: c8.code,
+        courseTitle: c8.title,
+        teacherId: t8.teacherId || t8.id || (t8._id ? String(t8._id) : null),
+        teacherName: t8.name,
+        room: "Room 408",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
     });
 
-    // Afternoon practical/sessional classes (Staggered and using dedicated semester labs)
-    for (let sem = 1; sem <= 8; sem++) {
-      const courses = SEMESTER_COURSES[sem] || [];
-      const labCourses = courses.filter(c => c.title.toLowerCase().includes("sessional") || c.title.toLowerCase().includes("project"));
-      // Lab on alternating days specific to semester parity to balance the labs
-      const isLabDay = (sem % 2 === 1 && (dIdx === 1 || dIdx === 3)) || (sem % 2 === 0 && (dIdx === 0 || dIdx === 2));
-      if (isLabDay && labCourses.length > 0) {
-        const labCourse = labCourses[dIdx % labCourses.length];
-        const labTeacher = mergedPool[(sem + 3 + dIdx) % mergedPool.length];
-        const labRoom = semesterLabs[sem] || `Software Lab ${sem}`;
-        afternoonSlots.forEach((slot) => {
-          sampleList.push({
-            day,
-            semester: sem,
-            timeSlot: slot,
-            courseCode: labCourse.code,
-            courseTitle: labCourse.title,
-            teacherId: labTeacher.teacherId || labTeacher.id || String(labTeacher._id),
-            teacherName: labTeacher.name,
-            room: labRoom,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          });
+    // Afternoon lab sessions (3 hour blocks)
+    // Sem 7 labs on Saturday, Monday, Wednesday
+    // Sem 8 labs on Sunday, Tuesday, Wednesday
+    const hasSem7Lab = (dIdx === 0 || dIdx === 2 || dIdx === 4);
+    const hasSem8Lab = (dIdx === 1 || dIdx === 3 || dIdx === 4);
+
+    let lab7Teacher = null;
+    let lab8Teacher = null;
+
+    if (hasSem7Lab && hasSem8Lab) {
+      lab7Teacher = registeredPool[teacherCursor % registeredPool.length];
+      lab8Teacher = registeredPool[(teacherCursor + 1) % registeredPool.length];
+      teacherCursor = (teacherCursor + 2) % registeredPool.length;
+    } else if (hasSem7Lab) {
+      lab7Teacher = registeredPool[teacherCursor % registeredPool.length];
+      teacherCursor = (teacherCursor + 1) % registeredPool.length;
+    } else if (hasSem8Lab) {
+      lab8Teacher = registeredPool[teacherCursor % registeredPool.length];
+      teacherCursor = (teacherCursor + 1) % registeredPool.length;
+    }
+
+    if (hasSem7Lab) {
+      const lab7 = sem7Labs[dIdx % sem7Labs.length];
+      afternoonSlots.forEach(slot => {
+        sampleList.push({
+          day,
+          semester: 7,
+          timeSlot: slot,
+          courseCode: lab7.code,
+          courseTitle: lab7.title,
+          teacherId: lab7Teacher.teacherId || lab7Teacher.id || (lab7Teacher._id ? String(lab7Teacher._id) : null),
+          teacherName: lab7Teacher.name,
+          room: "AI & Data Science Lab",
+          createdAt: new Date(),
+          updatedAt: new Date(),
         });
-      }
+      });
+    }
+
+    if (hasSem8Lab) {
+      const lab8 = sem8Labs[dIdx % sem8Labs.length];
+      afternoonSlots.forEach(slot => {
+        sampleList.push({
+          day,
+          semester: 8,
+          timeSlot: slot,
+          courseCode: lab8.code,
+          courseTitle: lab8.title,
+          teacherId: lab8Teacher.teacherId || lab8Teacher.id || (lab8Teacher._id ? String(lab8Teacher._id) : null),
+          teacherName: lab8Teacher.name,
+          room: "Robotics & Embedded Systems Lab",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      });
     }
   });
 

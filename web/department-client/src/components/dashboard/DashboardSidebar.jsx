@@ -27,6 +27,7 @@ import {
   CheckCircle2,
   Compass,
   BarChart3,
+  User,
   X
 } from "lucide-react";
 
@@ -93,6 +94,7 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
           { name: "Today's Routine", href: "/dashboard/teacher#routine", icon: Clock },
           { name: "Course Materials", href: "/dashboard/teacher#materials", icon: BookOpen },
           { name: "Attendance Sessions", href: "/dashboard/teacher#attendance", icon: UserCheck },
+          { name: "Faculty Profile", href: "/dashboard/teacher#profile-settings", icon: User },
         ];
       case "employee":
         return [
