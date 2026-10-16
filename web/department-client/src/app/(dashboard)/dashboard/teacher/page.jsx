@@ -34,7 +34,8 @@ import {
   Image as ImageIcon,
   Link2,
   Upload,
-  Check
+  Check,
+  Coffee
 } from "lucide-react";
 import { FaGithub, FaLinkedin } from "react-icons/fa";
 import toast from "react-hot-toast";
@@ -44,6 +45,16 @@ import { TeacherAnalyticsCharts } from "@/components/dashboard/DashboardCharts";
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
 const ROUTINE_DAYS = ["All Days", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesday"];
+const ROUTINE_TIME_SLOTS = [
+  "09:00 - 10:00",
+  "10:00 - 11:00",
+  "11:00 - 12:00",
+  "12:00 - 01:00",
+  "01:00 - 02:00",
+  "02:00 - 03:00",
+  "03:00 - 04:00",
+  "04:00 - 05:00",
+];
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const DESIGNATIONS = [
   "Professor", 
@@ -62,6 +73,9 @@ export default function TeacherDashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [teacherSchedule, setTeacherSchedule] = useState([]);
+  const [allRoutines, setAllRoutines] = useState([]);
+  const [routineViewMode, setRoutineViewMode] = useState("my"); // "my" | "full"
+  const [selectedFullSemester, setSelectedFullSemester] = useState("all"); // "all" | "7" | "8"
   const [scheduleLoading, setScheduleLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState("All Days");
 
@@ -170,9 +184,13 @@ export default function TeacherDashboardPage() {
       if (teacherName) params.set("teacherName", teacherName);
       if (email) params.set("email", email);
 
-      const res = await fetch(`${SERVER_URL}/api/teacher/routine?${params.toString()}`);
-      if (res.ok) {
-        const slots = await res.json();
+      const [myRes, allRes] = await Promise.all([
+        fetch(`${SERVER_URL}/api/teacher/routine?${params.toString()}`),
+        fetch(`${SERVER_URL}/api/routines`)
+      ]);
+
+      if (myRes.ok) {
+        const slots = await myRes.json();
         const formatted = (slots || []).map((slot) => ({
           id: slot._id,
           code: slot.courseCode,
@@ -186,11 +204,28 @@ export default function TeacherDashboardPage() {
         }));
         setTeacherSchedule(formatted);
       }
+
+      if (allRes.ok) {
+        const aData = await allRes.json();
+        const aList = Array.isArray(aData) ? aData : (aData.routines || []);
+        setAllRoutines(aList);
+      }
     } catch (err) {
       console.error("Failed to load schedule:", err);
     } finally {
       setScheduleLoading(false);
     }
+  };
+
+  const getFullRoutineCells = (day, timeSlot) => {
+    return allRoutines.filter((r) => {
+      const isSlot = r.timeSlot === timeSlot ||
+        r.timeSlot?.replace(/^0/, "") === timeSlot?.replace(/^0/, "");
+      if (selectedFullSemester !== "all") {
+        return r.day === day && isSlot && Number(r.semester) === Number(selectedFullSemester);
+      }
+      return r.day === day && isSlot;
+    });
   };
 
   useEffect(() => {
@@ -1085,106 +1120,342 @@ export default function TeacherDashboardPage() {
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-50 dark:bg-sky-950/60 text-xs font-semibold text-sky-600 dark:text-sky-400 mb-1.5">
               <Calendar className="w-3.5 h-3.5 text-sky-500" />
-              <span>Teaching Timetable & Routine</span>
+              <span>Teaching Timetable & Routine Studio</span>
             </div>
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Assigned Faculty Schedule</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Courses and lecture slots scheduled for your instruction</p>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Academic Routine & Class Schedule</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Live departmental schedules synchronized directly with administrator routine planning</p>
           </div>
           
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-bold text-sky-600 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/60 px-3 py-1.5 rounded-xl ring-1 ring-sky-200 dark:ring-sky-800">
-              {filteredSchedule.length} Lecture{filteredSchedule.length === 1 ? "" : "s"} Scheduled
+              {routineViewMode === "my" ? `${teacherSchedule.length} Assigned Lectures` : `${allRoutines.length} Active Classes`}
             </span>
             <button
-              onClick={() => loadProfile()}
-              className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer"
+              onClick={() => loadProfile(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
               title="Refresh Schedule"
             >
-              <RefreshCw className="w-4 h-4" />
+              <RefreshCw className={`w-3.5 h-3.5 ${scheduleLoading ? "animate-spin text-sky-500" : ""}`} />
+              <span>Sync Routine</span>
             </button>
           </div>
         </div>
 
-        {/* Day Filter Tabs */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-          {ROUTINE_DAYS.map((day) => (
+        {/* View Mode Tabs: My Assigned Lectures vs Full Department Routine Grid */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-1">
+          <div className="inline-flex items-center p-1 rounded-2xl bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/50 dark:border-slate-700/50 text-xs font-bold">
             <button
-              key={day}
-              onClick={() => setSelectedDay(day)}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                selectedDay === day
-                  ? "bg-sky-600 text-white shadow-sm shadow-sky-200 dark:shadow-none"
-                  : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+              type="button"
+              onClick={() => setRoutineViewMode("my")}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl transition-all cursor-pointer ${
+                routineViewMode === "my"
+                  ? "bg-sky-600 text-white shadow-xs"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
               }`}
             >
-              {day}
+              <Presentation className="w-4 h-4" />
+              <span>My Assigned Lectures</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                routineViewMode === "my" ? "bg-white/20 text-white" : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400"
+              }`}>
+                {teacherSchedule.length}
+              </span>
             </button>
-          ))}
+            <button
+              type="button"
+              onClick={() => setRoutineViewMode("full")}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl transition-all cursor-pointer ${
+                routineViewMode === "full"
+                  ? "bg-sky-600 text-white shadow-xs"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              }`}
+            >
+              <Calendar className="w-4 h-4" />
+              <span>Full Department Routine</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                routineViewMode === "full" ? "bg-white/20 text-white" : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400"
+              }`}>
+                {allRoutines.length}
+              </span>
+            </button>
+          </div>
+
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+            {routineViewMode === "my"
+              ? `${filteredSchedule.length} lecture${filteredSchedule.length === 1 ? "" : "s"} visible on current filter`
+              : `Master Routine (${allRoutines.length} classes across active semesters)`}
+          </span>
         </div>
 
-        {/* Schedule Grid */}
-        {scheduleLoading ? (
-          <div className="py-12 flex justify-center items-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-600"></div>
-          </div>
-        ) : filteredSchedule.length === 0 ? (
-          <div className="py-12 text-center rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
-            <div className="h-12 w-12 rounded-2xl bg-sky-100 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center mx-auto">
-              <Calendar className="w-6 h-6" />
-            </div>
-            <h4 className="text-base font-bold text-slate-800 dark:text-slate-200">
-              {selectedDay === "All Days" ? "No Classes Assigned Yet" : `No Classes Scheduled on ${selectedDay}`}
-            </h4>
-            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-              Your faculty account is active. Once the department administrator schedules your course assignments in the Class Routine Studio, your routine slots and student cohorts will appear here automatically.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {filteredSchedule.map((cls, idx) => (
-              <div key={cls.id || idx} className="p-6 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 hover:border-sky-300 dark:hover:border-sky-500/50 transition-all space-y-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[11px] font-bold text-sky-600 dark:text-sky-400 uppercase tracking-wider">{cls.code}</span>
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300">{cls.day}</span>
-                    </div>
-                    <h3 className="font-bold text-slate-900 dark:text-white text-base leading-snug">{cls.title}</h3>
-                  </div>
-                  <div className="h-8 w-8 rounded-lg bg-sky-100 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
-                    <Clock className="w-4 h-4" />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5 text-xs text-slate-500 dark:text-slate-400">
-                  <div className="flex items-center justify-between">
-                    <span>Time Slot:</span>
-                    <span className="font-semibold text-slate-800 dark:text-slate-200">{cls.time}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Classroom / Lab:</span>
-                    <span className="font-semibold text-slate-800 dark:text-slate-200">{cls.room}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Target Class:</span>
-                    <span className="font-semibold text-slate-800 dark:text-slate-200">{cls.semester}</span>
-                  </div>
-                </div>
-
-                <button 
-                  onClick={() => handleStartAttendance(cls)}
-                  disabled={isPending}
-                  className={`w-full inline-flex items-center justify-center gap-2 h-10 rounded-xl font-bold text-xs transition-colors ${
-                    isPending
-                      ? "bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed shadow-none"
-                      : "bg-sky-600 hover:bg-sky-700 dark:bg-sky-600 dark:hover:bg-sky-500 text-white shadow-md shadow-sky-200/60 dark:shadow-none cursor-pointer"
+        {/* View 1: My Assigned Lectures */}
+        {routineViewMode === "my" && (
+          <div className="space-y-4">
+            {/* Day Filter Tabs */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+              {ROUTINE_DAYS.map((day) => (
+                <button
+                  key={day}
+                  onClick={() => setSelectedDay(day)}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    selectedDay === day
+                      ? "bg-sky-600 text-white shadow-sm shadow-sky-200 dark:shadow-none"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
                   }`}
                 >
-                  <Play className="w-3.5 h-3.5 fill-current" />
-                  <span>{isPending ? "Awaiting Approval" : "Start Attendance Session"}</span>
+                  {day}
                 </button>
+              ))}
+            </div>
+
+            {/* Schedule Cards Grid */}
+            {scheduleLoading ? (
+              <div className="py-12 flex justify-center items-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-600"></div>
               </div>
-            ))}
+            ) : filteredSchedule.length === 0 ? (
+              <div className="py-12 text-center rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="h-12 w-12 rounded-2xl bg-sky-100 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center mx-auto">
+                  <Calendar className="w-6 h-6" />
+                </div>
+                <h4 className="text-base font-bold text-slate-800 dark:text-slate-200">
+                  {selectedDay === "All Days" ? "No Classes Assigned Yet" : `No Classes Scheduled on ${selectedDay}`}
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                  Your faculty account is active. Once the department administrator schedules your course assignments in the Class Routine Studio, your routine slots and student cohorts will appear here automatically.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                {filteredSchedule.map((cls, idx) => (
+                  <div key={cls.id || idx} className="p-6 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 hover:border-sky-300 dark:hover:border-sky-500/50 transition-all space-y-4">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[11px] font-bold text-sky-600 dark:text-sky-400 uppercase tracking-wider">{cls.code}</span>
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300">{cls.day}</span>
+                        </div>
+                        <h3 className="font-bold text-slate-900 dark:text-white text-base leading-snug">{cls.title}</h3>
+                      </div>
+                      <div className="h-8 w-8 rounded-lg bg-sky-100 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
+                        <Clock className="w-4 h-4" />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5 text-xs text-slate-500 dark:text-slate-400">
+                      <div className="flex items-center justify-between">
+                        <span>Time Slot:</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">{cls.time}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Classroom / Lab:</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">{cls.room}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Target Cohort:</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">{cls.semester}</span>
+                      </div>
+                    </div>
+
+                    <button 
+                      onClick={() => handleStartAttendance(cls)}
+                      disabled={isPending}
+                      className={`w-full inline-flex items-center justify-center gap-2 h-10 rounded-xl font-bold text-xs transition-colors ${
+                        isPending
+                          ? "bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed shadow-none"
+                          : "bg-sky-600 hover:bg-sky-700 dark:bg-sky-600 dark:hover:bg-sky-500 text-white shadow-md shadow-sky-200/60 dark:shadow-none cursor-pointer"
+                      }`}
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      <span>{isPending ? "Awaiting Approval" : "Start Attendance Session"}</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* View 2: Full Department Routine Grid */}
+        {routineViewMode === "full" && (
+          <div className="space-y-4">
+            {/* Semester Filter Selector Tabs */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400 mr-1 whitespace-nowrap">
+                Semester View:
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedFullSemester("all")}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                  selectedFullSemester === "all"
+                    ? "bg-sky-600 text-white shadow-sm shadow-sky-300 dark:shadow-none"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                }`}
+              >
+                <span>Full Department Routine (All Semesters)</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                  selectedFullSemester === "all" ? "bg-white/20 text-white" : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400"
+                }`}>
+                  {allRoutines.length}
+                </span>
+              </button>
+
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => {
+                const count = allRoutines.filter((r) => Number(r.semester) === sem).length;
+                const isSelected = selectedFullSemester === String(sem);
+                const year = Math.ceil(sem / 2);
+                const term = ((sem - 1) % 2) + 1;
+                return (
+                  <button
+                    key={sem}
+                    type="button"
+                    onClick={() => setSelectedFullSemester(String(sem))}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                      isSelected
+                        ? "bg-sky-600 text-white shadow-sm shadow-sky-300 dark:shadow-none"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                    }`}
+                  >
+                    <span>Semester {sem} ({year}-{term})</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                      isSelected ? "bg-white/20 text-white" : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400"
+                    }`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Timetable Grid */}
+            <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 shadow-xs">
+              <div className="overflow-x-auto scrollbar-thin">
+                <table className="w-full border-collapse text-left">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-slate-800/50 backdrop-blur-md">
+                      <th className="w-24 border-r border-slate-200 dark:border-white/10 py-4 px-3 text-center text-[10px] font-black tracking-widest text-slate-400 uppercase">
+                        Day
+                      </th>
+                      {ROUTINE_TIME_SLOTS.map((slot) => {
+                        const isBreak = slot === "01:00 - 02:00";
+                        return (
+                          <th
+                            key={slot}
+                            className={`${isBreak ? "w-16 px-1" : "min-w-[175px] px-3"} border-r border-slate-200 dark:border-white/10 py-3.5 text-center font-bold whitespace-nowrap last:border-0`}
+                          >
+                            <div className="flex flex-col items-center gap-1">
+                              <Clock className={`w-3.5 h-3.5 ${isBreak ? "text-amber-500/50" : "text-sky-500"}`} />
+                              <span className={`text-xs font-black tracking-wider uppercase ${isBreak ? "text-amber-600 dark:text-amber-400 text-[10px]" : "text-slate-700 dark:text-slate-200"}`}>
+                                {isBreak ? "Lunch Break" : slot}
+                              </span>
+                            </div>
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                    {ROUTINE_DAYS.filter(d => d !== "All Days").map((day) => (
+                      <tr
+                        key={day}
+                        className="group transition-colors hover:bg-sky-50/20 dark:hover:bg-sky-950/20"
+                      >
+                        <td className="w-24 border-r border-slate-200 dark:border-white/10 bg-slate-50/60 dark:bg-slate-800/40 p-4 text-center align-middle font-bold text-slate-800 dark:text-slate-200 text-xs uppercase tracking-wider">
+                          {day}
+                        </td>
+
+                        {ROUTINE_TIME_SLOTS.map((slot) => {
+                          const isBreak = slot === "01:00 - 02:00";
+                          if (isBreak) {
+                            return (
+                              <td
+                                key={slot}
+                                className="w-16 border-r border-slate-200 dark:border-white/10 bg-amber-50/30 dark:bg-amber-950/20 p-2 text-center align-middle"
+                              >
+                                <div className="flex flex-col items-center justify-center text-amber-500">
+                                  <Coffee className="w-4 h-4 mb-1 opacity-60" />
+                                  <span className="text-[9px] font-black tracking-widest text-amber-600 dark:text-amber-400 uppercase">
+                                    Break
+                                  </span>
+                                </div>
+                              </td>
+                            );
+                          }
+
+                          const cells = getFullRoutineCells(day, slot);
+                          return (
+                            <td
+                              key={slot}
+                              className="border-r border-slate-200 dark:border-white/10 p-2.5 align-middle"
+                            >
+                              {cells && cells.length > 0 ? (
+                                <div className="space-y-2">
+                                  {cells.map((cell, cIdx) => {
+                                    const isMyClass = 
+                                      (cell.teacherName && activeName && (
+                                        cell.teacherName.toLowerCase() === activeName.toLowerCase() ||
+                                        activeName.toLowerCase().includes(cell.teacherName.toLowerCase()) ||
+                                        cell.teacherName.toLowerCase().includes(activeName.toLowerCase())
+                                      )) ||
+                                      (cell.teacherId && activeTeacherId && cell.teacherId === activeTeacherId);
+                                    
+                                    return (
+                                      <div
+                                        key={cell._id || cIdx}
+                                        className={`p-3 rounded-xl border shadow-xs transition-all flex flex-col justify-between min-h-[105px] ${
+                                          isMyClass
+                                            ? "bg-sky-50/90 dark:bg-sky-950/80 border-sky-400 dark:border-sky-500 ring-2 ring-sky-300 dark:ring-sky-700/50"
+                                            : "bg-white dark:bg-slate-800/90 border-slate-200/80 dark:border-slate-700/80 hover:border-slate-300 dark:hover:border-slate-600"
+                                        }`}
+                                      >
+                                        <div>
+                                          <div className="flex items-center justify-between gap-1 flex-wrap">
+                                            <span className="font-mono font-black text-[11px] text-sky-600 dark:text-sky-400 bg-sky-100/70 dark:bg-sky-950/80 px-2 py-0.5 rounded-md">
+                                              {cell.courseCode}
+                                            </span>
+                                            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                                              Sem {cell.semester}
+                                            </span>
+                                            {isMyClass && (
+                                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-sky-600 text-white shadow-xs">
+                                                ★ My Class
+                                              </span>
+                                            )}
+                                          </div>
+                                          <p className="mt-1.5 font-bold text-slate-800 dark:text-slate-100 text-xs leading-snug line-clamp-2">
+                                            {cell.courseTitle}
+                                          </p>
+                                        </div>
+
+                                        <div className="pt-2 border-t border-slate-100 dark:border-white/5 space-y-1">
+                                          <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
+                                            <span className="font-medium truncate max-w-[110px]" title={cell.teacherName}>
+                                              {cell.teacherName || "Unassigned"}
+                                            </span>
+                                            <span className="inline-flex items-center gap-0.5 font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 rounded">
+                                              <MapPin className="w-2.5 h-2.5 text-sky-500" />
+                                              <span>{cell.room || "Room"}</span>
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <div className="flex flex-col items-center justify-center p-3 text-slate-300 dark:text-slate-600 select-none">
+                                  <span className="text-[10px] font-medium tracking-wide">Free Slot</span>
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         )}
       </div>

@@ -203,10 +203,23 @@ const handleStudentGetRoutine = async (req, res) => {
 // GET /api/teacher/routine alias (returns raw array of classes assigned to teacher)
 const handleTeacherGetRoutine = async (req, res) => {
   try {
-    const { routines } = getCollections();
+    const { routines, teachers } = getCollections();
     const { teacherId, teacherName, email, day } = req.query;
     const query = {};
     if (day && day !== "all") query.day = day;
+
+    let resolvedTeacherDoc = null;
+    if (email) {
+      resolvedTeacherDoc = await teachers.findOne({ email });
+    }
+    if (!resolvedTeacherDoc && teacherId) {
+      resolvedTeacherDoc = await teachers.findOne({ teacherId });
+    }
+    if (!resolvedTeacherDoc && teacherName) {
+      resolvedTeacherDoc = await teachers.findOne({
+        name: { $regex: `^${escapeRegex(teacherName.trim())}$`, $options: 'i' }
+      });
+    }
 
     const orConditions = [];
     if (teacherId) orConditions.push({ teacherId });
@@ -216,6 +229,19 @@ const handleTeacherGetRoutine = async (req, res) => {
     }
     if (email) {
       orConditions.push({ teacherEmail: email });
+    }
+
+    if (resolvedTeacherDoc) {
+      if (resolvedTeacherDoc.teacherId) {
+        orConditions.push({ teacherId: resolvedTeacherDoc.teacherId });
+      }
+      if (resolvedTeacherDoc.name) {
+        orConditions.push({ teacherName: resolvedTeacherDoc.name });
+        orConditions.push({ teacherName: { $regex: `^${escapeRegex(resolvedTeacherDoc.name.trim())}$`, $options: 'i' } });
+      }
+      if (resolvedTeacherDoc._id) {
+        orConditions.push({ teacherId: String(resolvedTeacherDoc._id) });
+      }
     }
 
     if (orConditions.length > 0) {
@@ -392,7 +418,7 @@ router.post('/seed-sample', async (req, res) => {
     res.json({
       success: true,
       count: result.insertedCount,
-      message: `Successfully generated ${result.insertedCount} conflict-free routine slots for Semesters 7 & 8 distributed among registered faculty!`
+      message: `Successfully generated ${result.insertedCount} conflict-free routine slots across all Semesters (1 to 8) distributed among registered faculty!`
     });
   } catch (err) {
     console.error("Error seeding sample routines:", err);

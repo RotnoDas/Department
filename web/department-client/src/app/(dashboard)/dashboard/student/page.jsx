@@ -142,34 +142,46 @@ export default function StudentDashboardPage() {
   const [routines, setRoutines] = useState([]);
   const [routineTab, setRoutineTab] = useState("grid"); // "grid" | "courses"
   const [isRoutineLoading, setIsRoutineLoading] = useState(false);
+  const [selectedRoutineSemester, setSelectedRoutineSemester] = useState("1");
 
-  const loadRoutines = async () => {
-    const sem = studentEnrolledSem || 1;
+  const loadRoutines = async (showToast = false) => {
     const serverUrl = getServerUrl();
     setIsRoutineLoading(true);
     try {
-      const res = await fetch(`${serverUrl}/api/routines?semester=${sem}`);
+      const res = await fetch(`${serverUrl}/api/routines`);
       if (res.ok) {
         const data = await res.json();
-        setRoutines(Array.isArray(data) ? data : (data.routines || []));
+        const list = Array.isArray(data) ? data : (data.routines || []);
+        setRoutines(list);
+        if (showToast) {
+          toast.success("Routine synchronized with latest departmental timetable!");
+        }
       }
     } catch (e) {
       console.error("Error loading routine:", e);
+      if (showToast) toast.error("Could not sync routine.");
     } finally {
       setIsRoutineLoading(false);
     }
   };
 
   useEffect(() => {
+    loadRoutines();
+  }, []);
+
+  useEffect(() => {
     if (studentEnrolledSem) {
-      loadRoutines();
+      setSelectedRoutineSemester(String(studentEnrolledSem));
     }
   }, [studentEnrolledSem]);
 
-  const getStudentRoutineCell = (day, timeSlot) => {
-    return routines.find((r) => {
+  const getStudentRoutineCells = (day, timeSlot) => {
+    return routines.filter((r) => {
       const isSlot = r.timeSlot === timeSlot ||
         r.timeSlot?.replace(/^0/, "") === timeSlot?.replace(/^0/, "");
+      if (selectedRoutineSemester !== "all") {
+        return r.day === day && isSlot && Number(r.semester) === Number(selectedRoutineSemester);
+      }
       return r.day === day && isSlot;
     });
   };
@@ -1234,7 +1246,7 @@ export default function StudentDashboardPage() {
               {semesterCourses.length} Enrolled Courses
             </span>
             <button
-              onClick={loadRoutines}
+              onClick={() => loadRoutines(true)}
               disabled={isRoutineLoading}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
               title="Refresh routine schedule"
@@ -1288,6 +1300,58 @@ export default function StudentDashboardPage() {
             {routineTab === "grid" ? "Saturday to Wednesday Academic Routine" : "Syllabus courses & credit distribution"}
           </span>
         </div>
+
+        {/* Semester Filter Selector Tabs */}
+        {routineTab === "grid" && (
+          <div className="flex items-center gap-2 overflow-x-auto pb-2 pt-1 scrollbar-thin">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 mr-1 whitespace-nowrap">
+              Schedule View:
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelectedRoutineSemester("all")}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                selectedRoutineSemester === "all"
+                  ? "bg-indigo-600 text-white shadow-sm shadow-indigo-300 dark:shadow-none"
+                  : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+              }`}
+            >
+              <span>Full Master Routine (All Semesters)</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                selectedRoutineSemester === "all" ? "bg-white/20 text-white" : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400"
+              }`}>
+                {routines.length}
+              </span>
+            </button>
+
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => {
+              const semCount = routines.filter((r) => Number(r.semester) === sem).length;
+              const isSelected = selectedRoutineSemester === String(sem);
+              const year = Math.ceil(sem / 2);
+              const term = ((sem - 1) % 2) + 1;
+              const isMyTerm = enrolledSemester && Number(enrolledSemester) === sem;
+              return (
+                <button
+                  key={sem}
+                  type="button"
+                  onClick={() => setSelectedRoutineSemester(String(sem))}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                    isSelected
+                      ? "bg-indigo-600 text-white shadow-sm shadow-indigo-300 dark:shadow-none"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                  }`}
+                >
+                  <span>Semester {sem} ({year}-{term}){isMyTerm ? " ★ My Term" : ""}</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                    isSelected ? "bg-white/20 text-white" : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400"
+                  }`}>
+                    {semCount}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* ── Content View 1: Weekly Routine Timetable Grid ── */}
         {routineTab === "grid" && (
@@ -1346,36 +1410,43 @@ export default function StudentDashboardPage() {
                             );
                           }
 
-                          const cell = getStudentRoutineCell(day, slot);
+                          const cells = getStudentRoutineCells(day, slot);
                           return (
                             <td
                               key={slot}
                               className="border-r border-slate-200 dark:border-white/10 p-2.5 align-middle"
                             >
-                              {cell && (cell.courseCode || cell.room) ? (
-                                <div className="p-3.5 rounded-xl bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 shadow-xs hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-md transition-all flex flex-col justify-between min-h-[105px]">
-                                  <div>
-                                    <div className="flex items-center justify-between gap-1">
-                                      <span className="font-mono font-black text-xs text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-0.5 rounded-md">
-                                        {cell.courseCode}
-                                      </span>
-                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded">
-                                        <MapPin className="w-3 h-3 text-indigo-500" />
-                                        <span>{cell.room || "Room"}</span>
-                                      </span>
+                              {cells && cells.length > 0 ? (
+                                <div className="space-y-2">
+                                  {cells.map((cell, cIdx) => (
+                                    <div key={cell._id || cIdx} className="p-3 rounded-xl bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 shadow-xs hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-md transition-all flex flex-col justify-between min-h-[95px]">
+                                      <div>
+                                        <div className="flex items-center justify-between gap-1 flex-wrap">
+                                          <span className="font-mono font-black text-[11px] text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-md">
+                                            {cell.courseCode}
+                                          </span>
+                                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300">
+                                            Sem {cell.semester}
+                                          </span>
+                                          <span className="inline-flex items-center gap-1 text-[9px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.2 rounded">
+                                            <MapPin className="w-2.5 h-2.5 text-indigo-500" />
+                                            <span>{cell.room || "Room"}</span>
+                                          </span>
+                                        </div>
+                                        {cell.courseTitle && (
+                                          <p className="text-xs font-bold text-slate-800 dark:text-slate-100 line-clamp-1 mt-1.5">
+                                            {cell.courseTitle}
+                                          </p>
+                                        )}
+                                      </div>
+                                      <div className="pt-1.5 border-t border-slate-100 dark:border-slate-700/50 text-[11px] text-slate-600 dark:text-slate-300 font-semibold truncate flex items-center justify-between">
+                                        <span>{cell.teacherName || "Faculty Instructor"}</span>
+                                      </div>
                                     </div>
-                                    {cell.courseTitle && (
-                                      <p className="text-xs font-bold text-slate-800 dark:text-slate-100 line-clamp-1 mt-2">
-                                        {cell.courseTitle}
-                                      </p>
-                                    )}
-                                  </div>
-                                  <div className="pt-2 border-t border-slate-100 dark:border-slate-700/50 text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate">
-                                    {cell.teacherName || "Faculty Instructor"}
-                                  </div>
+                                  ))}
                                 </div>
                               ) : (
-                                <div className="h-full min-h-[105px] rounded-xl flex items-center justify-center text-slate-300 dark:text-slate-600 text-sm font-light">
+                                <div className="h-full min-h-[95px] rounded-xl flex items-center justify-center text-slate-300 dark:text-slate-600 text-sm font-light">
                                   -
                                 </div>
                               )}

@@ -378,7 +378,7 @@ export default function AdminDashboardPage() {
   };
 
   const handleSeedSampleRoutine = async () => {
-    if (!confirm("Populate departmental academic routine for Semesters 7 & 8? Classes will be strictly distributed among registered approved faculty with zero room or teacher conflicts.")) return;
+    if (!confirm("Populate departmental academic routine for all Semesters (1 to 8)? Classes will be strictly distributed among registered approved faculty with zero room or teacher conflicts.")) return;
     setIsSeedingRoutine(true);
     try {
       const res = await fetch(`${SERVER_URL}/api/routines/seed-sample`, {
@@ -1478,7 +1478,7 @@ export default function AdminDashboardPage() {
               Class Routine & Master Timetable Studio
             </h2>
             <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5">
-              Admin control for weekly departmental class routines. Active schedules for Semesters 7 & 8 distributed among registered faculty. Click any slot to assign course, teacher, and room.
+              Admin control for weekly departmental class routines. Active schedules for Semesters 1 to 8 distributed among registered faculty. Click any slot to assign course, teacher, and room.
             </p>
           </div>
 
@@ -1487,10 +1487,10 @@ export default function AdminDashboardPage() {
               onClick={handleSeedSampleRoutine}
               disabled={isSeedingRoutine}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 cursor-pointer shadow-sm disabled:opacity-60"
-              title="Populate routine for Semesters 7 & 8 distributed among registered faculty"
+              title="Populate routine across all Semesters (1 to 8) distributed among registered faculty"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isSeedingRoutine ? "animate-spin text-indigo-500" : ""}`} />
-              <span>{isSeedingRoutine ? "Generating Schedule..." : "Populate Sem 7 & 8 Routine (Registered Faculty)"}</span>
+              <span>{isSeedingRoutine ? "Generating Schedule..." : "Populate All Semesters (1-8) Routine (Registered Faculty)"}</span>
             </button>
             <button
               onClick={fetchData}
