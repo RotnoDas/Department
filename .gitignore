@@ -75,6 +75,7 @@ venv.bak/
 *.onnx
 *.ckpt
 *.pb
+ml/face-service/models/
 
 # Operating System Files
 .DS_Store

@@ -36,7 +36,15 @@ import {
   Search,
   Filter,
   Coffee,
-  RefreshCw
+  RefreshCw,
+  Zap,
+  Target,
+  BarChart3,
+  Info,
+  CheckCircle,
+  Compass,
+  Radio,
+  Timer
 } from "lucide-react";
 import { FaGithub, FaLinkedin } from "react-icons/fa";
 import toast from "react-hot-toast";
@@ -48,6 +56,8 @@ import {
 } from "@/data/courses";
 import Loading from "@/components/common/Loading";
 import { StudentAnalyticsCharts } from "@/components/dashboard/DashboardCharts";
+import { apiFetch } from "@/lib/api";
+import FaceVerificationModal from "@/components/dashboard/FaceVerificationModal";
 
 const ROUTINE_DAYS = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday"];
 const ROUTINE_TIME_SLOTS = [
@@ -60,6 +70,45 @@ const ROUTINE_TIME_SLOTS = [
   "03:00 - 04:00",
   "04:00 - 05:00",
 ];
+
+// Strict Geofence Targets: University Campus & Personal/Authorized Coordinate
+const CAMPUS_LOCATIONS = [
+  { name: "University Campus (PUST CSE Building)", lat: 24.01296, lon: 89.280835, id: "univ", label: "University (PUST)" },
+  { name: "Authorized Campus Location (Me)", lat: 24.841355, lon: 89.381426, id: "me", label: "Me (Personal)" },
+];
+const ALLOWED_RADIUS_METERS = 10; // Strict 10m radius
+const ATTENDANCE_WINDOW_MINUTES = 10; // First 10 minutes of class start
+
+// Helper to calculate distance in meters to nearest campus/authorized coordinates
+const getGeofenceInfo = (userCoords) => {
+  if (!userCoords?.latitude || !userCoords?.longitude) return null;
+  const R = 6371e3;
+  let minDistance = Infinity;
+  let nearest = null;
+
+  for (const loc of CAMPUS_LOCATIONS) {
+    const φ1 = (userCoords.latitude * Math.PI) / 180;
+    const φ2 = (loc.lat * Math.PI) / 180;
+    const Δφ = ((loc.lat - userCoords.latitude) * Math.PI) / 180;
+    const Δλ = ((loc.lon - userCoords.longitude) * Math.PI) / 180;
+    const a =
+      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const dist = R * c;
+    if (dist < minDistance) {
+      minDistance = dist;
+      nearest = loc;
+    }
+  }
+
+  const roundedDistance = Math.round(minDistance * 10) / 10;
+  return {
+    distance: roundedDistance,
+    inRange: roundedDistance <= ALLOWED_RADIUS_METERS,
+    locationName: nearest?.label || nearest?.name || "Classroom",
+  };
+};
 
 const getServerUrl = () => {
   if (typeof window !== "undefined") {
@@ -144,6 +193,22 @@ export default function StudentDashboardPage() {
   const [isRoutineLoading, setIsRoutineLoading] = useState(false);
   const [selectedRoutineSemester, setSelectedRoutineSemester] = useState("1");
 
+  // ── Student Attendance States (department-management pattern) ──
+  const [attendanceSessions, setAttendanceSessions] = useState([]);
+  const [attendanceStats, setAttendanceStats] = useState([]);
+  const [attendanceSummary, setAttendanceSummary] = useState(null);
+  const [attendanceHistory, setAttendanceHistory] = useState([]);
+  const [isAttendanceLoading, setIsAttendanceLoading] = useState(false);
+  const [attendanceTargetDay, setAttendanceTargetDay] = useState("today");
+  const [coords, setCoords] = useState(null);
+  const [geoStatus, setGeoStatus] = useState("fetching"); // "fetching" | "ready" | "denied" | "unsupported"
+  const [faceStatus, setFaceStatus] = useState({ enrolled: false, enrolledAt: null });
+  const [faceModalConfig, setFaceModalConfig] = useState({
+    isOpen: false,
+    purpose: "verify", // "enroll" | "verify"
+    routine: null,
+  });
+
   const loadRoutines = async (showToast = false) => {
     const serverUrl = getServerUrl();
     setIsRoutineLoading(true);
@@ -165,9 +230,65 @@ export default function StudentDashboardPage() {
     }
   };
 
+  const loadAttendanceData = async (showFeedback = false, overrideDay = null) => {
+    if (showFeedback) setIsAttendanceLoading(true);
+    const dayParam = overrideDay !== null ? overrideDay : attendanceTargetDay;
+    const query = dayParam && dayParam !== "today" ? `?targetDay=${encodeURIComponent(dayParam)}` : "";
+
+    try {
+      const [sessionsRes, statsRes, histRes, faceRes] = await Promise.all([
+        apiFetch(`/api/attendance/student/active-sessions${query}`),
+        apiFetch("/api/attendance/student/stats"),
+        apiFetch("/api/attendance/student/history"),
+        apiFetch("/api/face/status"),
+      ]);
+
+      if (sessionsRes.ok && sessionsRes.data?.sessions) {
+        setAttendanceSessions(sessionsRes.data.sessions);
+        if (sessionsRes.data.face) {
+          setFaceStatus(sessionsRes.data.face);
+        }
+      }
+
+      if (statsRes.ok && statsRes.data?.stats) {
+        setAttendanceStats(statsRes.data.stats);
+        if (statsRes.data.overallPercentage !== undefined) {
+          setAttendanceSummary({
+            overallPercentage: statsRes.data.overallPercentage,
+            totalAttended: statsRes.data.totalAttended,
+            totalTarget: statsRes.data.totalTarget,
+          });
+        }
+      }
+
+      if (histRes.ok && histRes.data?.history) {
+        setAttendanceHistory(histRes.data.history);
+      }
+
+      if (faceRes.ok && faceRes.data) {
+        setFaceStatus({
+          enrolled: Boolean(faceRes.data.enrolled),
+          enrolledAt: faceRes.data.enrolledAt || null,
+        });
+      }
+
+      if (showFeedback) {
+        toast.success("Attendance records synchronized!");
+      }
+    } catch (err) {
+      console.error("Error loading attendance data:", err);
+      if (showFeedback) toast.error("Could not sync attendance data.");
+    } finally {
+      setIsAttendanceLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadRoutines();
-  }, []);
+    if (user?.email) {
+      loadAttendanceData(false);
+    }
+  }, [user?.email]);
 
   useEffect(() => {
     if (studentEnrolledSem) {
@@ -416,24 +537,98 @@ export default function StudentDashboardPage() {
   const theoryCount = semesterCourses.filter((c) => !(c.type === "Sessional" || c.type === "Laboratory" || c.title?.toLowerCase().includes("sessional") || c.title?.toLowerCase().includes("lab"))).length;
   const labCount = semesterCourses.length - theoryCount;
 
-  const handleMarkAttendance = () => {
-    setIsMarking(true);
-    if (!navigator.geolocation) {
-      toast.error("Geolocation is not supported by your browser");
-      setIsMarking(false);
+  // Geolocation handling (department-management pattern)
+  const getPosition = (showToast = false) => {
+    if (typeof window === "undefined" || !navigator.geolocation) {
+      setGeoStatus("unsupported");
+      if (showToast) toast.error("Geolocation is not supported by your browser.");
+      return;
+    }
+    setGeoStatus("fetching");
+    if (showToast) toast("Requesting location access...", { icon: "📍" });
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setCoords({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+        });
+        setGeoStatus("ready");
+        if (showToast) toast.success("Location enabled — Ready to mark attendance");
+      },
+      (err) => {
+        console.warn("Location error:", err);
+        setGeoStatus("denied");
+        if (showToast) toast.error("Location permission denied. Please allow location access.");
+      },
+      { enableHighAccuracy: true, timeout: 6000 }
+    );
+  };
+
+  useEffect(() => {
+    getPosition(false);
+  }, []);
+
+  const handleOpenFaceEnrollment = () => {
+    if (isPending) {
+      toast.error("Account approval required before enrolling face biometrics.");
+      return;
+    }
+    setFaceModalConfig({
+      isOpen: true,
+      purpose: "enroll",
+      routine: null,
+    });
+  };
+
+  const handleOpenFaceCheckIn = (session) => {
+    if (isPending) {
+      toast.error("Attendance is locked until administrator approves your student account.");
       return;
     }
 
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setIsMarking(false);
-        toast.success(`Location verified [${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}]. Attendance recorded for CSE 3201!`);
+    if (session.attendanceId) {
+      toast.success("Attendance already recorded for this class session.");
+      return;
+    }
+
+    if (!session.isMarkable) {
+      toast.error("Attendance window is closed for this class (strictly available within first 10 minutes of class start).");
+      return;
+    }
+
+    if (!faceStatus.enrolled) {
+      toast.error("Please enroll your face first to enable anti-cheat attendance check-in.", { icon: "👤" });
+      setFaceModalConfig({ isOpen: true, purpose: "enroll", routine: null });
+      return;
+    }
+
+    if (!coords) {
+      toast.error("Please enable location access to verify you are inside the classroom.");
+      getPosition(true);
+      return;
+    }
+
+    const geofence = getGeofenceInfo(coords);
+    if (geofence && !geofence.inRange) {
+      toast.error(
+        `Location Verification: You are ${geofence.distance}m away from ${geofence.locationName}. Attendance strictly requires being within 10 meters of the classroom.`,
+        { duration: 6000, icon: "📍" }
+      );
+      return;
+    }
+
+    // Open Face Verification Modal for this active class
+    setFaceModalConfig({
+      isOpen: true,
+      purpose: "verify",
+      routine: {
+        routineId: session.routineId,
+        courseCode: session.courseCode,
+        courseTitle: session.courseTitle || session.courseName,
+        timeSlot: session.timeSlot,
       },
-      (err) => {
-        setIsMarking(false);
-        toast.error("Unable to retrieve campus GPS coordinate. Please enable location.");
-      }
-    );
+    });
   };
 
   const handleSignOut = async () => {
@@ -1160,60 +1355,513 @@ export default function StudentDashboardPage() {
           enrolledSemester={enrolledSemester} 
           routineCount={routines.length} 
           semesterCredits={semesterCredits} 
+          attendanceStats={attendanceStats}
+          attendanceSummary={attendanceSummary}
         />
       </div>
 
-      {/* Attendance & Geofence Mark Center */}
-      <div id="attendance" className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="p-6 rounded-2xl bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm flex flex-col justify-between transition-colors">
+      {/* Attendance & Class Presence Tracking */}
+      <div id="attendance" className="p-7 sm:p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-7 transition-colors scroll-mt-6">
+        {/* Section Top Header */}
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pb-5 border-b border-slate-100 dark:border-white/10">
           <div>
-            <span className="text-xs font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider">Overall Attendance</span>
-            <div className="mt-3 flex items-baseline gap-2">
-              <span className="text-4xl font-black text-indigo-600 dark:text-indigo-400">91.4%</span>
-              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">Above 75% target</span>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5">
+              <UserCheck className="w-3.5 h-3.5 text-indigo-500" />
+              <span>Smart Geofence Attendance</span>
             </div>
-            <p className="text-xs text-slate-400 dark:text-slate-400 mt-2 font-medium">
-              43 out of 47 mandatory lecture hours attended this term.
+            <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2.5">
+              <CheckCircle className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+              Class Attendance & Presence Tracking
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-1">
+              Automated location verification for daily routine classes (09:00 AM – 05:00 PM) • 10-Minute check-in window • Strict 10m campus radius.
             </p>
           </div>
-          <div className="mt-4 w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
-            <div className="bg-indigo-600 dark:bg-indigo-500 h-full rounded-full" style={{ width: "91.4%" }}></div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 ring-1 ring-indigo-200 dark:ring-indigo-800">
+              <Clock className="w-3.5 h-3.5 text-indigo-500" />
+              <span>First 10 Mins Window</span>
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-300 ring-1 ring-sky-200 dark:ring-sky-800">
+              <Target className="w-3.5 h-3.5 text-sky-500" />
+              <span>10m Radius</span>
+            </span>
+            <button
+              onClick={() => loadAttendanceData(true)}
+              disabled={isAttendanceLoading}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
+              title="Sync attendance records"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isAttendanceLoading ? "animate-spin text-indigo-500" : ""}`} />
+              <span>Sync Records</span>
+            </button>
           </div>
         </div>
 
-        <div className="p-6 rounded-2xl bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm flex flex-col justify-between transition-colors">
-          <div>
-            <span className="text-xs font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider">Cumulative GPA</span>
-            <div className="mt-3 flex items-baseline gap-2">
-              <span className="text-4xl font-black text-slate-900 dark:text-white">3.78</span>
-              <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400">Scale of 4.00</span>
+        {/* Live Geolocation Status Card */}
+        <div className="relative overflow-hidden rounded-2xl border transition-all">
+          {geoStatus === "unsupported" ? (
+            <div className="flex items-center gap-3 p-4 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-rose-800 dark:text-rose-300 rounded-2xl">
+              <AlertCircle className="w-5 h-5 shrink-0 text-rose-600" />
+              <div>
+                <p className="text-xs font-bold">Geolocation Not Supported</p>
+                <p className="text-[11px] text-rose-600 dark:text-rose-400">Your browser does not support HTML5 geolocation API.</p>
+              </div>
             </div>
-            <p className="text-xs text-slate-400 dark:text-slate-400 mt-2 font-medium">
-              Ranked in top 10% of 10th Batch.
-            </p>
-          </div>
-          <div className="mt-4 flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-bold">
-            <Award className="w-4 h-4" />
-            <span>Honors List Eligible</span>
-          </div>
+          ) : geoStatus === "denied" ? (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 text-amber-800 dark:text-amber-300 rounded-2xl">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center shrink-0 text-amber-600">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold">Location Permission Blocked</p>
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400">Please enable browser location access to verify your 10-meter campus presence.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => getPosition(true)}
+                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer self-start sm:self-center"
+              >
+                Enable Location Access
+              </button>
+            </div>
+          ) : geoStatus === "fetching" ? (
+            <div className="flex items-center justify-between p-4 bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-900/60 text-sky-800 dark:text-sky-300 rounded-2xl">
+              <div className="flex items-center gap-3">
+                <RefreshCw className="w-5 h-5 animate-spin text-sky-600 shrink-0" />
+                <div>
+                  <p className="text-xs font-bold">Acquiring Hardware GPS Satellite Location...</p>
+                  <p className="text-[11px] text-sky-600 dark:text-sky-400">Establishing high-accuracy coordinate fix</p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            (() => {
+              const geofence = getGeofenceInfo(coords);
+              const inRange = geofence?.inRange;
+
+              return (
+                <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl border transition-all ${
+                  inRange
+                    ? "bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/60 text-emerald-900 dark:text-emerald-200"
+                    : "bg-amber-50/70 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800/60 text-amber-900 dark:text-amber-200"
+                }`}>
+                  <div className="flex items-center gap-3">
+                    <div className={`relative flex items-center justify-center w-9 h-9 rounded-xl shrink-0 ${
+                      inRange
+                        ? "bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600"
+                        : "bg-amber-100 dark:bg-amber-900/50 text-amber-600"
+                    }`}>
+                      {inRange ? (
+                        <>
+                          <CheckCircle className="w-5 h-5" />
+                          <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                          </span>
+                        </>
+                      ) : (
+                        <MapPin className="w-5 h-5" />
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className={`text-xs font-bold ${inRange ? "text-emerald-800 dark:text-emerald-200" : "text-amber-800 dark:text-amber-200"}`}>
+                          {inRange ? "Hardware Location Verified & Within Range" : "Location Active — Outside 10m Geofence"}
+                        </p>
+                        <span className={`text-[10px] font-mono px-2 py-0.5 rounded-md font-semibold ${
+                          inRange
+                            ? "bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300"
+                            : "bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300"
+                        }`}>
+                          {geofence ? `${geofence.distance}m from ${geofence.locationName}` : "Measuring distance..."}
+                        </span>
+                      </div>
+                      <p className={`text-[11px] mt-0.5 ${inRange ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"}`}>
+                        {inRange
+                          ? "You are within the 10-meter classroom geofence. Ready to submit attendance."
+                          : `You are currently ${geofence?.distance}m away. Attendance strictly requires being within 10 meters of the classroom.`}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 self-start sm:self-center flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => getPosition(true)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold ring-1 transition-all cursor-pointer flex items-center gap-1.5 shadow-xs ${
+                        inRange
+                          ? "bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-300 ring-emerald-200 dark:ring-emerald-800 hover:bg-emerald-600 hover:text-white"
+                          : "bg-white dark:bg-slate-800 text-amber-700 dark:text-amber-300 ring-amber-200 dark:ring-amber-800 hover:bg-amber-600 hover:text-white"
+                      }`}
+                      title="Refresh hardware GPS position"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Sync GPS</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })()
+          )}
         </div>
 
-        <div id="checkin" className="p-6 rounded-2xl bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm flex flex-col justify-between space-y-4 transition-colors scroll-mt-6">
-          <div>
-            <span className="text-xs font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider">Live Geofence Check-in</span>
-            <h4 className="text-sm font-bold text-slate-900 dark:text-white mt-1">Mark Classroom Presence</h4>
-            <p className="text-xs text-slate-400 dark:text-slate-400 mt-1 font-medium">
-              Verify your GPS location within campus classrooms to check in for current class.
-            </p>
+        {/* Biometric Face Status Banner */}
+        {!faceStatus.enrolled ? (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-pink-500/10 border border-indigo-200 dark:border-indigo-800/60 shadow-xs">
+            <div className="flex items-center gap-3.5">
+              <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-indigo-600 text-white shrink-0 shadow-md shadow-indigo-600/30">
+                <Camera className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                    Biometric Enrollment Required
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400">
+                    Action Needed
+                  </span>
+                </div>
+                <p className="text-xs text-slate-700 dark:text-slate-300 font-medium leading-relaxed">
+                  Enroll your face once with anti-spoof liveness to enable instant, anti-cheat attendance check-in for all your scheduled classes.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleOpenFaceEnrollment}
+              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold shadow-md shadow-indigo-600/30 transition-all hover:scale-105 active:scale-95 cursor-pointer whitespace-nowrap self-start sm:self-center"
+            >
+              <Zap className="w-3.5 h-3.5" />
+              <span>Enroll Face Now</span>
+            </button>
           </div>
-          <button
-            onClick={handleMarkAttendance}
-            disabled={isMarking}
-            className="w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-200/60 dark:shadow-none transition-colors"
-          >
-            <Navigation className="w-4 h-4" />
-            <span>{isMarking ? "Verifying GPS..." : "Check In to Classroom"}</span>
-          </button>
+        ) : (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/60 text-emerald-900 dark:text-emerald-200 text-xs">
+            <div className="flex items-center gap-2.5">
+              <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
+              <span className="font-bold">Face Biometrics Active & Enrolled</span>
+              <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium">
+                (Anti-cheat liveness enabled)
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handleOpenFaceEnrollment}
+              className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline self-start sm:self-center cursor-pointer"
+            >
+              Update / Re-enroll Face
+            </button>
+          </div>
+        )}
+
+        {/* Schedule Day Selector Tabs */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 mr-1 whitespace-nowrap">
+              Schedule Day:
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setAttendanceTargetDay("today");
+                loadAttendanceData(false, "today");
+              }}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                attendanceTargetDay === "today"
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+              }`}
+            >
+              <span>Today's Classes</span>
+            </button>
+            {ROUTINE_DAYS.map((d) => {
+              const isSelected = attendanceTargetDay === d;
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => {
+                    setAttendanceTargetDay(d);
+                    loadAttendanceData(false, d);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                    isSelected
+                      ? "bg-indigo-600 text-white shadow-sm"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                  }`}
+                >
+                  {d}
+                </button>
+              );
+            })}
+          </div>
+
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+            {attendanceSessions.length} {attendanceSessions.length === 1 ? "Class" : "Classes"} Scheduled
+          </span>
+        </div>
+
+        {/* Main 2-Column Section: Active & Upcoming Classes (Left 2 Cols) + Course Statistics (Right 1 Col) */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-7">
+          {/* Left Column: Scheduled Classes */}
+          <div className="space-y-4 lg:col-span-2">
+            {attendanceSessions.length === 0 ? (
+              <div className="p-12 text-center rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-200 dark:border-slate-700/80 space-y-3">
+                <div className="w-16 h-16 rounded-full bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center mx-auto text-indigo-500">
+                  <Clock className="w-8 h-8" />
+                </div>
+                <h4 className="text-base font-bold text-slate-800 dark:text-slate-200">
+                  No Classes Scheduled
+                </h4>
+                <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                  According to your registered semester timetable, there are no scheduled classes for this day.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3.5">
+                {attendanceSessions.map((session, index) => {
+                  const isAttended = Boolean(session.attendanceId);
+                  const isMarkable = session.isMarkable;
+                  const isActive = session.isActive;
+                  const isPast = session.isPast;
+
+                  return (
+                    <div
+                      key={session.sessionId || index}
+                      className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col justify-between gap-4 ${
+                        isAttended
+                          ? "bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-200/80 dark:border-emerald-800/50 hover:border-emerald-400"
+                          : isActive && isMarkable
+                            ? "bg-white dark:bg-slate-800/90 border-indigo-500 shadow-md ring-2 ring-indigo-500/20"
+                            : "bg-white dark:bg-slate-800/60 border-slate-200/80 dark:border-slate-700/60 hover:border-indigo-300 dark:hover:border-slate-600"
+                      }`}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-start gap-3.5">
+                          <div
+                            className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                              isAttended
+                                ? "bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400"
+                                : isActive && isMarkable
+                                  ? "bg-indigo-600 text-white shadow-md animate-pulse"
+                                  : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
+                            }`}
+                          >
+                            {isAttended ? (
+                              <CheckCircle className="w-6 h-6" />
+                            ) : (
+                              <Clock className="w-6 h-6" />
+                            )}
+                          </div>
+
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap mb-1">
+                              <span className="font-mono font-bold text-xs px-2.5 py-0.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-800/50">
+                                {session.courseCode}
+                              </span>
+
+                              {isAttended && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
+                                  <Check className="w-3 h-3" />
+                                  <span>Present</span>
+                                </span>
+                              )}
+
+                              {!isAttended && isActive && isMarkable && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-600 text-white animate-pulse">
+                                  <Zap className="w-3 h-3" />
+                                  <span>Check-in Open</span>
+                                </span>
+                              )}
+
+                              {!isAttended && isActive && !isMarkable && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
+                                  <Clock className="w-3 h-3" />
+                                  <span>Window Closed (&gt;10m)</span>
+                                </span>
+                              )}
+
+                              {!isAttended && isPast && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300">
+                                  <span>Missed</span>
+                                </span>
+                              )}
+                            </div>
+
+                            <h3 className="font-bold text-base text-slate-900 dark:text-white leading-snug">
+                              {session.courseTitle || session.courseName}
+                            </h3>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                              Faculty: {session.teacherName || "Department Faculty"}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col sm:items-end gap-2 shrink-0">
+                          <span className="font-mono font-bold text-xs px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 self-start sm:self-end">
+                            {session.timeSlot || `${session.startTime} — ${session.endTime}`}
+                          </span>
+
+                          {!isAttended && (
+                            <div className="flex items-center gap-2">
+                              {isMarkable ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenFaceCheckIn(session)}
+                                  className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white text-xs font-bold shadow-md shadow-indigo-500/20 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                                >
+                                  <Camera className="w-3.5 h-3.5" />
+                                  <span>Mark Present</span>
+                                </button>
+                              ) : isActive ? (
+                                <span className="text-[10px] font-bold px-3 py-1.5 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
+                                  Window Closed (&gt;10m)
+                                </span>
+                              ) : isPast ? (
+                                <span className="text-[10px] font-bold px-3 py-1.5 rounded-xl bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300">
+                                  Missed
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-bold px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                                  Upcoming (Opens at {session.startTime || "start"})
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          {isAttended && (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-3 py-1.5 rounded-xl border border-emerald-200 dark:border-emerald-800/60">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Recorded Present</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Card Meta Bar */}
+                      <div className="flex flex-wrap items-center gap-4 pt-3 border-t border-slate-100 dark:border-slate-700/40 text-xs text-slate-500 dark:text-slate-400">
+                        <div className="flex items-center gap-1.5">
+                          <MapPin className="w-3.5 h-3.5 text-indigo-500" />
+                          <span>{session.room || "Room 401"} ({session.location || "PUST Campus"})</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Target className="w-3.5 h-3.5 text-sky-500" />
+                          <span>Radius: 10m Geofence</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 text-slate-400" />
+                          <span>Window: First 10 Mins</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Right Column: Statistics Sidebar */}
+          <div className="space-y-4">
+            <div className="p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 space-y-4">
+              <div className="flex items-center gap-3 pb-3 border-b border-slate-200/60 dark:border-slate-700/60">
+                <div className="w-10 h-10 rounded-xl bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
+                  <BarChart3 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    Attendance Statistics
+                  </h3>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    Semester Course Records
+                  </p>
+                </div>
+              </div>
+
+              {attendanceStats.length === 0 ? (
+                <div className="py-6 text-center text-xs text-slate-400 font-medium">
+                  No historical records logged yet.
+                </div>
+              ) : (
+                <div className="space-y-4 max-h-[580px] overflow-y-auto pr-1 scrollbar-thin">
+                  {attendanceStats.map((stat) => {
+                    const pct = stat.percentage || 0;
+                    const isGood = pct >= 75;
+                    const isWarning = pct >= 60 && pct < 75;
+
+                    return (
+                      <div
+                        key={stat.courseCode}
+                        className="p-3.5 rounded-xl bg-white dark:bg-slate-800/90 border border-slate-200/60 dark:border-slate-700/60 space-y-2.5"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                              {stat.courseTitle || stat.courseName}
+                            </p>
+                            <span className="font-mono text-[10px] font-bold text-slate-400">
+                              {stat.courseCode}
+                            </span>
+                          </div>
+                          <span
+                            className={`font-mono font-bold text-xs px-2 py-0.5 rounded-md ${
+                              isGood
+                                ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400"
+                                : isWarning
+                                  ? "bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400"
+                                  : "bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400"
+                            }`}
+                          >
+                            {pct}%
+                          </span>
+                        </div>
+
+                        {/* Progress Bar */}
+                        <div className="w-full bg-slate-100 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              isGood
+                                ? "bg-emerald-500"
+                                : isWarning
+                                  ? "bg-amber-500"
+                                  : "bg-rose-500"
+                            }`}
+                            style={{ width: `${Math.min(pct, 100)}%` }}
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
+                          <span>
+                            {stat.attendedSessions} / {stat.totalSessions} Sessions
+                          </span>
+                          <span className={isGood ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-rose-500 font-bold"}>
+                            {isGood ? "Good Standing" : "Short Attendance"}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100 dark:border-slate-700/40 text-[10px]">
+                          <div className="rounded-lg bg-slate-50 dark:bg-slate-700/40 p-1.5 text-center">
+                            <span className="text-slate-400 block font-semibold">Present</span>
+                            <span className="font-bold text-emerald-600 dark:text-emerald-400 text-xs">
+                              {stat.presentCount || stat.attendedSessions || 0}
+                            </span>
+                          </div>
+                          <div className="rounded-lg bg-slate-50 dark:bg-slate-700/40 p-1.5 text-center">
+                            <span className="text-slate-400 block font-semibold">Late</span>
+                            <span className="font-bold text-amber-600 dark:text-amber-400 text-xs">
+                              {stat.lateCount || 0}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1590,6 +2238,17 @@ export default function StudentDashboardPage() {
           </div>
         )}
       </div>
+      {/* Live Face Verification & Enrollment Modal */}
+      <FaceVerificationModal
+        isOpen={faceModalConfig.isOpen}
+        onClose={() => setFaceModalConfig(prev => ({ ...prev, isOpen: false }))}
+        purpose={faceModalConfig.purpose}
+        routine={faceModalConfig.routine}
+        coords={coords}
+        onSuccess={async () => {
+          await loadAttendanceData(false);
+        }}
+      />
     </div>
   );
 }

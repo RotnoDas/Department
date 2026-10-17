@@ -384,7 +384,7 @@ export default function TeacherDashboardPage() {
     setIsEditing(false);
   };
 
-  const handleStartAttendance = (cls) => {
+  const handleStartAttendance = async (cls) => {
     if (isPending) {
       toast.error("Your faculty account is pending administrator approval.");
       return;
@@ -400,7 +400,26 @@ export default function TeacherDashboardPage() {
       percentage: "92.0%"
     };
     setAttendanceLogs(prev => [newLog, ...prev]);
-    toast.success(`Active attendance session started for ${cls.code} (${cls.room})!`);
+
+    try {
+      await fetch(`${SERVER_URL}/api/attendance/session/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          courseCode: cls.code,
+          courseTitle: cls.title,
+          semester: cls.semesterNum || cls.semester,
+          teacherName: activeName,
+          room: cls.room,
+          timeSlot: cls.time,
+          day: cls.day
+        })
+      });
+      toast.success(`Live attendance session launched for ${cls.code} (${cls.room})! Students can now check in.`);
+    } catch (e) {
+      console.error(e);
+      toast.success(`Active attendance session started for ${cls.code} (${cls.room})!`);
+    }
   };
 
   const handleUploadMaterial = (e) => {

@@ -57,8 +57,8 @@ const buildSampleRoutinesList = (teachersList = []) => {
     };
   }
 
-  const semesters = [1, 2, 3, 4, 5, 6, 7, 8];
-  let semOffset = 0;
+  const otherSemesters = [1, 2, 3, 4, 5, 6, 8];
+  let otherOffset = 0;
   let teachOffset = 0;
   const coursePointers = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0 };
 
@@ -66,11 +66,12 @@ const buildSampleRoutinesList = (teachersList = []) => {
     allSlots.forEach((slot, sIdx) => {
       const isAfternoon = sIdx >= 4; // Slots 02:00-03:00, 03:00-04:00, 04:00-05:00
       
-      // Select 3 distinct semesters for this slot
-      const s1 = semesters[(semOffset) % 8];
-      const s2 = semesters[(semOffset + 3) % 8];
-      const s3 = semesters[(semOffset + 6) % 8];
-      semOffset++;
+      // Semester 7 is strictly scheduled in EVERY slot of EVERY routine day!
+      // Along with 2 rotating conflict-free semesters from [1, 2, 3, 4, 5, 6, 8]
+      const s1 = 7;
+      const s2 = otherSemesters[(otherOffset) % otherSemesters.length];
+      const s3 = otherSemesters[(otherOffset + 3) % otherSemesters.length];
+      otherOffset++;
 
       const slotSemesters = [s1, s2, s3];
       slotSemesters.forEach((sem, idx) => {

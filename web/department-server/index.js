@@ -1,5 +1,9 @@
-const express = require('express');
+// Load .env first: config modules read process.env when they are first required.
 const dotenv = require('dotenv');
+dotenv.config();
+
+const express = require('express');
+const http = require('http');
 const cors = require('cors');
 const { connectDB } = require('./config/db');
 const { seedInitialData } = require('./utils/seed');
@@ -14,8 +18,9 @@ const userRoutes = require('./routes/user.routes');
 const noticeRoutes = require('./routes/notice.routes');
 const courseRoutes = require('./routes/course.routes');
 const routineRoutes = require('./routes/routine.routes');
-
-dotenv.config();
+const attendanceRoutes = require('./routes/attendance.routes');
+const faceRoutes = require('./routes/face.routes');
+const attendanceConfig = require('./config/attendance');
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -75,6 +80,10 @@ app.post('/api/admin/routine', routineRoutes.handleSaveRoutineSlot);
 app.get('/api/student/routine', routineRoutes.handleStudentGetRoutine);
 app.get('/api/teacher/routine', routineRoutes.handleTeacherGetRoutine);
 
+// Smart Geofence Attendance (/api/attendance) and face enrollment (/api/face)
+app.use('/api/attendance', attendanceRoutes);
+app.use('/api/face', faceRoutes);
+
 // ── ROOT & HEALTH ─────────────────────────────────────────────
 app.get('/', (req, res) => {
   res.send('Department Server is running!');
@@ -86,8 +95,19 @@ async function startServer() {
     const { collections } = await connectDB();
     await seedInitialData(collections);
 
-    app.listen(port, () => {
+    const server = http.createServer({ maxHeaderSize: 65536 }, app);
+    server.listen(port, () => {
       console.log(`Department Server listening on port ${port}`);
+      console.log(
+        `[attendance] window=${attendanceConfig.windowMinutes}min radius=${attendanceConfig.radiusMeters}m ` +
+          `tz=${attendanceConfig.timezone} locations=${attendanceConfig.locations.length} face=${attendanceConfig.face.url}`
+      );
+      if (attendanceConfig.devMode) {
+        console.warn(
+          '[attendance] *** DEV MODE IS ON *** The 10 m location check is relaxed and test windows can be opened. ' +
+            'Set ATTENDANCE_DEV_MODE=false before real use. Face verification is never skipped.'
+        );
+      }
     });
   } catch (err) {
     console.error("Failed to start server:", err);

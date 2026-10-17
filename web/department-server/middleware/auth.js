@@ -1,6 +1,18 @@
 const { createRemoteJWKSet, jwtVerify } = require('jose-cjs');
 
-const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:3000";
+// The remote key set caches downloaded keys and handles key rotation. Create it once (lazily, so
+// CLIENT_URL is read after dotenv has loaded) instead of re-downloading the JWKS on every request.
+let jwks = null;
+let jwksUrl = null;
+
+const getJwks = () => {
+  const url = `${process.env.CLIENT_URL || 'http://localhost:3000'}/api/auth/jwks`;
+  if (!jwks || jwksUrl !== url) {
+    jwks = createRemoteJWKSet(new URL(url));
+    jwksUrl = url;
+  }
+  return jwks;
+};
 
 // Token verification middleware
 const verifyToken = async (req, res, next) => {
@@ -13,10 +25,7 @@ const verifyToken = async (req, res, next) => {
     return res.status(401).json({ message: "Unauthorized: Token format invalid" });
   }
   try {
-    const JWKS = createRemoteJWKSet(
-      new URL(`${CLIENT_URL}/api/auth/jwks`)
-    );
-    const { payload } = await jwtVerify(token, JWKS);
+    const { payload } = await jwtVerify(token, getJwks());
     req.user = payload;
     next();
   } catch (error) {

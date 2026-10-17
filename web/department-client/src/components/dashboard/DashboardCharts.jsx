@@ -87,7 +87,7 @@ export const CustomChartTooltip = ({ active, payload, label, unit = "", prefix =
 };
 
 // ── 1. STUDENT DASHBOARD ANALYTICS ────────────────────────────────────────
-export function StudentAnalyticsCharts({ enrolledSemester = 6, routineCount = 18, semesterCredits = 21 }) {
+export function StudentAnalyticsCharts({ enrolledSemester = 6, routineCount = 18, semesterCredits = 21, attendanceStats = [], attendanceSummary = null }) {
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => setIsMounted(true), []);
 
@@ -119,14 +119,20 @@ export function StudentAnalyticsCharts({ enrolledSemester = 6, routineCount = 18
     { day: "Wed", theoryHours: 4, labHours: 0, total: 4 },
   ];
 
-  // Subject attendance performance
-  const subjectAttendance = [
-    { code: "CSE 3101", name: "Operating Systems", attendance: 94 },
-    { code: "CSE 3103", name: "Microprocessors", attendance: 90 },
-    { code: "CSE 3104", name: "Microprocessor Lab", attendance: 96 },
-    { code: "CSE 3105", name: "Software Eng", attendance: 86 },
-    { code: "CSE 3107", name: "Computer Networks", attendance: 91 },
-  ];
+  // Subject attendance performance from live database records
+  const subjectAttendance = (attendanceStats && attendanceStats.length > 0)
+    ? attendanceStats.map(s => ({
+        code: s.courseCode,
+        name: s.courseName,
+        attendance: s.percentage
+      }))
+    : [
+        { code: "CSE 4101", name: "Software Engineering", attendance: 90 },
+        { code: "CSE 4102", name: "Software Project III", attendance: 80 },
+        { code: "CSE 4103", name: "Compiler Design", attendance: 70 },
+        { code: "CSE 4104", name: "AI Sessional", attendance: 100 },
+        { code: "CSE 4105", name: "Computer Graphics", attendance: 90 },
+      ];
 
   if (!isMounted) return null;
 
@@ -295,7 +301,7 @@ export function StudentAnalyticsCharts({ enrolledSemester = 6, routineCount = 18
               </p>
             </div>
             <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
-              Avg 91.4%
+              Avg {attendanceSummary?.overallPercentage !== undefined ? `${attendanceSummary.overallPercentage}%` : "88%"}
             </span>
           </div>
 

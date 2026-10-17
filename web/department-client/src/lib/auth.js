@@ -32,7 +32,23 @@ export const auth = betterAuth({
     },
   },
   plugins: [
-    jwt(),
+    jwt({
+      jwt: {
+        definePayload: (session) => {
+          const u = session.user || {};
+          return {
+            id: u.id,
+            email: u.email,
+            role: u.role || "student",
+            name: u.name || "",
+            studentId: u.studentId || "",
+            batch: u.batch || "",
+            semester: u.semester || "",
+            status: u.status || "approved",
+          };
+        },
+      },
+    }),
   ],
   databaseHooks: {
     user: {
