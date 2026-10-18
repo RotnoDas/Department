@@ -19,16 +19,19 @@ async function proxyRequest(req, pathSegments) {
   const internalSecret = req.headers.get("x-internal-secret");
   if (internalSecret) forwardHeaders["x-internal-secret"] = internalSecret;
 
+  const range = req.headers.get("range");
+  if (range) forwardHeaders["range"] = range;
+
   const method = req.method;
   let body = undefined;
   if (method !== "GET" && method !== "HEAD") {
     try {
-      const text = await req.text();
-      if (text && text.length > 0) {
-        body = text;
+      const buffer = await req.arrayBuffer();
+      if (buffer && buffer.byteLength > 0) {
+        body = Buffer.from(buffer);
       }
     } catch (e) {
-      console.warn("[/backend proxy] Could not read body text:", e);
+      console.warn("[/backend proxy] Could not read body:", e);
     }
   }
 
@@ -49,6 +52,22 @@ async function proxyRequest(req, pathSegments) {
     const cacheControl = res.headers.get("cache-control");
     if (cacheControl) {
       responseHeaders.set("cache-control", cacheControl);
+    }
+    const acceptRanges = res.headers.get("accept-ranges");
+    if (acceptRanges) {
+      responseHeaders.set("accept-ranges", acceptRanges);
+    }
+    const contentRange = res.headers.get("content-range");
+    if (contentRange) {
+      responseHeaders.set("content-range", contentRange);
+    }
+    const contentLength = res.headers.get("content-length");
+    if (contentLength) {
+      responseHeaders.set("content-length", contentLength);
+    }
+    const contentDisposition = res.headers.get("content-disposition");
+    if (contentDisposition) {
+      responseHeaders.set("content-disposition", contentDisposition);
     }
 
     return new Response(responseBody, {

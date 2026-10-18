@@ -58,6 +58,7 @@ import Loading from "@/components/common/Loading";
 import { StudentAnalyticsCharts } from "@/components/dashboard/DashboardCharts";
 import { apiFetch } from "@/lib/api";
 import FaceVerificationModal from "@/components/dashboard/FaceVerificationModal";
+import NoticeBoardSection from "@/components/notice/NoticeBoardSection";
 
 const ROUTINE_DAYS = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday"];
 const ROUTINE_TIME_SLOTS = [
@@ -2238,6 +2239,14 @@ export default function StudentDashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Official Notice Board & Student Circulars */}
+      <NoticeBoardSection
+        audience="student"
+        title="Department Notice Board & Student Circulars"
+        subtitle="Official circulars, exam schedules, class cancellation alerts, and audio announcements for students."
+      />
+
       {/* Live Face Verification & Enrollment Modal */}
       <FaceVerificationModal
         isOpen={faceModalConfig.isOpen}

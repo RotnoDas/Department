@@ -22,9 +22,16 @@ const attendanceRoutes = require('./routes/attendance.routes');
 const faceRoutes = require('./routes/face.routes');
 const attendanceConfig = require('./config/attendance');
 
+const path = require('path');
+const fs = require('fs');
+
 const app = express();
 const port = process.env.PORT || 5000;
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:3000";
+
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, 'uploads', 'notices');
+fs.mkdirSync(uploadsDir, { recursive: true });
 
 const allowedOrigins = [
   CLIENT_URL,
@@ -45,8 +52,11 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization", "x-internal-secret"]
 }));
 
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+
+// Static uploads (documents, images, audio announcements)
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // ── MOUNT ROUTERS ─────────────────────────────────────────────
 // Auth routes (/api/me)

@@ -41,6 +41,7 @@ import { FaGithub, FaLinkedin } from "react-icons/fa";
 import toast from "react-hot-toast";
 import Loading from "@/components/common/Loading";
 import { TeacherAnalyticsCharts } from "@/components/dashboard/DashboardCharts";
+import NoticeBoardSection from "@/components/notice/NoticeBoardSection";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
@@ -1556,6 +1557,13 @@ export default function TeacherDashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Official Department Notice Board for Faculty */}
+      <NoticeBoardSection
+        audience="teacher"
+        title="Department Notice Board & Faculty Circulars"
+        subtitle="Stay synchronized with faculty circulars, examination committee updates, meeting notices, and voice announcements."
+      />
 
       {/* Upload Material Modal */}
       {showUploadModal && (

@@ -26,6 +26,7 @@ import {
 import toast from "react-hot-toast";
 import Loading from "@/components/common/Loading";
 import { EmployeeAnalyticsCharts } from "@/components/dashboard/DashboardCharts";
+import NoticeBoardSection from "@/components/notice/NoticeBoardSection";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
@@ -427,51 +428,11 @@ export default function EmployeeDashboardPage() {
       </div>
 
       {/* Notices & Circulars */}
-      <div id="notices" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-              <Bell className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-              Administrative Circulars & Department Notices
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-1">
-              Official circulars regarding staff duties, examination seating, and facility upkeep
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="p-5 rounded-2xl bg-slate-50/70 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded">
-                Examination Circular
-              </span>
-              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">Oct 11, 2026</span>
-            </div>
-            <h4 className="font-bold text-slate-900 dark:text-white text-sm">
-              6th & 8th Semester Final Examination Lab Preparation
-            </h4>
-            <p className="text-xs text-slate-500 dark:text-slate-300 leading-relaxed">
-              All technical staff are instructed to lock workstation USB ports and verify network firewalls in Software Labs 1 & 2 before upcoming semester finals.
-            </p>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-slate-50/70 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded">
-                Facility Maintenance
-              </span>
-              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">Oct 09, 2026</span>
-            </div>
-            <h4 className="font-bold text-slate-900 dark:text-white text-sm">
-              Routine Campus Power Backup & Generator Test Notice
-            </h4>
-            <p className="text-xs text-slate-500 dark:text-slate-300 leading-relaxed">
-              Scheduled power transfer testing will occur this Saturday between 06:00 AM - 07:30 AM. Kindly verify all server battery backups.
-            </p>
-          </div>
-        </div>
-      </div>
+      <NoticeBoardSection
+        audience="staff"
+        title="Administrative Circulars & Staff Notices"
+        subtitle="Official circulars regarding staff duties, examination seating, and facility upkeep."
+      />
     </div>
   );
 }

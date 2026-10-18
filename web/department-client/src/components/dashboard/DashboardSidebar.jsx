@@ -90,6 +90,7 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
       case "teacher":
         return [
           { name: "Faculty Hub", href: "/dashboard/teacher", icon: LayoutDashboard },
+          { name: "Notice Board", href: "/dashboard/teacher#notices", icon: Bell },
           { name: "Teaching Analytics", href: "/dashboard/teacher#analytics", icon: BarChart3 },
           { name: "Today's Routine", href: "/dashboard/teacher#routine", icon: Clock },
           { name: "Course Materials", href: "/dashboard/teacher#materials", icon: BookOpen },
@@ -99,6 +100,7 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
       case "employee":
         return [
           { name: "Staff Desk", href: "/dashboard/employee", icon: LayoutDashboard },
+          { name: "Notice Board", href: "/dashboard/employee#notices", icon: Bell },
           { name: "Fleet & Ticket Analytics", href: "/dashboard/employee#analytics", icon: BarChart3 },
           { name: "Shift Check-in", href: "/dashboard/employee#shift", icon: Clock },
           { name: "Lab Infrastructure", href: "/dashboard/employee#inventory", icon: Layers },
@@ -108,6 +110,7 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
       default:
         return [
           { name: "Student Portal", href: "/dashboard/student", icon: LayoutDashboard },
+          { name: "Notice Board", href: "/dashboard/student#notices", icon: Bell },
           { name: "Academic Analytics", href: "/dashboard/student#analytics", icon: BarChart3 },
           { name: "Semester Curriculum", href: "/dashboard/student#routine", icon: BookOpen },
           { name: "Geofence Check-in", href: "/dashboard/student#checkin", icon: UserCheck },

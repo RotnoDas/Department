@@ -44,6 +44,7 @@ import toast from "react-hot-toast";
 import { SEMESTER_COURSES, SEMESTER_LABELS, SEMESTER_KEYS } from "@/data/courses";
 import Loading from "@/components/common/Loading";
 import { AdminAnalyticsCharts } from "@/components/dashboard/DashboardCharts";
+import NoticeBoardSection from "@/components/notice/NoticeBoardSection";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
@@ -2382,136 +2383,12 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* Notice Board Dispatcher Section */}
-      <div id="notices" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <Bell className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-              Official Notice Board & Circular Dispatcher
-            </h2>
-            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5">
-              Publish official announcements, academic notices, and circulars visible across student and staff portals.
-            </p>
-          </div>
-          <button
-            onClick={() => setShowNoticeForm(!showNoticeForm)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 dark:bg-indigo-600 hover:bg-slate-800 dark:hover:bg-indigo-700 text-white text-xs font-bold shadow-md transition-all cursor-pointer"
-          >
-            <Send className="w-4 h-4" />
-            <span>{showNoticeForm ? "Close Form" : "Dispatch Notice"}</span>
-          </button>
-        </div>
-
-        {/* Notice Dispatch Form */}
-        {showNoticeForm && (
-          <form onSubmit={handleCreateNotice} className="p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-4 animate-in fade-in">
-            <h3 className="font-bold text-sm text-slate-900 dark:text-white">Publish New Official Circular</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase">Notice Title</label>
-                <input
-                  required
-                  placeholder="e.g. 6th Semester Practical Exam Seating"
-                  value={newNotice.title}
-                  onChange={(e) => setNewNotice({ ...newNotice, title: e.target.value })}
-                  className="w-full h-10 px-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-indigo-500"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase">Category</label>
-                <select
-                  value={newNotice.category}
-                  onChange={(e) => setNewNotice({ ...newNotice, category: e.target.value })}
-                  className="w-full h-10 px-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-indigo-500"
-                >
-                  <option value="Academic" className="bg-white dark:bg-slate-800">Academic</option>
-                  <option value="Examination" className="bg-white dark:bg-slate-800">Examination</option>
-                  <option value="Events" className="bg-white dark:bg-slate-800">Events</option>
-                  <option value="Infrastructure" className="bg-white dark:bg-slate-800">Infrastructure</option>
-                  <option value="General" className="bg-white dark:bg-slate-800">General</option>
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase">Target Audience</label>
-                <select
-                  value={newNotice.audience}
-                  onChange={(e) => setNewNotice({ ...newNotice, audience: e.target.value })}
-                  className="w-full h-10 px-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-indigo-500"
-                >
-                  <option value="All Members" className="bg-white dark:bg-slate-800">All Members</option>
-                  <option value="All Students" className="bg-white dark:bg-slate-800">All Students</option>
-                  <option value="Faculty Only" className="bg-white dark:bg-slate-800">Faculty Only</option>
-                  <option value="Staff Only" className="bg-white dark:bg-slate-800">Staff Only</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase">Notice Content / Body</label>
-              <textarea
-                required
-                rows={3}
-                placeholder="Enter detailed notice content, schedule, or instructions..."
-                value={newNotice.content}
-                onChange={(e) => setNewNotice({ ...newNotice, content: e.target.value })}
-                className="w-full p-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-indigo-500"
-              />
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowNoticeForm(false)}
-                className="px-4 py-2 rounded-lg text-xs font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all cursor-pointer"
-              >
-                Publish Notice
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* Notices Feed */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {notices.map((notice) => (
-            <div
-              key={notice._id}
-              className="p-5 rounded-2xl bg-slate-50/70 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60 hover:border-slate-200 dark:hover:border-slate-600 transition-all space-y-3 flex flex-col justify-between"
-            >
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded">
-                      {notice.category || "General"}
-                    </span>
-                    <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded">
-                      Audience: {notice.audience || "All"}
-                    </span>
-                  </div>
-                  <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">{notice.date}</span>
-                </div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-sm">{notice.title}</h4>
-                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">{notice.content}</p>
-              </div>
-
-              <div className="pt-2 border-t border-slate-200/50 dark:border-slate-700/50 flex justify-end">
-                <button
-                  onClick={() => handleDeleteNotice(notice._id)}
-                  className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300 flex items-center gap-1 cursor-pointer"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Delete Notice</span>
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      <NoticeBoardSection
+        isAdmin={true}
+        audience="all"
+        title="Official Notice Board & Circular Dispatcher"
+        subtitle="Publish announcements, attach any files (PDF, Word, Excel, Images, ZIP), record live voice notes, and manage all department circulars."
+      />
 
       {/* ── Staff & Employee Verification Hub ─────────────────── */}
       <div id="directory" className="scroll-mt-6 space-y-6">
