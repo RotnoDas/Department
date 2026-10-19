@@ -1,99 +1,130 @@
 "use client";
 
+import React from "react";
 import Link from "next/link";
-import { GraduationCap, Presentation, ShieldCheck } from "lucide-react";
-import { Button } from "@heroui/react";
+import { GraduationCap, Presentation, Briefcase, ShieldCheck, ArrowRight, Sparkles } from "lucide-react";
+import { authClient } from "@/lib/auth-client";
 
 const PANELS = [
   {
     role: "Student",
     title: "Student Portal",
-    description: "Access lecture notes, submit assignments, track attendance, and manage your academic profile.",
-    icon: <GraduationCap className="h-8 w-8 text-indigo-600" />,
+    description: "Access course materials, turn in assignments, track real-time attendance, and view academic progress.",
+    icon: <GraduationCap className="h-7 w-7 text-indigo-600 dark:text-indigo-400" />,
+    iconBg: "bg-indigo-50 dark:bg-indigo-950/60 border-indigo-200 dark:border-indigo-800/60",
+    badgeColor: "text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 ring-indigo-200 dark:ring-indigo-800",
+    btnColor: "bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200/50 dark:shadow-none",
     loginPath: "/login",
     signupPath: "/register",
-    badgeColor: "text-indigo-600 bg-indigo-50 ring-indigo-200",
+    dashboardPath: "/dashboard/student",
   },
   {
     role: "Teacher",
     title: "Faculty Hub",
-    description: "Manage course distributions, publish study materials, and review student assignment submissions.",
-    icon: <Presentation className="h-8 w-8 text-sky-600" />,
+    description: "Schedule lectures, publish course slides and lab manuals, oversee student rosters, and grade assignments.",
+    icon: <Presentation className="h-7 w-7 text-sky-600 dark:text-sky-400" />,
+    iconBg: "bg-sky-50 dark:bg-sky-950/60 border-sky-200 dark:border-sky-800/60",
+    badgeColor: "text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/60 ring-sky-200 dark:ring-sky-800",
+    btnColor: "bg-sky-600 hover:bg-sky-700 text-white shadow-sky-200/50 dark:shadow-none",
     loginPath: "/login",
     signupPath: "/register",
-    badgeColor: "text-sky-600 bg-sky-50 ring-sky-200",
+    dashboardPath: "/dashboard/teacher",
+  },
+  {
+    role: "Employee",
+    title: "Staff Desk",
+    description: "Monitor computer labs, track hardware maintenance work tickets, log duty shifts, and oversee facility readiness.",
+    icon: <Briefcase className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />,
+    iconBg: "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800/60",
+    badgeColor: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 ring-emerald-200 dark:ring-emerald-800",
+    btnColor: "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200/50 dark:shadow-none",
+    loginPath: "/login",
+    signupPath: "/register",
+    dashboardPath: "/dashboard/employee",
   },
   {
     role: "Admin",
-    title: "Admin Control",
-    description: "Full oversight of the department portal, user approvals, course assignments, and routine management.",
-    icon: <ShieldCheck className="h-8 w-8 text-purple-600" />,
+    title: "Admin Console",
+    description: "Full institutional governance, approving registrations, managing curriculum routines, and circular dispatch.",
+    icon: <ShieldCheck className="h-7 w-7 text-purple-600 dark:text-purple-400" />,
+    iconBg: "bg-purple-50 dark:bg-purple-950/60 border-purple-200 dark:border-purple-800/60",
+    badgeColor: "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/60 ring-purple-200 dark:ring-purple-800",
+    btnColor: "bg-purple-600 hover:bg-purple-700 text-white shadow-purple-200/50 dark:shadow-none",
     loginPath: "/login",
     signupPath: "/register",
-    badgeColor: "text-purple-600 bg-purple-50 ring-purple-200",
+    dashboardPath: "/dashboard/admin",
   },
 ];
 
-export function PortalsPreview({ portalCardsRef }) {
+export function PortalsPreview() {
+  const { data: session } = authClient.useSession();
+  const user = session?.user;
+
   return (
-    <div id="portals" className="py-24 relative z-10">
-      <div className="gsap-portal-header space-y-3 text-center mb-20">
-        <h2 className="text-xs font-bold tracking-[0.3em] text-indigo-600 uppercase">
-          Choose Your Path
+    <div id="portals" className="py-20 relative z-10 scroll-mt-24">
+      <div className="space-y-3 text-center mb-16">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 text-xs font-bold tracking-widest uppercase mb-2">
+          <Sparkles className="w-3.5 h-3.5" />
+          <span>Role-Based Gateways</span>
+        </div>
+        <h2 className="text-3xl md:text-5xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+          Choose Your Department Portal
         </h2>
-        <p className="text-4xl font-extrabold tracking-tight text-slate-900">
-          Role-Based Access
+        <p className="text-sm md:text-base text-slate-500 dark:text-slate-400 max-w-2xl mx-auto">
+          Tailored dashboards designed specifically for students, faculty members, staff technicians, and department administrators.
         </p>
       </div>
 
-      <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {PANELS.map((panel, idx) => (
           <article
-            key={panel.role}
-            ref={(el) => {
-              if (portalCardsRef) {
-                  portalCardsRef.current[idx] = el;
-              }
-            }}
-            className="group relative flex flex-col overflow-hidden rounded-[2.5rem] bg-white/80 backdrop-blur-xl p-8 shadow-[0_15px_40px_-15px_rgba(0,0,0,0.1)] ring-1 ring-slate-100 transition-all duration-500 hover:-translate-y-3 hover:shadow-2xl hover:shadow-indigo-100/50 hover:ring-indigo-100"
+            key={panel.role || idx}
+            className="group relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl p-6 sm:p-7 shadow-[0_10px_30px_rgb(0,0,0,0.04)] dark:shadow-none border border-slate-200/80 dark:border-white/10 transition-all duration-300 hover:-translate-y-2 hover:shadow-xl hover:border-indigo-300 dark:hover:border-indigo-500/50"
           >
-            <div className="absolute inset-0 bg-gradient-to-br from-white/60 to-transparent pointer-events-none" />
-            
-            <div className="relative z-10 flex flex-1 flex-col">
-              <div className="mb-8 flex items-start justify-between">
-                <div className={`rounded-xl px-4 py-1.5 text-xs font-bold tracking-widest uppercase shadow-sm ring-1 ${panel.badgeColor}`}>
+            <div>
+              <div className="mb-6 flex items-start justify-between">
+                <span className={`rounded-xl px-3 py-1 text-[11px] font-bold tracking-widest uppercase shadow-2xs ring-1 ${panel.badgeColor}`}>
                   {panel.role}
-                </div>
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-xl shadow-slate-200/50 ring-1 ring-slate-50 transition-transform duration-500 group-hover:scale-110 group-hover:rotate-6">
+                </span>
+                <div className={`flex h-12 w-12 items-center justify-center rounded-2xl border shadow-sm transition-transform duration-300 group-hover:scale-110 ${panel.iconBg}`}>
                   {panel.icon}
                 </div>
               </div>
 
-              <h3 className="mb-4 text-2xl font-bold tracking-tight text-slate-900 transition-colors group-hover:text-indigo-600">
+              <h3 className="mb-2.5 text-xl font-bold tracking-tight text-slate-900 dark:text-white transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
                 {panel.title}
               </h3>
-              <p className="mb-10 text-[15px] leading-relaxed font-medium text-slate-500">
+              <p className="text-xs leading-relaxed font-medium text-slate-500 dark:text-slate-400 mb-8">
                 {panel.description}
               </p>
+            </div>
 
-              <div className="mt-auto flex gap-4 pt-6">
-                <Button 
-                  as={Link} 
-                  href={panel.loginPath} 
-                  color="primary" 
-                  className="flex-1 font-semibold text-sm h-12 shadow-lg shadow-indigo-200/50 rounded-xl bg-indigo-600 hover:bg-indigo-700"
+            <div className="pt-4 border-t border-slate-100 dark:border-white/10 flex gap-2.5">
+              {user ? (
+                <Link 
+                  href={panel.dashboardPath}
+                  className={`w-full font-bold text-xs h-10 rounded-xl transition-all shadow-xs flex items-center justify-center gap-1.5 active:scale-95 ${panel.btnColor}`}
                 >
-                  Sign In
-                </Button>
-                <Button 
-                  as={Link} 
-                  href={panel.signupPath} 
-                  variant="flat" 
-                  className="flex-1 font-semibold text-sm h-12 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200"
-                >
-                  Sign Up
-                </Button>
-              </div>
+                  <span>Enter {panel.title}</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              ) : (
+                <>
+                  <Link 
+                    href={panel.loginPath}
+                    className={`flex-1 font-bold text-xs h-10 rounded-xl transition-all shadow-xs flex items-center justify-center gap-1.5 active:scale-95 ${panel.btnColor}`}
+                  >
+                    <span>Sign In</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                  <Link 
+                    href={panel.signupPath}
+                    className="px-3.5 font-bold text-xs h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition flex items-center justify-center active:scale-95"
+                  >
+                    Register
+                  </Link>
+                </>
+              )}
             </div>
           </article>
         ))}

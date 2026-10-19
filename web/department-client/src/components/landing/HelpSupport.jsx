@@ -7,7 +7,7 @@ import Link from "next/link";
 
 export function HelpSupport() {
   return (
-    <div id="support" className="py-24 relative z-10 max-w-7xl mx-auto px-6 lg:px-8">
+    <div id="support" className="py-24 relative z-10 max-w-7xl mx-auto px-6 lg:px-8 scroll-mt-24">
       <div className="text-center max-w-2xl mx-auto mb-16">
         <motion.h2 
           initial={{ opacity: 0, y: 20 }}

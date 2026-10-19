@@ -1,16 +1,51 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Terminal, Bell, Code2, Database } from "lucide-react";
+import { ArrowRight, Terminal, Bell, Code2, Database, LayoutDashboard } from "lucide-react";
 import { Button } from "@heroui/react";
 import gsap from "gsap";
 import { ScrollToPlugin } from "gsap/ScrollToPlugin";
+import { authClient } from "@/lib/auth-client";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollToPlugin);
 }
 
 export function HeroSection() {
+  const { data: session, isPending } = authClient.useSession();
+  const user = session?.user;
+
+  const resolveRole = () => {
+    if (user?.role) return user.role;
+    const email = (user?.email || "").toLowerCase().trim();
+    if (email === "admin@cse.edu" || email.includes("admin")) return "admin";
+    if (email.endsWith("@teacher.cse.edu") || (email.endsWith("@cse.edu") && !email.includes("student") && !email.includes("staff") && !email.includes("admin") && !email.includes("employee"))) return "teacher";
+    if (email.endsWith("@employee.cse.edu") || email.endsWith("@staff.cse.edu")) return "employee";
+    return "student";
+  };
+
+  const getDashboardPath = () => {
+    const role = resolveRole();
+    switch (role) {
+      case "admin": return "/dashboard/admin";
+      case "teacher": return "/dashboard/teacher";
+      case "employee": return "/dashboard/employee";
+      case "student":
+      default: return "/dashboard/student";
+    }
+  };
+
+  const getDashboardLabel = () => {
+    const role = resolveRole();
+    switch (role) {
+      case "admin": return "Go to Admin Console";
+      case "teacher": return "Go to Faculty Hub";
+      case "employee": return "Go to Staff Desk";
+      case "student":
+      default: return "Go to Student Portal";
+    }
+  };
+
   const handleScroll = (e, targetId) => {
     e.preventDefault();
     gsap.to(window, {
@@ -21,7 +56,7 @@ export function HeroSection() {
   };
 
   return (
-    <div className="mb-32 grid grid-cols-1 items-center gap-16 lg:grid-cols-2 relative z-10 pt-44">
+    <div id="overview" className="mb-32 grid grid-cols-1 items-center gap-16 lg:grid-cols-2 relative z-10 pt-44 scroll-mt-24">
       <div className="space-y-10 relative">
         <h1 className="gsap-hero-item text-6xl leading-[1.08] font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-7xl xl:text-[5.5rem] relative z-10">
           Computer Science <br/>
@@ -33,13 +68,26 @@ export function HeroSection() {
           Experience seamless role-based access control and predictive insights tailored for CSE.
         </p>
 
-        <div className="gsap-hero-item flex flex-wrap gap-5 pt-4">
-          <Link 
-            href="/register" 
-            className="inline-flex items-center justify-center font-bold text-sm tracking-wide h-14 px-8 shadow-xl shadow-indigo-200/50 dark:shadow-indigo-900/30 bg-indigo-600 hover:bg-indigo-700 rounded-2xl text-white transition-colors"
-          >
-            Get Started <ArrowRight className="h-4 w-4 ml-2" />
-          </Link>
+        <div className="gsap-hero-item flex flex-wrap gap-5 pt-4 min-h-[56px]">
+          {isPending ? (
+            <div className="h-14 w-44 rounded-2xl bg-slate-200/70 dark:bg-slate-800/70 animate-pulse" />
+          ) : !user ? (
+            <Link 
+              href="/register" 
+              className="inline-flex items-center justify-center font-bold text-sm tracking-wide h-14 px-8 shadow-xl shadow-indigo-200/50 dark:shadow-indigo-900/30 bg-indigo-600 hover:bg-indigo-700 rounded-2xl text-white transition-all hover:scale-105 active:scale-95"
+            >
+              Get Started <ArrowRight className="h-4 w-4 ml-2" />
+            </Link>
+          ) : (
+            <Link 
+              href={getDashboardPath()} 
+              className="inline-flex items-center justify-center font-bold text-sm tracking-wide h-14 px-8 shadow-xl shadow-indigo-200/50 dark:shadow-indigo-900/30 bg-gradient-to-r from-indigo-600 via-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 rounded-2xl text-white transition-all hover:scale-105 active:scale-95 gap-2.5"
+            >
+              <LayoutDashboard className="h-4 w-4 text-indigo-100" />
+              <span>{getDashboardLabel()}</span>
+              <ArrowRight className="h-4 w-4 ml-1" />
+            </Link>
+          )}
         </div>
 
         <div className="gsap-hero-item inline-flex items-center gap-5 pt-4 mt-2 rounded-full bg-white/40 dark:bg-slate-900/60 backdrop-blur-md p-2 pr-6 shadow-sm ring-1 ring-slate-200/50 dark:ring-white/10">

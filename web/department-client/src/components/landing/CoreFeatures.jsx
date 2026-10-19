@@ -119,7 +119,7 @@ const FEATURES = [
 
 export function CoreFeatures() {
   return (
-    <div id="features" className="py-16 relative z-10">
+    <div id="features" className="py-16 relative z-10 scroll-mt-24">
       <div className="space-y-2 text-center mb-10">
         <motion.h2 
           initial={{ opacity: 0, y: 20 }}

@@ -17,7 +17,11 @@ import {
   ShieldCheck, 
   ArrowUpRight,
   Calendar,
-  Layers
+  Layers,
+  Bell,
+  LifeBuoy,
+  Menu,
+  X
 } from "lucide-react";
 import toast from "react-hot-toast";
 import gsap from "gsap";
@@ -31,12 +35,24 @@ if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollToPlugin);
 }
 
+// Structured Navigation Mapping for Homepage and Portals
+export const NAV_ITEMS = [
+  { label: "Overview", href: "#overview", targetId: "overview", icon: Sparkles, description: "Department highlight & welcome" },
+  { label: "Features", href: "#features", targetId: "features", icon: Layers, description: "Key platform capabilities" },
+  { label: "Portals", href: "#portals", targetId: "portals", icon: GraduationCap, description: "Student, Teacher & Staff desks" },
+  { label: "Notices", href: "#notices", targetId: "notices", icon: Bell, description: "Latest circulars & announcements" },
+  { label: "Support", href: "#support", targetId: "support", icon: LifeBuoy, description: "Student support & administrative help" },
+];
+
 export function Navbar() {
   const router = useRouter();
   const { data: session, isPending } = authClient.useSession();
   const [dbProfile, setDbProfile] = useState(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState("overview");
   const dropdownRef = useRef(null);
+  const mobileMenuRef = useRef(null);
 
   const { scrollYProgress } = useScroll();
   const smoothProgress = useSpring(scrollYProgress, { 
@@ -79,14 +95,17 @@ export function Navbar() {
     }
   }, [user?.email]);
 
-  // Handle clicking outside to dismiss dropdown
+  // Handle clicking outside to dismiss dropdowns
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setIsDropdownOpen(false);
       }
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target)) {
+        setMobileMenuOpen(false);
+      }
     };
-    if (isDropdownOpen) {
+    if (isDropdownOpen || mobileMenuOpen) {
       document.addEventListener("mousedown", handleClickOutside);
       document.addEventListener("touchstart", handleClickOutside);
     }
@@ -94,15 +113,47 @@ export function Navbar() {
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("touchstart", handleClickOutside);
     };
-  }, [isDropdownOpen]);
+  }, [isDropdownOpen, mobileMenuOpen]);
 
-  const handleScroll = (e, targetId) => {
+  // Active section scroll spy listener
+  useEffect(() => {
+    const handleScrollSpy = () => {
+      const scrollPosition = window.scrollY + 180;
+      const ids = NAV_ITEMS.map((item) => item.targetId);
+      for (let i = ids.length - 1; i >= 0; i--) {
+        const el = document.getElementById(ids[i]);
+        if (el) {
+          const top = el.offsetTop;
+          if (scrollPosition >= top) {
+            setActiveSection(ids[i]);
+            return;
+          }
+        }
+      }
+      setActiveSection("overview");
+    };
+
+    window.addEventListener("scroll", handleScrollSpy, { passive: true });
+    handleScrollSpy();
+    return () => window.removeEventListener("scroll", handleScrollSpy);
+  }, []);
+
+  const handleNavClick = (e, item) => {
     e.preventDefault();
-    gsap.to(window, {
-      duration: 0.6,
-      scrollTo: { y: `#${targetId}`, offsetY: 50 },
-      ease: "power2.inOut"
-    });
+    setMobileMenuOpen(false);
+    if (typeof window !== "undefined" && window.location.pathname === "/") {
+      const el = document.getElementById(item.targetId);
+      if (el) {
+        gsap.to(window, {
+          duration: 0.6,
+          scrollTo: { y: `#${item.targetId}`, offsetY: 70 },
+          ease: "power2.inOut",
+        });
+        setActiveSection(item.targetId);
+      }
+    } else {
+      router.push(`/${item.href}`);
+    }
   };
 
   const handleSignOut = async () => {
@@ -210,24 +261,42 @@ export function Navbar() {
         </Link>
 
         {/* Nav Links & CTA */}
-        <div className="flex items-center gap-2.5 sm:gap-5">
-          <div className="hidden lg:flex items-center gap-6 mr-1">
-            <a href="#features" onClick={(e) => handleScroll(e, 'features')} className="text-sm font-semibold tracking-wide text-slate-500 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer">
-              Features
-            </a>
-            <a href="#portals" onClick={(e) => handleScroll(e, 'portals')} className="text-sm font-semibold tracking-wide text-slate-500 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer">
-              Portals
-            </a>
-            <a href="#notices" onClick={(e) => handleScroll(e, 'notices')} className="text-sm font-semibold tracking-wide text-slate-500 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer">
-              Notices
-            </a>
-            <a href="#support" onClick={(e) => handleScroll(e, 'support')} className="text-sm font-semibold tracking-wide text-slate-500 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer">
-              Support
-            </a>
-          </div>
+        <div className="flex items-center gap-2 sm:gap-3.5">
+          {/* Desktop Navigation Capsule */}
+          <nav className="hidden lg:flex items-center gap-1 p-1 rounded-2xl bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/60 dark:border-white/5 mr-1 shadow-inner">
+            {NAV_ITEMS.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeSection === item.targetId;
+              return (
+                <a
+                  key={item.targetId}
+                  href={item.href}
+                  onClick={(e) => handleNavClick(e, item)}
+                  className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold tracking-wide transition-all duration-200 cursor-pointer ${
+                    isActive
+                      ? "text-indigo-600 dark:text-indigo-300 font-bold bg-white dark:bg-slate-900/90 shadow-sm"
+                      : "text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-700/40"
+                  }`}
+                >
+                  <Icon className={`w-3.5 h-3.5 ${isActive ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400 dark:text-slate-400"}`} />
+                  <span>{item.label}</span>
+                </a>
+              );
+            })}
+          </nav>
           
           {/* Dark / Light Mode Toggle Button */}
           <ThemeToggle />
+
+          {/* Mobile Menu Toggle Button */}
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-label="Toggle navigation menu"
+            className="lg:hidden p-2 rounded-xl text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-white/10 transition-colors cursor-pointer"
+          >
+            {mobileMenuOpen ? <X className="w-5 h-5 text-indigo-600 dark:text-indigo-400" /> : <Menu className="w-5 h-5" />}
+          </button>
 
           {/* Authentication State Display */}
           {isPending ? (
@@ -421,6 +490,50 @@ export function Navbar() {
           )}
         </div>
       </header>
+
+      {/* Mobile Navigation Dropdown Drawer */}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <motion.div
+            ref={mobileMenuRef}
+            initial={{ opacity: 0, y: -12, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -12, scale: 0.98 }}
+            transition={{ duration: 0.2 }}
+            className="lg:hidden fixed top-24 left-4 right-4 z-50 p-4 rounded-3xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-3xl border border-slate-200/80 dark:border-white/10 shadow-[0_20px_60px_rgba(0,0,0,0.18)] dark:shadow-[0_25px_60px_rgba(0,0,0,0.8)] max-w-lg mx-auto"
+          >
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-bold tracking-wider text-slate-400 dark:text-slate-500 uppercase px-3 py-1">
+                Explore Department Portal
+              </span>
+              {NAV_ITEMS.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeSection === item.targetId;
+                return (
+                  <a
+                    key={item.targetId}
+                    href={item.href}
+                    onClick={(e) => handleNavClick(e, item)}
+                    className={`flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-sm font-semibold transition-all cursor-pointer ${
+                      isActive
+                        ? "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold"
+                        : "text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/60"
+                    }`}
+                  >
+                    <div className={`p-2 rounded-xl ${isActive ? "bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400" : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"}`}>
+                      <Icon className="w-4 h-4" />
+                    </div>
+                    <div className="flex flex-col text-left">
+                      <span>{item.label}</span>
+                      <span className="text-[11px] font-normal text-slate-400 dark:text-slate-400">{item.description}</span>
+                    </div>
+                  </a>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 }
