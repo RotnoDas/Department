@@ -81,59 +81,34 @@ const removeDiskFile = (filePath) => {
 
 // ── ROUTES ────────────────────────────────────────────────────────────────
 
-// GET /api/notices - List notices with role-based filtering, categories, and search
+// GET /api/notices - List all notices for all members
 router.get('/', async (req, res) => {
   try {
     const { notices } = getCollections();
-    const { audience, category, priority, search, limit } = req.query;
+    const { search, limit } = req.query;
 
     const query = {};
-
-    // Filter by audience (case-insensitive mapping)
-    if (audience && audience !== 'all' && audience !== 'admin') {
-      const aud = audience.toLowerCase();
-      if (aud === 'student') {
-        query.audience = {
-          $in: ['All Members', 'All Students', 'Students Only', 'student', 'all'],
-        };
-      } else if (aud === 'teacher' || aud === 'faculty') {
-        query.audience = {
-          $in: ['All Members', 'Faculty Only', 'Teachers Only', 'teacher', 'all'],
-        };
-      } else if (aud === 'staff' || aud === 'employee') {
-        query.audience = {
-          $in: ['All Members', 'Staff Only', 'Employees Only', 'staff', 'all'],
-        };
-      } else {
-        query.audience = { $regex: new RegExp(audience, 'i') };
-      }
-    }
-
-    if (category && category !== 'All') {
-      query.category = { $regex: new RegExp(`^${category}$`, 'i') };
-    }
-
-    if (priority && priority !== 'All') {
-      query.priority = { $regex: new RegExp(`^${priority}$`, 'i') };
-    }
-
     if (search && search.trim()) {
       const s = search.trim();
       query.$or = [
         { title: { $regex: s, $options: 'i' } },
         { content: { $regex: s, $options: 'i' } },
-        { category: { $regex: s, $options: 'i' } },
       ];
     }
 
     const maxItems = Math.min(Math.max(Number(limit) || 100, 1), 200);
 
-    // Pinned notices first, then newest first
-    const noticeList = await notices
+    const rawList = await notices
       .find(query)
-      .sort({ pinned: -1, createdAt: -1 })
+      .sort({ createdAt: -1, _id: -1 })
       .limit(maxItems)
       .toArray();
+
+    const noticeList = rawList.map((n) => ({
+      ...n,
+      id: n._id.toString(),
+      authorName: n.authorName || n.author?.name || 'Department Admin',
+    }));
 
     res.json({
       success: true,
@@ -158,14 +133,14 @@ router.get('/:id', async (req, res) => {
     if (!notice) {
       return res.status(404).json({ success: false, error: 'Notice not found.' });
     }
-    res.json({ success: true, notice });
+    res.json({ success: true, notice: { ...notice, id: notice._id.toString() } });
   } catch (err) {
     console.error('[GET /api/notices/:id] Error:', err);
     res.status(500).json({ success: false, error: 'Failed to retrieve notice.' });
   }
 });
 
-// POST /api/notices - Create new notice (with optional file attachments and voice message)
+// POST /api/notices - Create new notice for all members (with optional file and audio message)
 router.post('/', (req, res) => {
   noticeUpload(req, res, async (uploadErr) => {
     if (uploadErr) {
@@ -178,16 +153,11 @@ router.post('/', (req, res) => {
       const {
         title,
         content = '',
-        category = 'General',
-        audience = 'All Members',
-        priority = 'Normal',
-        pinned = false,
         authorName,
         audioDuration,
       } = req.body;
 
       if (!title || !title.trim()) {
-        // Clean up any uploaded files if validation fails
         if (req.files?.attachments) req.files.attachments.forEach((f) => removeDiskFile(`/uploads/notices/${f.filename}`));
         if (req.files?.audio?.[0]) removeDiskFile(`/uploads/notices/${req.files.audio[0].filename}`);
         if (req.files?.file?.[0]) removeDiskFile(`/uploads/notices/${req.files.file[0].filename}`);
@@ -203,7 +173,7 @@ router.post('/', (req, res) => {
         req.files.file.forEach((file) => attachments.push(formatFileMetadata(file)));
       }
 
-      // Process voice message / audio note
+      // Process audio note
       let audio = null;
       if (req.files?.audio && req.files.audio.length > 0) {
         const audioFile = req.files.audio[0];
@@ -217,32 +187,18 @@ router.post('/', (req, res) => {
         };
       }
 
-      const isPinned = pinned === true || pinned === 'true' || pinned === '1';
       const now = new Date();
 
       const newNotice = {
         title: title.trim(),
         content: content.trim(),
-        category: category.trim() || 'General',
-        audience: audience.trim() || 'All Members',
-        priority: priority.trim() || 'Normal',
-        pinned: isPinned,
         attachments,
         audio,
-        // Legacy fields for backward compatibility with older components
         filePath: attachments[0]?.filePath || null,
         originalName: attachments[0]?.originalName || null,
         fileMime: attachments[0]?.fileMime || null,
         fileSize: attachments[0]?.fileSize || null,
-        author: {
-          name: (authorName || 'Department Administration').trim(),
-          role: 'admin',
-        },
-        date: now.toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-        }),
+        authorName: (authorName || 'Department Admin').trim(),
         createdAt: now,
         updatedAt: now,
       };
@@ -250,8 +206,8 @@ router.post('/', (req, res) => {
       const result = await notices.insertOne(newNotice);
       res.status(201).json({
         success: true,
-        message: 'Notice published successfully!',
-        notice: { ...newNotice, _id: result.insertedId },
+        message: 'Notice published successfully.',
+        notice: { ...newNotice, _id: result.insertedId, id: result.insertedId.toString() },
       });
     } catch (err) {
       console.error('[POST /api/notices] Creation error:', err);
@@ -260,7 +216,7 @@ router.post('/', (req, res) => {
   });
 });
 
-// PUT /api/notices/:id - Edit existing notice
+// PUT /api/notices/:id - Admin edits existing notice
 router.put('/:id', (req, res) => {
   noticeUpload(req, res, async (uploadErr) => {
     if (uploadErr) {
@@ -282,10 +238,7 @@ router.put('/:id', (req, res) => {
       const {
         title,
         content,
-        category,
-        audience,
-        priority,
-        pinned,
+        removeFile,
         removedAttachmentPaths,
         removeAudio,
         audioDuration,
@@ -293,27 +246,34 @@ router.put('/:id', (req, res) => {
 
       // Handle removed attachments
       let removedList = [];
+      if (removeFile === true || removeFile === 'true' || removeFile === '1') {
+        if (existing.filePath) removedList.push(existing.filePath);
+      }
       if (removedAttachmentPaths) {
         if (Array.isArray(removedAttachmentPaths)) {
-          removedList = removedAttachmentPaths;
+          removedList.push(...removedAttachmentPaths);
         } else {
           try {
-            removedList = JSON.parse(removedAttachmentPaths);
+            removedList.push(...JSON.parse(removedAttachmentPaths));
           } catch {
-            removedList = [removedAttachmentPaths];
+            removedList.push(removedAttachmentPaths);
           }
         }
       }
 
-      // Delete removed files from disk
       removedList.forEach((fp) => removeDiskFile(fp));
 
-      // Keep unremoved existing attachments
       const existingAttachments = Array.isArray(existing.attachments)
         ? existing.attachments.filter((att) => !removedList.includes(att.filePath))
+        : existing.filePath && !removedList.includes(existing.filePath)
+        ? [{
+            filePath: existing.filePath,
+            originalName: existing.originalName,
+            fileMime: existing.fileMime,
+            fileSize: existing.fileSize,
+          }]
         : [];
 
-      // Add newly uploaded attachments
       const newAttachments = [];
       if (req.files?.attachments && req.files.attachments.length > 0) {
         req.files.attachments.forEach((file) => newAttachments.push(formatFileMetadata(file)));
@@ -348,10 +308,6 @@ router.put('/:id', (req, res) => {
       };
       if (title !== undefined) updateFields.title = title.trim();
       if (content !== undefined) updateFields.content = content.trim();
-      if (category !== undefined) updateFields.category = category.trim();
-      if (audience !== undefined) updateFields.audience = audience.trim();
-      if (priority !== undefined) updateFields.priority = priority.trim();
-      if (pinned !== undefined) updateFields.pinned = pinned === true || pinned === 'true' || pinned === '1';
 
       updateFields.attachments = updatedAttachments;
       updateFields.audio = updatedAudio;
@@ -365,45 +321,14 @@ router.put('/:id', (req, res) => {
 
       res.json({
         success: true,
-        message: 'Notice updated successfully!',
-        notice: updatedNotice,
+        message: 'Notice updated successfully.',
+        notice: { ...updatedNotice, id: updatedNotice._id.toString() },
       });
     } catch (err) {
       console.error('[PUT /api/notices/:id] Error:', err);
       res.status(500).json({ success: false, error: 'Failed to update notice.' });
     }
   });
-});
-
-// PATCH /api/notices/:id/pin - Toggle pin status
-router.patch('/:id/pin', async (req, res) => {
-  try {
-    const { notices } = getCollections();
-    const { id } = req.params;
-    if (!ObjectId.isValid(id)) {
-      return res.status(400).json({ success: false, error: 'Invalid notice ID.' });
-    }
-
-    const existing = await notices.findOne({ _id: new ObjectId(id) });
-    if (!existing) {
-      return res.status(404).json({ success: false, error: 'Notice not found.' });
-    }
-
-    const nextPinned = req.body.pinned !== undefined ? Boolean(req.body.pinned) : !existing.pinned;
-    await notices.updateOne(
-      { _id: new ObjectId(id) },
-      { $set: { pinned: nextPinned, updatedAt: new Date() } }
-    );
-
-    res.json({
-      success: true,
-      pinned: nextPinned,
-      message: nextPinned ? 'Notice pinned to the top of boards.' : 'Notice unpinned.',
-    });
-  } catch (err) {
-    console.error('[PATCH /api/notices/:id/pin] Error:', err);
-    res.status(500).json({ success: false, error: 'Failed to update pin state.' });
-  }
 });
 
 // DELETE /api/notices/:id - Delete notice and all attached files from disk

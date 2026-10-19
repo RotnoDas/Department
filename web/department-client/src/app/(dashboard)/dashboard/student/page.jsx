@@ -2240,11 +2240,10 @@ export default function StudentDashboardPage() {
         )}
       </div>
 
-      {/* Official Notice Board & Student Circulars */}
+      {/* Official Notice Board */}
       <NoticeBoardSection
-        audience="student"
-        title="Department Notice Board & Student Circulars"
-        subtitle="Official circulars, exam schedules, class cancellation alerts, and audio announcements for students."
+        title="Notice Board"
+        subtitle="Department broadcast & official academic circulars."
       />
 
       {/* Live Face Verification & Enrollment Modal */}

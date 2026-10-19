@@ -3,19 +3,17 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   X,
+  Pencil,
+  Bell,
   Send,
-  Upload,
-  FilePlus,
-  Trash2,
   Paperclip,
-  Check,
+  Mic,
   AlertCircle,
-  Pin,
   FileText,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import VoiceRecorder from "./VoiceRecorder";
-import { getFileIcon, formatFileSize } from "./NoticeAttachment";
+import { AttachmentIcon, formatFileSize } from "./NoticeAttachment";
 
 export default function NoticeModal({
   isOpen,
@@ -25,142 +23,111 @@ export default function NoticeModal({
 }) {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
-  const [category, setCategory] = useState("Academic");
-  const [audience, setAudience] = useState("All Members");
-  const [priority, setPriority] = useState("Normal");
-  const [pinned, setPinned] = useState(false);
+  const [file, setFile] = useState(null);
+  const [removeExistingFile, setRemoveExistingFile] = useState(false);
 
-  // Attachments state
-  const [selectedFiles, setSelectedFiles] = useState([]);
-  const [existingAttachments, setExistingAttachments] = useState([]);
-  const [removedAttachmentPaths, setRemovedAttachmentPaths] = useState([]);
-
-  // Audio note state
+  // Audio message
   const [audioData, setAudioData] = useState(null); // { file, duration }
-  const [existingAudio, setExistingAudio] = useState(null);
   const [removeExistingAudio, setRemoveExistingAudio] = useState(false);
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saving, setSaving] = useState(false);
   const fileInputRef = useRef(null);
 
-  // Initialize or reset form when modal opens or editingNotice changes
   useEffect(() => {
     if (editingNotice) {
       setTitle(editingNotice.title || "");
       setContent(editingNotice.content || "");
-      setCategory(editingNotice.category || "Academic");
-      setAudience(editingNotice.audience || "All Members");
-      setPriority(editingNotice.priority || "Normal");
-      setPinned(Boolean(editingNotice.pinned));
-
-      // Attachments
-      const existing = [];
-      if (Array.isArray(editingNotice.attachments)) {
-        existing.push(...editingNotice.attachments);
-      } else if (editingNotice.filePath) {
-        existing.push({
-          filePath: editingNotice.filePath,
-          originalName: editingNotice.originalName,
-          fileMime: editingNotice.fileMime,
-          fileSize: editingNotice.fileSize,
-        });
-      }
-      setExistingAttachments(existing);
-      setRemovedAttachmentPaths([]);
-
-      // Audio
-      setExistingAudio(editingNotice.audio || null);
-      setRemoveExistingAudio(false);
+      setFile(null);
+      setRemoveExistingFile(false);
       setAudioData(null);
+      setRemoveExistingAudio(false);
     } else {
       setTitle("");
       setContent("");
-      setCategory("Academic");
-      setAudience("All Members");
-      setPriority("Normal");
-      setPinned(false);
-      setSelectedFiles([]);
-      setExistingAttachments([]);
-      setRemovedAttachmentPaths([]);
+      setFile(null);
+      setRemoveExistingFile(false);
       setAudioData(null);
-      setExistingAudio(null);
       setRemoveExistingAudio(false);
     }
   }, [editingNotice, isOpen]);
 
+  // Support Ctrl+Enter keyboard submission
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        const submitBtn = document.getElementById("notice-submit-button");
+        if (submitBtn) submitBtn.click();
+      }
+      if (e.key === "Escape" && !saving) {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, saving, onClose]);
+
   if (!isOpen) return null;
 
-  const handleFileSelect = (e) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length === 0) return;
-    setSelectedFiles((prev) => [...prev, ...files]);
+  const resetFileInput = () => {
+    setFile(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const removeSelectedFile = (idx) => {
-    setSelectedFiles((prev) => prev.filter((_, i) => i !== idx));
-  };
+  const hasExistingAttachment =
+    (editingNotice?.filePath || editingNotice?.attachments?.length > 0) &&
+    !removeExistingFile &&
+    !file;
 
-  const markExistingAttachmentForRemoval = (filePath) => {
-    setRemovedAttachmentPaths((prev) => [...prev, filePath]);
-    setExistingAttachments((prev) => prev.filter((a) => a.filePath !== filePath));
-  };
+  const hasExistingAudio =
+    editingNotice?.audio?.filePath && !removeExistingAudio && !audioData;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!title.trim()) {
-      toast.error("Please enter a notice title.");
-      return;
+      return toast.error("Please enter a notice headline.");
+    }
+    if (
+      !content.trim() &&
+      !file &&
+      !hasExistingAttachment &&
+      !audioData &&
+      !hasExistingAudio
+    ) {
+      return toast.error("Write notice text, attach a file, or provide an audio message.");
     }
 
-    const hasAttachment =
-      selectedFiles.length > 0 ||
-      existingAttachments.length > 0 ||
-      Boolean(audioData?.file) ||
-      Boolean(existingAudio && !removeExistingAudio);
-
-    if (!content.trim() && !hasAttachment) {
-      toast.error("Please enter notice content, attach files, or provide an audio message.");
-      return;
-    }
-
-    setIsSubmitting(true);
+    setSaving(true);
 
     try {
       const formData = new FormData();
       formData.append("title", title.trim());
       formData.append("content", content.trim());
-      formData.append("category", category);
-      formData.append("audience", audience);
-      formData.append("priority", priority);
-      formData.append("pinned", pinned ? "true" : "false");
 
-      // Append new file attachments
-      selectedFiles.forEach((file) => {
-        formData.append("attachments", file);
-      });
+      // File attachment
+      if (file) {
+        formData.append("file", file);
+      }
+      if (removeExistingFile) {
+        formData.append("removeFile", "true");
+      }
 
-      // Append new audio file if present
+      // Audio message
       if (audioData?.file) {
         formData.append("audio", audioData.file);
         if (audioData.duration) {
           formData.append("audioDuration", String(audioData.duration));
         }
       }
-
-      // In edit mode: pass removed attachments and audio removal flag
-      if (editingNotice) {
-        if (removedAttachmentPaths.length > 0) {
-          formData.append("removedAttachmentPaths", JSON.stringify(removedAttachmentPaths));
-        }
-        if (removeExistingAudio) {
-          formData.append("removeAudio", "true");
-        }
+      if (removeExistingAudio) {
+        formData.append("removeAudio", "true");
       }
 
+      const noticeId = editingNotice?.id || editingNotice?._id;
       const url = editingNotice
-        ? `/backend/api/notices/${editingNotice._id}`
+        ? `/backend/api/notices/${noticeId}`
         : "/backend/api/notices";
       const method = editingNotice ? "PUT" : "POST";
 
@@ -171,316 +138,258 @@ export default function NoticeModal({
 
       const data = await res.json();
       if (!res.ok || !data.success) {
-        throw new Error(data.error || "Failed to publish notice.");
+        throw new Error(data.error || "Failed to save notice.");
       }
 
       toast.success(
         editingNotice
-          ? "Notice updated successfully!"
-          : "Official notice published to department boards!"
+          ? "Notice updated successfully."
+          : "Notice published to all members!"
       );
 
-      onNoticeSaved(data.notice);
+      onNoticeSaved?.(data.notice);
       onClose();
     } catch (err) {
-      console.error("[NoticeModal] Submission error:", err);
       toast.error(err.message || "Failed to save notice.");
     } finally {
-      setIsSubmitting(false);
+      setSaving(false);
     }
   };
 
-  return (
-    <div
-      onClick={onClose}
-      className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-2xl p-6 sm:p-8 space-y-6 my-8 overflow-hidden max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
-          <div>
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <FileText className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-              <span>{editingNotice ? "Edit Department Notice" : "Dispatch Official Notice"}</span>
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Publish circulars, file attachments, and voice notes to student & faculty dashboards.
-            </p>
-          </div>
+  const selectedFileNotice = file
+    ? {
+        originalName: file.name,
+        fileMime: file.type,
+        fileSize: file.size,
+      }
+    : null;
 
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="w-full max-w-xl bg-white dark:bg-slate-900 rounded-[2rem] border border-white dark:border-white/10 p-6 sm:p-7 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-white/10">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
+              {editingNotice ? <Pencil className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
+            </div>
+            <div>
+              <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
+                {editingNotice ? "Edit Notice" : "Publish Notice"}
+              </h3>
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                Official Broadcast • All Members
+              </p>
+            </div>
+          </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+            disabled={saving}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Scrollable Form Body */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto pr-1 space-y-5">
-          {/* Notice Title */}
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Headline */}
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-              Notice Title <span className="text-rose-500">*</span>
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+              Notice Headline <span className="text-rose-500">*</span>
             </label>
             <input
-              required
               type="text"
-              placeholder="e.g. 6th Semester Final Practical Exam Schedule & Seating"
+              placeholder="e.g. Mid-Term Examination Schedule & Room Allocations"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-900 dark:text-white placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition"
+              className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500"
+              required
+              disabled={saving}
             />
           </div>
 
-          {/* Configuration Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* Category */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
-                Category
-              </label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full h-10 px-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-indigo-500 cursor-pointer"
-              >
-                <option value="Academic">Academic</option>
-                <option value="Examination">Examination</option>
-                <option value="Events">Events</option>
-                <option value="Infrastructure">Infrastructure</option>
-                <option value="Scholarship">Scholarship</option>
-                <option value="Urgent">Urgent Circular</option>
-                <option value="Administrative">Administrative</option>
-                <option value="General">General</option>
-              </select>
-            </div>
-
-            {/* Target Audience */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
-                Target Audience
-              </label>
-              <select
-                value={audience}
-                onChange={(e) => setAudience(e.target.value)}
-                className="w-full h-10 px-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-indigo-500 cursor-pointer"
-              >
-                <option value="All Members">All Members</option>
-                <option value="All Students">All Students</option>
-                <option value="Faculty Only">Faculty Only</option>
-                <option value="Staff Only">Staff Only</option>
-                <option value="Batch 11">Batch 11</option>
-                <option value="Batch 12">Batch 12</option>
-                <option value="Batch 13">Batch 13</option>
-                <option value="Batch 14">Batch 14</option>
-              </select>
-            </div>
-
-            {/* Priority */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
-                Priority Level
-              </label>
-              <select
-                value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-                className="w-full h-10 px-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-indigo-500 cursor-pointer"
-              >
-                <option value="Normal">Normal</option>
-                <option value="Important">Important</option>
-                <option value="Urgent">Urgent</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Pin to Top Checkbox */}
-          <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-50/60 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-900/50">
-            <input
-              type="checkbox"
-              id="pinnedNotice"
-              checked={pinned}
-              onChange={(e) => setPinned(e.target.checked)}
-              className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
-            />
-            <label
-              htmlFor="pinnedNotice"
-              className="text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5 cursor-pointer"
-            >
-              <Pin className="w-3.5 h-3.5 fill-amber-500 text-amber-600" />
-              <span>Pin this notice to the top of boards</span>
-            </label>
-          </div>
-
-          {/* Notice Body */}
+          {/* Details / Text */}
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-              Notice Text / Description
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+              Announcement Details
             </label>
             <textarea
+              placeholder="Enter the full announcement text, instructions, or notes..."
               rows={4}
-              placeholder="Enter detailed announcements, schedule, or instructions..."
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              className="w-full p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition leading-relaxed"
+              className="w-full p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500 leading-relaxed resize-y"
+              disabled={saving}
             />
           </div>
 
-          {/* ── AUDIO VOICE ANNOUNCEMENT ── */}
-          <VoiceRecorder
-            onAudioReady={(data) => {
-              setAudioData(data);
-              setRemoveExistingAudio(false);
-            }}
-            onAudioRemoved={() => {
-              setAudioData(null);
-              setRemoveExistingAudio(true);
-            }}
-            existingAudio={!removeExistingAudio ? existingAudio : null}
-          />
+          {/* Attachment */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Paperclip className="w-3.5 h-3.5 text-indigo-500" />
+                <span>File Attachment (Optional)</span>
+              </span>
+              <span className="text-[11px] font-normal text-slate-400">PDF, Docs, Images, ZIP</span>
+            </label>
 
-          {/* ── FILE ATTACHMENTS (ANY KIND OF FILES) ── */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                <Paperclip className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                <span>Upload Documents & Files (Any kind: PDF, Word, Excel, Images, ZIP)</span>
+            {/* Selected File */}
+            {selectedFileNotice ? (
+              <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600">
+                    <AttachmentIcon notice={selectedFileNotice} className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-bold text-slate-800 dark:text-white">
+                      {file.name}
+                    </p>
+                    <p className="text-[10px] text-slate-400">
+                      {formatFileSize(file.size)}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={resetFileInput}
+                  className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition cursor-pointer"
+                  title="Remove file"
+                  disabled={saving}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ) : editingNotice?.filePath && !removeExistingFile ? (
+              /* Existing attachment in edit mode */
+              <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600">
+                    <FileText className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-bold text-slate-800 dark:text-white">
+                      {editingNotice.originalName || "Attached File"}
+                    </p>
+                    <p className="text-[10px] text-slate-400">Currently attached</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRemoveExistingFile(true)}
+                  className="px-2.5 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition cursor-pointer"
+                  disabled={saving}
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              /* File upload drop button */
+              <label className="flex items-center justify-center gap-2 p-3.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/60 border border-dashed border-slate-300 dark:border-slate-700 hover:border-indigo-400 text-slate-600 dark:text-slate-300 hover:text-indigo-600 text-xs font-semibold cursor-pointer transition">
+                <Paperclip className="w-4 h-4 text-indigo-500" />
+                <span>Choose a file or click to upload</span>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={(e) => {
+                    setFile(e.target.files?.[0] || null);
+                    setRemoveExistingFile(false);
+                  }}
+                  disabled={saving}
+                />
               </label>
-
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 transition cursor-pointer"
-              >
-                <FilePlus className="w-4 h-4" />
-                <span>Add Files</span>
-              </button>
-            </div>
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-
-            {/* Selected New Files */}
-            {selectedFiles.length > 0 && (
-              <div className="space-y-1.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
-                <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  New files to upload ({selectedFiles.length}):
-                </p>
-                <div className="space-y-1">
-                  {selectedFiles.map((f, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between gap-2 p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs"
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        {getFileIcon("", f.name, "w-4 h-4")}
-                        <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">
-                          {f.name}
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-mono">
-                          ({formatFileSize(f.size)})
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeSelectedFile(idx)}
-                        className="p-1 text-slate-400 hover:text-rose-500 transition cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
             )}
 
-            {/* Existing Attachments in Edit Mode */}
-            {existingAttachments.length > 0 && (
-              <div className="space-y-1.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
-                <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Existing attachments ({existingAttachments.length}):
-                </p>
-                <div className="space-y-1">
-                  {existingAttachments.map((a, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between gap-2 p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs"
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        {getFileIcon(a.fileType, a.originalName, "w-4 h-4")}
-                        <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">
-                          {a.originalName}
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-mono">
-                          ({formatFileSize(a.fileSize)})
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => markExistingAttachmentForRemoval(a.filePath)}
-                        title="Remove existing file"
-                        className="p-1 text-slate-400 hover:text-rose-500 transition cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Empty dropzone state if no files selected */}
-            {selectedFiles.length === 0 && existingAttachments.length === 0 && (
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                className="p-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400 bg-slate-50/50 dark:bg-slate-800/40 text-center cursor-pointer transition"
-              >
-                <Upload className="w-6 h-6 text-slate-400 mx-auto mb-1" />
-                <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Click to attach files from your computer
-                </p>
-                <p className="text-[10px] text-slate-400">
-                  PDF, Word, Excel, PowerPoint, Zip, JPEG, PNG, or any documents (Up to 100MB)
-                </p>
-              </div>
+            {removeExistingFile && (
+              <p className="text-[11px] font-semibold text-rose-500 flex items-center gap-1 pt-1">
+                <AlertCircle className="w-3.5 h-3.5" />
+                <span>Existing file will be removed when saved.</span>
+                <button
+                  type="button"
+                  onClick={() => setRemoveExistingFile(false)}
+                  className="underline ml-1 hover:text-rose-700"
+                >
+                  Undo
+                </button>
+              </p>
             )}
           </div>
 
-          {/* Form Actions */}
-          <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-3 sticky bottom-0 bg-white dark:bg-slate-900 pb-1">
+          {/* Voice Announcement */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <Mic className="w-3.5 h-3.5 text-indigo-500" />
+              <span>Voice Note (Optional)</span>
+            </label>
+
+            {editingNotice?.audio?.filePath && !removeExistingAudio && !audioData ? (
+              <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-slate-800 dark:text-white">
+                    Existing Voice Note
+                  </p>
+                  <p className="text-[10px] text-slate-400">Attached to this circular</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRemoveExistingAudio(true)}
+                  className="px-2.5 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition cursor-pointer"
+                  disabled={saving}
+                >
+                  Remove Audio
+                </button>
+              </div>
+            ) : (
+              <VoiceRecorder
+                onAudioReady={(data) => {
+                  setAudioData(data);
+                  setRemoveExistingAudio(false);
+                }}
+                onAudioRemoved={() => setAudioData(null)}
+              />
+            )}
+
+            {removeExistingAudio && (
+              <p className="text-[11px] font-semibold text-rose-500 flex items-center gap-1 pt-1">
+                <AlertCircle className="w-3.5 h-3.5" />
+                <span>Existing voice note will be removed when saved.</span>
+                <button
+                  type="button"
+                  onClick={() => setRemoveExistingAudio(false)}
+                  className="underline ml-1 hover:text-rose-700"
+                >
+                  Undo
+                </button>
+              </p>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-white/10">
             <button
               type="button"
               onClick={onClose}
-              disabled={isSubmitting}
-              className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              disabled={saving}
+              className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition"
             >
               Cancel
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
-              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 disabled:opacity-50 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 transition cursor-pointer"
+              id="notice-submit-button"
+              disabled={saving || !title.trim()}
+              className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-200 dark:shadow-none cursor-pointer disabled:opacity-50 transition"
             >
-              {isSubmitting ? (
-                <>
-                  <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Processing...</span>
-                </>
-              ) : (
-                <>
-                  <Send className="w-3.5 h-3.5" />
-                  <span>{editingNotice ? "Update Notice" : "Publish Notice"}</span>
-                </>
-              )}
+              <Send className="w-3.5 h-3.5" />
+              <span>
+                {saving
+                  ? "Saving..."
+                  : editingNotice
+                  ? "Save Changes"
+                  : "Publish Notice"}
+              </span>
             </button>
           </div>
         </form>

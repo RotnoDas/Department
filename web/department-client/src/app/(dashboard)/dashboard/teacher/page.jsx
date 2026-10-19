@@ -1558,11 +1558,10 @@ export default function TeacherDashboardPage() {
         </div>
       </div>
 
-      {/* Official Department Notice Board for Faculty */}
+      {/* Official Notice Board */}
       <NoticeBoardSection
-        audience="teacher"
-        title="Department Notice Board & Faculty Circulars"
-        subtitle="Stay synchronized with faculty circulars, examination committee updates, meeting notices, and voice announcements."
+        title="Notice Board"
+        subtitle="Department broadcast & official faculty circulars."
       />
 
       {/* Upload Material Modal */}

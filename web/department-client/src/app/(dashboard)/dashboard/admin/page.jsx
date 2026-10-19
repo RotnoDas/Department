@@ -2382,12 +2382,11 @@ export default function AdminDashboardPage() {
         )}
       </div>
 
-      {/* Notice Board Dispatcher Section */}
+      {/* Notice Board Section */}
       <NoticeBoardSection
         isAdmin={true}
-        audience="all"
-        title="Official Notice Board & Circular Dispatcher"
-        subtitle="Publish announcements, attach any files (PDF, Word, Excel, Images, ZIP), record live voice notes, and manage all department circulars."
+        title="Notice Board"
+        subtitle="Publish text announcements with files and voice notes, then revise or remove them whenever the department needs an update."
       />
 
       {/* ── Staff & Employee Verification Hub ─────────────────── */}

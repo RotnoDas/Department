@@ -429,9 +429,8 @@ export default function EmployeeDashboardPage() {
 
       {/* Notices & Circulars */}
       <NoticeBoardSection
-        audience="staff"
-        title="Administrative Circulars & Staff Notices"
-        subtitle="Official circulars regarding staff duties, examination seating, and facility upkeep."
+        title="Notice Board"
+        subtitle="Department broadcast & staff operational notices."
       />
     </div>
   );
