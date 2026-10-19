@@ -44,6 +44,11 @@ import toast from "react-hot-toast";
 import Loading from "@/components/common/Loading";
 import { EmployeeAnalyticsCharts } from "@/components/dashboard/DashboardCharts";
 import NoticeBoardSection from "@/components/notice/NoticeBoardSection";
+import { 
+  SectionCollapseToggle, 
+  CollapsibleBody, 
+  DashboardCollapseControls 
+} from "@/components/dashboard/CollapsibleSection";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
@@ -75,6 +80,39 @@ const ROUTINE_DAYS = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday"];
 export default function EmployeeDashboardPage() {
   const { data: sessionData, isPending: sessionLoading } = authClient.useSession();
   const user = sessionData?.user;
+
+  // Collapsible sections state
+  const [collapsedSections, setCollapsedSections] = useState({
+    profile: false,
+    shift: false,
+    analytics: false,
+    inventory: false,
+    tasks: false,
+    schedule: false,
+    notices: false,
+  });
+
+  const toggleSection = (key) => setCollapsedSections((p) => ({ ...p, [key]: !p[key] }));
+  const collapseAllSections = () => setCollapsedSections({ profile: true, shift: true, analytics: true, inventory: true, tasks: true, schedule: true, notices: true });
+  const expandAllSections = () => setCollapsedSections({ profile: false, shift: false, analytics: false, inventory: false, tasks: false, schedule: false, notices: false });
+  const allCollapsed = Object.values(collapsedSections).every(Boolean);
+
+  useEffect(() => {
+    const handleHash = () => {
+      const hash = window.location.hash.replace("#", "");
+      if (!hash) return;
+      if (hash === "profile") setCollapsedSections((p) => ({ ...p, profile: false }));
+      if (hash === "shift") setCollapsedSections((p) => ({ ...p, shift: false }));
+      if (hash === "analytics") setCollapsedSections((p) => ({ ...p, analytics: false }));
+      if (hash === "inventory") setCollapsedSections((p) => ({ ...p, inventory: false }));
+      if (hash === "tasks") setCollapsedSections((p) => ({ ...p, tasks: false }));
+      if (hash === "schedule") setCollapsedSections((p) => ({ ...p, schedule: false }));
+      if (hash === "notices") setCollapsedSections((p) => ({ ...p, notices: false }));
+    };
+    handleHash();
+    window.addEventListener("hashchange", handleHash);
+    return () => window.removeEventListener("hashchange", handleHash);
+  }, []);
 
   // Profile states
   const [profile, setProfile] = useState(null);
@@ -542,7 +580,12 @@ export default function EmployeeDashboardPage() {
               Blood Group: <strong className="text-rose-300 font-bold">{profile?.bloodGroup || "Not Set"}</strong>
             </span>
 
-            <div className="pt-2 border-t border-white/10 flex items-center justify-between">
+            <div className="pt-2 border-t border-white/10 flex flex-col sm:flex-row items-center gap-2">
+              <DashboardCollapseControls
+                onCollapseAll={collapseAllSections}
+                onExpandAll={expandAllSections}
+                allCollapsed={allCollapsed}
+              />
               <button
                 type="button"
                 onClick={() => setIsEditingProfile(true)}
@@ -557,94 +600,118 @@ export default function EmployeeDashboardPage() {
       </div>
 
       {/* ── 2. QUICK ACTION & SHIFT STATUS BAR ───────────────────────── */}
-      <div id="shift" className="grid grid-cols-1 md:grid-cols-4 gap-4 scroll-mt-6">
-        {/* Today's Shift Card */}
-        <div className="p-5 rounded-2xl bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm flex items-center justify-between transition-colors">
-          <div className="space-y-1">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Duty Check-In</span>
-            <h4 className="text-sm font-black text-slate-800 dark:text-white">
-              {shiftStatus?.isCheckedIn
-                ? `Checked In (${shiftStatus.shift?.checkInFormatted || "Recorded"})`
-                : "Not Checked In Today"}
-            </h4>
-            <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-              <CheckCircle2 className="w-3 h-3" />
-              {shiftStatus?.isCheckedOut
-                ? "Shift Completed"
-                : shiftStatus?.isCheckedIn
-                ? "Duty In Progress"
-                : "08:30 AM - 04:30 PM Shift"}
-            </span>
-          </div>
-          <button
-            onClick={handleToggleShift}
-            disabled={isLoggingShift || shiftStatus?.isCheckedOut}
-            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer ${
-              shiftStatus?.isCheckedOut
-                ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed shadow-none"
-                : shiftStatus?.isCheckedIn
-                ? "bg-amber-600 hover:bg-amber-700 text-white shadow-amber-200 dark:shadow-none"
-                : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200 dark:shadow-none"
-            }`}
-          >
-            {isLoggingShift
-              ? "Recording..."
-              : shiftStatus?.isCheckedOut
-              ? "Completed"
-              : shiftStatus?.isCheckedIn
-              ? "Check Out"
-              : "Log Check-in"}
-          </button>
+      <div id="shift" className="space-y-3 scroll-mt-6">
+        <div className="flex items-center justify-between px-1">
+          <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Duty Shift & Fleet Monitoring
+          </span>
+          <SectionCollapseToggle
+            isCollapsed={collapsedSections.shift}
+            onToggle={() => toggleSection("shift")}
+            label="Shift & Quick Stats"
+            size="sm"
+          />
         </div>
+        <CollapsibleBody
+          isCollapsed={collapsedSections.shift}
+          onExpand={() => toggleSection("shift")}
+          sectionName="Duty Shift & Monitored Lab Fleet"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Today's Shift Card */}
+            <div className="p-5 rounded-2xl bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm flex items-center justify-between transition-colors">
+              <div className="space-y-1">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Duty Check-In</span>
+                <h4 className="text-sm font-black text-slate-800 dark:text-white">
+                  {shiftStatus?.isCheckedIn
+                    ? `Checked In (${shiftStatus.shift?.checkInFormatted || "Recorded"})`
+                    : "Not Checked In Today"}
+                </h4>
+                <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" />
+                  {shiftStatus?.isCheckedOut
+                    ? "Shift Completed"
+                    : shiftStatus?.isCheckedIn
+                    ? "Duty In Progress"
+                    : "08:30 AM - 04:30 PM Shift"}
+                </span>
+              </div>
+              <button
+                onClick={handleToggleShift}
+                disabled={isLoggingShift || shiftStatus?.isCheckedOut}
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer ${
+                  shiftStatus?.isCheckedOut
+                    ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed shadow-none"
+                    : shiftStatus?.isCheckedIn
+                    ? "bg-amber-600 hover:bg-amber-700 text-white shadow-amber-200 dark:shadow-none"
+                    : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200 dark:shadow-none"
+                }`}
+              >
+                {isLoggingShift
+                  ? "Recording..."
+                  : shiftStatus?.isCheckedOut
+                  ? "Completed"
+                  : shiftStatus?.isCheckedIn
+                  ? "Check Out"
+                  : "Log Check-in"}
+              </button>
+            </div>
 
-        {/* Monitored Labs Counter */}
-        <div className="p-5 rounded-2xl bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm flex items-center gap-4 transition-colors">
-          <div className="h-12 w-12 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
-            <Cpu className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Monitored Labs</span>
-            <h4 className="text-2xl font-black text-slate-900 dark:text-white">{labs.length} Labs</h4>
-            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">All Lab Clusters Active</span>
-          </div>
-        </div>
+            {/* Monitored Labs Counter */}
+            <div className="p-5 rounded-2xl bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm flex items-center gap-4 transition-colors">
+              <div className="h-12 w-12 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
+                <Cpu className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Monitored Labs</span>
+                <h4 className="text-2xl font-black text-slate-900 dark:text-white">{labs.length} Labs</h4>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">All Lab Clusters Active</span>
+              </div>
+            </div>
 
-        {/* Active Tickets Counter */}
-        <div className="p-5 rounded-2xl bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm flex items-center gap-4 transition-colors">
-          <div className="h-12 w-12 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold">
-            <Wrench className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Active Tickets</span>
-            <h4 className="text-2xl font-black text-slate-900 dark:text-white">
-              {tasks.filter((t) => t.status !== "Resolved").length} Pending
-            </h4>
-            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-              {tasks.filter((t) => t.status === "In Progress").length} In Progress
-            </span>
-          </div>
-        </div>
+            {/* Active Tickets Counter */}
+            <div className="p-5 rounded-2xl bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm flex items-center gap-4 transition-colors">
+              <div className="h-12 w-12 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold">
+                <Wrench className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Active Tickets</span>
+                <h4 className="text-2xl font-black text-slate-900 dark:text-white">
+                  {tasks.filter((t) => t.status !== "Resolved").length} Pending
+                </h4>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                  {tasks.filter((t) => t.status === "In Progress").length} In Progress
+                </span>
+              </div>
+            </div>
 
-        {/* Duty Logs & History Launcher */}
-        <div className="p-5 rounded-2xl bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm flex items-center justify-between transition-colors">
-          <div>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Duty Records</span>
-            <h4 className="text-sm font-bold text-slate-800 dark:text-white">Shift Log History</h4>
-            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">{shiftHistory.length} Recorded Shifts</span>
+            {/* Duty Logs & History Launcher */}
+            <div className="p-5 rounded-2xl bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm flex items-center justify-between transition-colors">
+              <div>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Duty Records</span>
+                <h4 className="text-sm font-bold text-slate-800 dark:text-white">Shift Log History</h4>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">{shiftHistory.length} Recorded Shifts</span>
+              </div>
+              <button
+                onClick={() => setShowShiftHistoryModal(true)}
+                className="p-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-all cursor-pointer"
+                title="View Shift History"
+              >
+                <Clock className="w-5 h-5" />
+              </button>
+            </div>
           </div>
-          <button
-            onClick={() => setShowShiftHistoryModal(true)}
-            className="p-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-all cursor-pointer"
-            title="View Shift History"
-          >
-            <Clock className="w-5 h-5" />
-          </button>
-        </div>
+        </CollapsibleBody>
       </div>
 
       {/* ── 3. HARDWARE FLEET & MAINTENANCE ANALYTICS ──────────────── */}
       <div id="analytics" className="scroll-mt-6">
-        <EmployeeAnalyticsCharts tasks={tasks} labFacilities={labs} />
+        <EmployeeAnalyticsCharts 
+          tasks={tasks} 
+          labFacilities={labs} 
+          isCollapsed={collapsedSections.analytics}
+          onToggle={() => toggleSection("analytics")}
+        />
       </div>
 
       {/* ── 4. LAB FACILITIES & INFRASTRUCTURE ─────────────────────── */}
@@ -659,49 +726,62 @@ export default function EmployeeDashboardPage() {
               Real-time monitoring of computer laboratories, server rooms, and lecture halls
             </p>
           </div>
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold text-xs ring-1 ring-emerald-200 dark:ring-emerald-800">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            All Systems Normal
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold text-xs ring-1 ring-emerald-200 dark:ring-emerald-800">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              All Systems Normal
+            </span>
+            <SectionCollapseToggle
+              isCollapsed={collapsedSections.inventory}
+              onToggle={() => toggleSection("inventory")}
+              label="Lab Infrastructure"
+            />
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-          {labs.map((lab, idx) => (
-            <div
-              key={lab._id || lab.name || `lab-${idx}`}
-              className="p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60 hover:border-indigo-200 dark:hover:border-indigo-500/50 transition-all hover:shadow-md space-y-3 group flex flex-col justify-between"
-            >
-              <div className="space-y-2">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h4 className="font-bold text-slate-900 dark:text-white text-sm group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                      {lab.name}
-                    </h4>
-                    <span className="text-[11px] text-slate-400 dark:text-slate-400 font-medium">{lab.room}</span>
+        <CollapsibleBody
+          isCollapsed={collapsedSections.inventory}
+          onExpand={() => toggleSection("inventory")}
+          sectionName="Department Lab Infrastructure & Hardware Status"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+            {labs.map((lab, idx) => (
+              <div
+                key={lab._id || lab.name || `lab-${idx}`}
+                className="p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60 hover:border-indigo-200 dark:hover:border-indigo-500/50 transition-all hover:shadow-md space-y-3 group flex flex-col justify-between"
+              >
+                <div className="space-y-2">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h4 className="font-bold text-slate-900 dark:text-white text-sm group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                        {lab.name}
+                      </h4>
+                      <span className="text-[11px] text-slate-400 dark:text-slate-400 font-medium">{lab.room}</span>
+                    </div>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ring-1 ${lab.badgeColor || "bg-emerald-50 text-emerald-700"}`}>
+                      {lab.status}
+                    </span>
                   </div>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ring-1 ${lab.badgeColor || "bg-emerald-50 text-emerald-700"}`}>
-                    {lab.status}
-                  </span>
+                  <div className="pt-2 border-t border-slate-200/50 dark:border-slate-700/50 space-y-1">
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{lab.systems}</p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium leading-relaxed">{lab.specs}</p>
+                  </div>
                 </div>
-                <div className="pt-2 border-t border-slate-200/50 dark:border-slate-700/50 space-y-1">
-                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{lab.systems}</p>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium leading-relaxed">{lab.specs}</p>
-                </div>
-              </div>
 
-              <div className="pt-2 border-t border-slate-200/40 dark:border-slate-700/40 flex items-center justify-between">
-                <span className="text-[10px] text-slate-400">In Charge: {lab.inCharge || "Staff Officer"}</span>
-                <button
-                  type="button"
-                  onClick={() => handleOpenEditLab(lab)}
-                  className="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 text-[11px] font-bold transition cursor-pointer"
-                >
-                  Edit Status
-                </button>
+                <div className="pt-2 border-t border-slate-200/40 dark:border-slate-700/40 flex items-center justify-between">
+                  <span className="text-[10px] text-slate-400">In Charge: {lab.inCharge || "Staff Officer"}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEditLab(lab)}
+                    className="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 text-[11px] font-bold transition cursor-pointer"
+                  >
+                    Edit Status
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </CollapsibleBody>
       </div>
 
       {/* ── 5. MAINTENANCE TICKETS & WORK ORDERS ───────────────────── */}
@@ -716,136 +796,149 @@ export default function EmployeeDashboardPage() {
               Click any status button to toggle between Pending, In Progress, and Resolved
             </p>
           </div>
-          <button
-            onClick={() => setShowNewTaskModal(true)}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-200 dark:shadow-none cursor-pointer"
-          >
-            <PlusCircle className="w-4 h-4" />
-            <span>Create Work Ticket</span>
-          </button>
-        </div>
-
-        {/* Filters & Search */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-2">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {["all", "Pending", "In Progress", "Resolved"].map((st) => (
-              <button
-                key={st}
-                onClick={() => setTaskStatusFilter(st)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-                  taskStatusFilter === st
-                    ? "bg-indigo-600 text-white shadow-xs"
-                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200"
-                }`}
-              >
-                {st === "all" ? "All Statuses" : st}
-              </button>
-            ))}
-          </div>
-
-          <div className="relative w-full md:w-72">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search by title, lab, ticket ID..."
-              value={taskSearch}
-              onChange={(e) => setTaskSearch(e.target.value)}
-              className="w-full h-10 pl-9 pr-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+          <div className="flex items-center gap-2">
+            <SectionCollapseToggle
+              isCollapsed={collapsedSections.tasks}
+              onToggle={() => toggleSection("tasks")}
+              label="Maintenance Tickets"
             />
+            <button
+              onClick={() => setShowNewTaskModal(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-200 dark:shadow-none cursor-pointer"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>Create Work Ticket</span>
+            </button>
           </div>
         </div>
 
-        {/* Tickets Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-slate-100 dark:border-white/10 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                <th className="pb-3 px-4">Ticket ID</th>
-                <th className="pb-3 px-4">Task Description</th>
-                <th className="pb-3 px-4">Location</th>
-                <th className="pb-3 px-4">Priority</th>
-                <th className="pb-3 px-4">Status (Click to Toggle)</th>
-                <th className="pb-3 px-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-white/10 text-xs font-medium text-slate-700 dark:text-slate-200">
-              {filteredTasks.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-400">
-                    No maintenance tickets match the selected filters.
-                  </td>
+        <CollapsibleBody
+          isCollapsed={collapsedSections.tasks}
+          onExpand={() => toggleSection("tasks")}
+          sectionName="Assigned Section Tasks & Maintenance Tickets"
+        >
+          {/* Filters & Search */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-2">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {["all", "Pending", "In Progress", "Resolved"].map((st) => (
+                <button
+                  key={st}
+                  onClick={() => setTaskStatusFilter(st)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    taskStatusFilter === st
+                      ? "bg-indigo-600 text-white shadow-xs"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200"
+                  }`}
+                >
+                  {st === "all" ? "All Statuses" : st}
+                </button>
+              ))}
+            </div>
+
+            <div className="relative w-full md:w-72">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search by title, lab, ticket ID..."
+                value={taskSearch}
+                onChange={(e) => setTaskSearch(e.target.value)}
+                className="w-full h-10 pl-9 pr-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+          </div>
+
+          {/* Tickets Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-100 dark:border-white/10 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  <th className="pb-3 px-4">Ticket ID</th>
+                  <th className="pb-3 px-4">Task Description</th>
+                  <th className="pb-3 px-4">Location</th>
+                  <th className="pb-3 px-4">Priority</th>
+                  <th className="pb-3 px-4">Status (Click to Toggle)</th>
+                  <th className="pb-3 px-4 text-right">Actions</th>
                 </tr>
-              ) : (
-                filteredTasks.map((task, idx) => {
-                  const tId = task.ticketId || task._id || `task-${idx}`;
-                  return (
-                    <tr key={tId} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
-                      <td className="py-4 px-4 font-mono font-bold text-indigo-600 dark:text-indigo-400">
-                        {task.ticketId || "TK-NEW"}
-                      </td>
-                      <td className="py-4 px-4 max-w-xs">
-                        <div className="font-bold text-slate-900 dark:text-white">{task.title}</div>
-                        <span className="text-[10px] text-slate-400 font-medium">
-                          Category: {task.category} • Assigned By: {task.assignedBy}
-                        </span>
-                        {task.description && (
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                            {task.description}
-                          </p>
-                        )}
-                      </td>
-                      <td className="py-4 px-4 text-slate-600 dark:text-slate-300">
-                        {task.location}
-                      </td>
-                      <td className="py-4 px-4">
-                        <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] uppercase tracking-wider ${
-                          task.priority === "High"
-                            ? "bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 ring-1 ring-rose-200 dark:ring-rose-800"
-                            : task.priority === "Medium"
-                            ? "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 ring-1 ring-amber-200 dark:ring-amber-800"
-                            : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-700"
-                        }`}>
-                          {task.priority}
-                        </span>
-                      </td>
-                      <td className="py-4 px-4">
-                        <button
-                          onClick={() => handleToggleTaskStatus(task.ticketId || task._id, task.status)}
-                          className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs ${
-                            task.status === "Resolved"
-                              ? "bg-emerald-100 dark:bg-emerald-950/60 hover:bg-emerald-200 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300"
-                              : task.status === "In Progress"
-                              ? "bg-sky-100 dark:bg-sky-950/60 hover:bg-sky-200 dark:hover:bg-sky-900/60 text-sky-800 dark:text-sky-300"
-                              : "bg-amber-100 dark:bg-amber-950/60 hover:bg-amber-200 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-300"
-                          }`}
-                          title="Click to cycle status"
-                        >
-                          {task.status === "Resolved" ? (
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                          ) : task.status === "In Progress" ? (
-                            <Activity className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 animate-spin" />
-                          ) : (
-                            <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-white/10 text-xs font-medium text-slate-700 dark:text-slate-200">
+                {filteredTasks.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-slate-400">
+                      No maintenance tickets match the selected filters.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredTasks.map((task, idx) => {
+                    const tId = task.ticketId || task._id || `task-${idx}`;
+                    return (
+                      <tr key={tId} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
+                        <td className="py-4 px-4 font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                          {task.ticketId || "TK-NEW"}
+                        </td>
+                        <td className="py-4 px-4 max-w-xs">
+                          <div className="font-bold text-slate-900 dark:text-white">{task.title}</div>
+                          <span className="text-[10px] text-slate-400 font-medium">
+                            Category: {task.category} • Assigned By: {task.assignedBy}
+                          </span>
+                          {task.description && (
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                              {task.description}
+                            </p>
                           )}
-                          <span>{task.status}</span>
-                        </button>
-                      </td>
-                      <td className="py-4 px-4 text-right">
-                        <button
-                          onClick={() => handleDeleteTask(task.ticketId || task._id)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/60 transition cursor-pointer"
-                          title="Delete Ticket"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                        </td>
+                        <td className="py-4 px-4 text-slate-600 dark:text-slate-300">
+                          {task.location}
+                        </td>
+                        <td className="py-4 px-4">
+                          <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] uppercase tracking-wider ${
+                            task.priority === "High"
+                              ? "bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 ring-1 ring-rose-200 dark:ring-rose-800"
+                              : task.priority === "Medium"
+                              ? "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 ring-1 ring-amber-200 dark:ring-amber-800"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-700"
+                          }`}>
+                            {task.priority}
+                          </span>
+                        </td>
+                        <td className="py-4 px-4">
+                          <button
+                            onClick={() => handleToggleTaskStatus(task.ticketId || task._id, task.status)}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs ${
+                              task.status === "Resolved"
+                                ? "bg-emerald-100 dark:bg-emerald-950/60 hover:bg-emerald-200 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300"
+                                : task.status === "In Progress"
+                                ? "bg-sky-100 dark:bg-sky-950/60 hover:bg-sky-200 dark:hover:bg-sky-900/60 text-sky-800 dark:text-sky-300"
+                                : "bg-amber-100 dark:bg-amber-950/60 hover:bg-amber-200 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-300"
+                            }`}
+                            title="Click to cycle status"
+                          >
+                            {task.status === "Resolved" ? (
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                            ) : task.status === "In Progress" ? (
+                              <Activity className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 animate-spin" />
+                            ) : (
+                              <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                            )}
+                            <span>{task.status}</span>
+                          </button>
+                        </td>
+                        <td className="py-4 px-4 text-right">
+                          <button
+                            onClick={() => handleDeleteTask(task.ticketId || task._id)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/60 transition cursor-pointer"
+                            title="Delete Ticket"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CollapsibleBody>
       </div>
 
       {/* ── 6. CLASSROOM & LAB TIMETABLE SUPERVISION ────────────────── */}
@@ -861,82 +954,102 @@ export default function EmployeeDashboardPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-            {ROUTINE_DAYS.map((day) => (
-              <button
-                key={day}
-                onClick={() => setSelectedRoutineDay(day)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-                  selectedRoutineDay === day
-                    ? "bg-indigo-600 text-white shadow-xs"
-                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
-                }`}
-              >
-                {day}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+              {ROUTINE_DAYS.map((day) => (
+                <button
+                  key={day}
+                  onClick={() => setSelectedRoutineDay(day)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    selectedRoutineDay === day
+                      ? "bg-indigo-600 text-white shadow-xs"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
+                  }`}
+                >
+                  {day}
+                </button>
+              ))}
+            </div>
+            <SectionCollapseToggle
+              isCollapsed={collapsedSections.schedule}
+              onToggle={() => toggleSection("schedule")}
+              label="Lab Timetable"
+            />
           </div>
         </div>
 
-        {routineLoading ? (
-          <div className="py-12 text-center text-xs text-slate-400 animate-pulse">
-            Loading departmental laboratory schedule...
-          </div>
-        ) : routineForSelectedDay.length === 0 ? (
-          <div className="py-12 text-center rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-200 dark:border-slate-800 space-y-2">
-            <MonitorCheck className="w-8 h-8 text-slate-400 mx-auto" />
-            <p className="text-xs font-bold text-slate-600 dark:text-slate-300">
-              No practical sessions or lab routine slots scheduled for {selectedRoutineDay}.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {routineForSelectedDay.map((slot, idx) => (
-              <div
-                key={slot._id || `${slot.day}-${slot.timeSlot}-${idx}`}
-                className="p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 space-y-3"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-mono font-bold text-xs text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-0.5 rounded-md">
-                    {slot.courseCode} • Sem {slot.semester}
-                  </span>
-                  <span className="text-[10px] font-bold text-slate-500 bg-slate-200/60 dark:bg-slate-700 px-2 py-0.5 rounded-md">
-                    {slot.timeSlot}
-                  </span>
+        <CollapsibleBody
+          isCollapsed={collapsedSections.schedule}
+          onExpand={() => toggleSection("schedule")}
+          sectionName="Department Lab Timetable & Room Preparation"
+        >
+          {routineLoading ? (
+            <div className="py-12 text-center text-xs text-slate-400 animate-pulse">
+              Loading departmental laboratory schedule...
+            </div>
+          ) : routineForSelectedDay.length === 0 ? (
+            <div className="py-12 text-center rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-200 dark:border-slate-800 space-y-2">
+              <MonitorCheck className="w-8 h-8 text-slate-400 mx-auto" />
+              <p className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                No practical sessions or lab routine slots scheduled for {selectedRoutineDay}.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {routineForSelectedDay.map((slot, idx) => (
+                <div
+                  key={slot._id || `${slot.day}-${slot.timeSlot}-${idx}`}
+                  className="p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 space-y-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-bold text-xs text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-0.5 rounded-md">
+                      {slot.courseCode} • Sem {slot.semester}
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-500 bg-slate-200/60 dark:bg-slate-700 px-2 py-0.5 rounded-md">
+                      {slot.timeSlot}
+                    </span>
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-900 dark:text-white text-sm">
+                      {slot.courseTitle || slot.courseCode}
+                    </h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Instructor: <strong>{slot.teacherName || "Assigned Faculty"}</strong>
+                    </p>
+                  </div>
+                  <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between text-xs text-slate-500">
+                    <span className="flex items-center gap-1">
+                      <MapPin className="w-3.5 h-3.5 text-indigo-500" />
+                      <span>{slot.roomNo || "Lab Room"}</span>
+                    </span>
+                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                      Prep Required
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="font-bold text-slate-900 dark:text-white text-sm">
-                    {slot.courseTitle || slot.courseCode}
-                  </h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Instructor: <strong>{slot.teacherName || "Assigned Faculty"}</strong>
-                  </p>
-                </div>
-                <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between text-xs text-slate-500">
-                  <span className="flex items-center gap-1">
-                    <MapPin className="w-3.5 h-3.5 text-indigo-500" />
-                    <span>{slot.roomNo || "Lab Room"}</span>
-                  </span>
-                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-                    Prep Required
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </CollapsibleBody>
       </div>
 
       {/* ── 7. OFFICIAL NOTICE BOARD ─────────────────────────────────── */}
       <NoticeBoardSection
         title="Notice Board"
         subtitle="Department broadcast & staff operational notices."
+        isCollapsed={collapsedSections.notices}
+        onToggle={() => toggleSection("notices")}
       />
 
       {/* ── MODAL: EDIT STAFF PROFILE ───────────────────────────────── */}
       {isEditingProfile && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
-          <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-6 max-h-[90vh] overflow-y-auto">
+        <div
+          data-lenis-prevent
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in overscroll-contain"
+        >
+          <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-6 max-h-[90vh] overflow-y-auto overscroll-contain scrollbar-thin">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center">
@@ -1105,8 +1218,13 @@ export default function EmployeeDashboardPage() {
 
       {/* ── MODAL: CREATE WORK TICKET ───────────────────────────────── */}
       {showNewTaskModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
-          <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-6">
+        <div
+          data-lenis-prevent
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in overscroll-contain"
+        >
+          <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-6 max-h-[90vh] overflow-y-auto overscroll-contain scrollbar-thin">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-2xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 flex items-center justify-center">
@@ -1216,8 +1334,13 @@ export default function EmployeeDashboardPage() {
 
       {/* ── MODAL: EDIT LAB FACILITY STATUS ─────────────────────────── */}
       {editingLab && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
-          <div className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-5">
+        <div
+          data-lenis-prevent
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in overscroll-contain"
+        >
+          <div className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-5 max-h-[90vh] overflow-y-auto overscroll-contain scrollbar-thin">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div>
                 <h3 className="text-base font-black text-slate-900 dark:text-white">Update {editingLab.name}</h3>

@@ -229,7 +229,11 @@ export default function StudentAssignmentsSection({
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div
+          data-lenis-prevent
+          className="max-h-[620px] overflow-y-auto overscroll-contain pr-1 scrollbar-thin"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredAssignments.map((a, idx) => {
             const timer = getDeadlineTimer(a.deadline);
             const mySub = a.mySubmission;
@@ -381,13 +385,19 @@ export default function StudentAssignmentsSection({
               </div>
             );
           })}
+          </div>
         </div>
       )}
 
       {/* ── SUBMIT MODAL ─────────────────────────────────────── */}
       {submittingAssignment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-[2rem] border border-white dark:border-white/10 p-6 sm:p-7 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+        <div
+          data-lenis-prevent
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200 overscroll-contain"
+        >
+          <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-[2rem] border border-white dark:border-white/10 p-6 sm:p-7 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto overscroll-contain scrollbar-thin">
             {/* Modal Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-white/10">
               <div className="flex items-center gap-3">

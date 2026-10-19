@@ -14,7 +14,6 @@ import {
   ArrowRight,
   ShieldCheck,
   CheckCircle2,
-  Clock,
   ExternalLink,
   Copy,
   Check,
@@ -43,30 +42,7 @@ export function Footer() {
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [copiedField, setCopiedField] = useState(null); // 'phone' | 'email' | 'address' | number
-  const [currentTime, setCurrentTime] = useState("");
   const [activeModal, setActiveModal] = useState(null); // 'privacy' | 'terms' | 'emergency' | null
-
-  // Live Bangladesh Standard Time (BST: UTC+6) Clock
-  useEffect(() => {
-    const updateTime = () => {
-      try {
-        const now = new Date();
-        const timeStr = now.toLocaleTimeString("en-US", {
-          timeZone: "Asia/Dhaka",
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-          hour12: true,
-        });
-        setCurrentTime(`BST ${timeStr}`);
-      } catch {
-        setCurrentTime("BST Active");
-      }
-    };
-    updateTime();
-    const interval = setInterval(updateTime, 1000);
-    return () => clearInterval(interval);
-  }, []);
 
   // GSAP Animated Top Divider
   useEffect(() => {
@@ -246,32 +222,9 @@ export function Footer() {
                 </div>
               </div>
 
-              <p className="text-slate-600 dark:text-slate-300 text-xs sm:text-sm leading-relaxed mb-4 max-w-sm font-medium">
+              <p className="text-slate-600 dark:text-slate-300 text-xs sm:text-sm leading-relaxed max-w-sm font-medium">
                 Pabna University of Science and Technology. Fostering excellence in computing education, scientific research, and ethical innovation since 2008.
               </p>
-
-              {/* System Health Status & Live Campus Clock */}
-              <div className="flex flex-col gap-2 p-3.5 rounded-2xl bg-slate-100/70 dark:bg-slate-900/70 border border-slate-200/70 dark:border-slate-800/80 max-w-sm">
-                <div className="flex items-center justify-between text-xs font-semibold">
-                  <div className="flex items-center gap-2">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                    </span>
-                    <span className="text-slate-700 dark:text-slate-200 font-bold">Portal Systems Operational</span>
-                  </div>
-                  <span className="text-[10px] uppercase font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
-                    99.98%
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-200/50 dark:border-slate-800">
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3 h-3 text-slate-400" />
-                    <span className="font-mono">{currentTime || "BST Dhaka"}</span>
-                  </span>
-                  <span>Session: 2026-2027</span>
-                </div>
-              </div>
             </div>
 
             {/* Social & University Channels */}

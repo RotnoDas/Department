@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import { DashboardSidebar } from "@/components/dashboard/DashboardSidebar";
+import { DashboardScrollToTop } from "@/components/dashboard/DashboardScrollToTop";
 import { Menu, GraduationCap, Sparkles } from "lucide-react";
 import Link from "next/link";
 
@@ -64,11 +65,14 @@ export default function DashboardLayout({ children }) {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 lg:pl-72 z-10 min-h-screen flex flex-col">
+      <main id="dashboard-main-content" className="flex-1 lg:pl-72 z-10 min-h-screen flex flex-col overscroll-contain">
         <div className="flex-1 p-6 md:p-10 max-w-[1400px] w-full mx-auto">
           {children}
         </div>
       </main>
+
+      {/* Floating Move to Top Button (like Homepage) */}
+      <DashboardScrollToTop />
     </div>
   );
 }

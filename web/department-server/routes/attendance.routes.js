@@ -365,6 +365,23 @@ router.get('/teacher/roster-report', async (req, res) => {
 
     const totalSessions = sessions.length;
 
+    let courseDoc = null;
+    if (courseCode) {
+      const { courses } = getCollections();
+      const rawCode = String(courseCode).trim();
+      const cleanCode = rawCode.replace(/[\s-]/g, '');
+      courseDoc = await courses.findOne({
+        $or: [
+          { code: { $regex: `^${rawCode}$`, $options: 'i' } },
+          { code: { $regex: cleanCode, $options: 'i' } },
+          { code: rawCode }
+        ]
+      });
+    }
+    const totalPlannedClasses = courseDoc?.totalClasses !== undefined && courseDoc?.totalClasses !== null
+      ? Number(courseDoc.totalClasses)
+      : (courseDoc?.credits ? Math.round(Number(courseDoc.credits) * 12) : 36);
+
     const roster = studentList.map((stu) => {
       const email = (stu.email || '').toLowerCase();
       let attendedCount = 0;
@@ -383,6 +400,9 @@ router.get('/teacher/roster-report', async (req, res) => {
       });
 
       const percentage = totalSessions > 0 ? Math.round((attendedCount / totalSessions) * 100) : 100;
+      const remainingClasses = Math.max(0, totalPlannedClasses - totalSessions);
+      const minRequired75 = Math.ceil(0.75 * totalPlannedClasses);
+      const neededFromRemaining = Math.max(0, minRequired75 - attendedCount);
 
       return {
         id: stu._id,
@@ -393,8 +413,12 @@ router.get('/teacher/roster-report', async (req, res) => {
         batch: stu.batch,
         attendedCount,
         totalSessions,
+        totalPlannedClasses,
         percentage,
         isAtRisk: totalSessions > 0 && percentage < 75,
+        remainingClasses,
+        neededFromRemaining,
+        canReach75: neededFromRemaining <= remainingClasses,
         history,
       };
     });
@@ -403,6 +427,7 @@ router.get('/teacher/roster-report', async (req, res) => {
       success: true,
       courseCode: courseCode || 'All Courses',
       totalSessions,
+      totalPlannedClasses,
       studentCount: roster.length,
       sessions: sessions.map((s) => ({
         sessionKey: s.sessionKey,
@@ -415,6 +440,155 @@ router.get('/teacher/roster-report', async (req, res) => {
   } catch (err) {
     console.error('Error fetching roster report:', err);
     res.status(500).json({ error: 'Failed to fetch attendance roster report' });
+  }
+});
+
+// ── POST /api/attendance/teacher/manual-session ────────────────────────
+// Allows teacher to record a complete roll-call attendance session for a course
+router.post('/teacher/manual-session', async (req, res) => {
+  try {
+    const { attendanceSessions, attendanceRecords } = getCollections();
+    const { courseCode, semester, sessionDate, timeSlot, topic, records, teacherName, teacherEmail } = req.body || {};
+
+    if (!courseCode || !sessionDate) {
+      return res.status(400).json({ error: 'Course code and session date are required' });
+    }
+
+    const cleanCourse = courseCode.trim().toUpperCase();
+    const cleanSlot = timeSlot || '09:00 - 10:00';
+    const now = new Date();
+    const sessionKey = `${sessionDate}|${cleanCourse}|${cleanSlot}`;
+
+    // 1. Upsert attendance session
+    await attendanceSessions.updateOne(
+      { sessionKey },
+      {
+        $set: {
+          sessionKey,
+          courseCode: cleanCourse,
+          semester: Number(semester) || 1,
+          sessionDate,
+          timeSlot: cleanSlot,
+          topic: topic || '',
+          teacherName: teacherName || 'Course Instructor',
+          teacherEmail: teacherEmail || '',
+          method: 'manual_rollcall',
+          status: 'completed',
+          updatedAt: now,
+        },
+        $setOnInsert: {
+          createdAt: now,
+        }
+      },
+      { upsert: true }
+    );
+
+    // 2. Process records array
+    if (Array.isArray(records)) {
+      for (const item of records) {
+        const studentEmail = (item.studentEmail || '').toLowerCase();
+        if (!studentEmail) continue;
+
+        if (item.present) {
+          await attendanceRecords.updateOne(
+            { sessionKey, studentEmail },
+            {
+              $set: {
+                sessionKey,
+                studentEmail,
+                studentId: item.studentId || '',
+                studentName: item.studentName || '',
+                courseCode: cleanCourse,
+                sessionDate,
+                timeSlot: cleanSlot,
+                status: 'present',
+                method: 'manual',
+                markedAt: now,
+                updatedAt: now,
+              },
+              $setOnInsert: {
+                createdAt: now,
+              }
+            },
+            { upsert: true }
+          );
+        } else {
+          // If marked absent, remove any present record for this session
+          await attendanceRecords.deleteOne({ sessionKey, studentEmail });
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Attendance recorded for ${cleanCourse} on ${sessionDate}!`,
+      sessionKey
+    });
+  } catch (err) {
+    console.error('Error saving manual attendance session:', err);
+    res.status(500).json({ error: 'Failed to record attendance session' });
+  }
+});
+
+// ── POST /api/attendance/teacher/toggle-student ────────────────────────
+// Quick-toggle single student present/absent for a session
+router.post('/teacher/toggle-student', async (req, res) => {
+  try {
+    const { attendanceRecords } = getCollections();
+    const { sessionKey, studentEmail, studentId, studentName, courseCode, sessionDate, timeSlot, present } = req.body || {};
+
+    if (!sessionKey || !studentEmail) {
+      return res.status(400).json({ error: 'sessionKey and studentEmail are required' });
+    }
+
+    const email = studentEmail.toLowerCase();
+    const now = new Date();
+
+    if (present) {
+      await attendanceRecords.updateOne(
+        { sessionKey, studentEmail: email },
+        {
+          $set: {
+            sessionKey,
+            studentEmail: email,
+            studentId: studentId || '',
+            studentName: studentName || '',
+            courseCode: (courseCode || '').toUpperCase(),
+            sessionDate: sessionDate || '',
+            timeSlot: timeSlot || '',
+            status: 'present',
+            method: 'manual_override',
+            markedAt: now,
+            updatedAt: now,
+          },
+          $setOnInsert: { createdAt: now }
+        },
+        { upsert: true }
+      );
+    } else {
+      await attendanceRecords.deleteOne({ sessionKey, studentEmail: email });
+    }
+
+    res.json({ success: true, present: Boolean(present) });
+  } catch (err) {
+    console.error('Error toggling student attendance:', err);
+    res.status(500).json({ error: 'Failed to toggle student attendance' });
+  }
+});
+
+// ── DELETE /api/attendance/teacher/session/:sessionKey ─────────────────
+router.delete('/teacher/session/:sessionKey', async (req, res) => {
+  try {
+    const { attendanceSessions, attendanceRecords } = getCollections();
+    const sessionKey = decodeURIComponent(req.params.sessionKey);
+
+    await attendanceRecords.deleteMany({ sessionKey });
+    const result = await attendanceSessions.deleteOne({ sessionKey });
+
+    res.json({ success: true, deleted: result.deletedCount > 0, message: 'Session deleted successfully' });
+  } catch (err) {
+    console.error('Error deleting attendance session:', err);
+    res.status(500).json({ error: 'Failed to delete session' });
   }
 });
 

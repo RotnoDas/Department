@@ -184,7 +184,11 @@ export default function StudentMaterialsSection({
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div
+          data-lenis-prevent
+          className="max-h-[620px] overflow-y-auto overscroll-contain pr-1 scrollbar-thin"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredMaterials.map((mat, idx) => {
             const matId = mat._id || mat.id || `mat-${idx}`;
             const fileUrl = mat.filePath?.startsWith("http")
@@ -270,6 +274,7 @@ export default function StudentMaterialsSection({
               </div>
             );
           })}
+          </div>
         </div>
       )}
     </div>

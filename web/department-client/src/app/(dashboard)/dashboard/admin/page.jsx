@@ -48,6 +48,11 @@ import { SEMESTER_COURSES, SEMESTER_LABELS, SEMESTER_KEYS } from "@/data/courses
 import Loading from "@/components/common/Loading";
 import { AdminAnalyticsCharts } from "@/components/dashboard/DashboardCharts";
 import NoticeBoardSection from "@/components/notice/NoticeBoardSection";
+import { 
+  SectionCollapseToggle, 
+  CollapsibleBody, 
+  DashboardCollapseControls 
+} from "@/components/dashboard/CollapsibleSection";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
@@ -101,6 +106,71 @@ export default function AdminDashboardPage() {
   const [teacherSearch, setTeacherSearch] = useState("");
   const [employeeTab, setEmployeeTab] = useState("all");
   const [employeeSearch, setEmployeeSearch] = useState("");
+
+  // Collapsible sections state
+  const [collapsedSections, setCollapsedSections] = useState({
+    kpi: false,
+    analytics: false,
+    students: false,
+    faculty: false,
+    routine: false,
+    courses: false,
+    notices: false,
+    support: false,
+    employees: false,
+  });
+
+  const toggleSection = (key) => {
+    setCollapsedSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const collapseAllSections = () => {
+    setCollapsedSections({
+      kpi: true,
+      analytics: true,
+      students: true,
+      faculty: true,
+      routine: true,
+      courses: true,
+      notices: true,
+      support: true,
+      employees: true,
+    });
+  };
+
+  const expandAllSections = () => {
+    setCollapsedSections({
+      kpi: false,
+      analytics: false,
+      students: false,
+      faculty: false,
+      routine: false,
+      courses: false,
+      notices: false,
+      support: false,
+      employees: false,
+    });
+  };
+
+  const allCollapsed = Object.values(collapsedSections).every(Boolean);
+
+  useEffect(() => {
+    const handleHash = () => {
+      const hash = window.location.hash.replace("#", "");
+      if (!hash) return;
+      if (hash === "analytics") setCollapsedSections((p) => ({ ...p, analytics: false }));
+      if (hash === "pending" || hash === "students") setCollapsedSections((p) => ({ ...p, students: false }));
+      if (hash === "faculty") setCollapsedSections((p) => ({ ...p, faculty: false }));
+      if (hash === "routine") setCollapsedSections((p) => ({ ...p, routine: false }));
+      if (hash === "courses") setCollapsedSections((p) => ({ ...p, courses: false }));
+      if (hash === "notices") setCollapsedSections((p) => ({ ...p, notices: false }));
+      if (hash === "support-complaints") setCollapsedSections((p) => ({ ...p, support: false }));
+      if (hash === "directory" || hash === "employees") setCollapsedSections((p) => ({ ...p, employees: false }));
+    };
+    handleHash();
+    window.addEventListener("hashchange", handleHash);
+    return () => window.removeEventListener("hashchange", handleHash);
+  }, []);
 
   // Support & Complaints states
   const [supportRecords, setSupportRecords] = useState([]);
@@ -287,10 +357,35 @@ export default function AdminDashboardPage() {
     const cell = getRoutineCell(day, semester, timeSlot);
     setEditingRoutineCell({ day, semester: Number(semester), timeSlot });
     if (cell) {
+      const isAllowed = cell.teacherName && ["A", "B", "C"].includes(cell.teacherName.trim().toUpperCase());
+      let matchTeacher = isAllowed 
+        ? teachers.find(t => t.name?.trim().toUpperCase() === cell.teacherName.trim().toUpperCase() || t.teacherId === cell.teacherId)
+        : null;
+
+      // If this specific slot has no teacher assigned yet, check if the course already has a teacher assigned in courses or another slot of this semester
+      if (!matchTeacher && cell.courseCode) {
+        const cleanCourseCode = cell.courseCode.trim().toUpperCase();
+        const matchedCourse = courses.find((c) => c.code?.trim().toUpperCase() === cleanCourseCode);
+        if (matchedCourse?.faculty && ["A", "B", "C"].includes(matchedCourse.faculty.trim().toUpperCase())) {
+          matchTeacher = teachers.find((t) => t.name?.trim().toUpperCase() === matchedCourse.faculty.trim().toUpperCase());
+        }
+        if (!matchTeacher) {
+          const sisterSlot = routines.find((r) =>
+            Number(r.semester) === Number(semester) &&
+            r.courseCode?.trim().toUpperCase() === cleanCourseCode &&
+            r.teacherName && ["A", "B", "C"].includes(r.teacherName.trim().toUpperCase())
+          );
+          if (sisterSlot) {
+            matchTeacher = teachers.find((t) => t.name?.trim().toUpperCase() === sisterSlot.teacherName.trim().toUpperCase());
+          }
+        }
+      }
+
       setRoutineFormData({
         courseCode: cell.courseCode || "",
-        teacherId: cell.teacherId || "",
-        teacherName: cell.teacherName || "",
+        teacherId: matchTeacher?.teacherId || (matchTeacher?._id ? String(matchTeacher._id) : ""),
+        teacherName: matchTeacher ? matchTeacher.name.trim().toUpperCase() : "",
+        teacherEmail: matchTeacher?.email || "",
         room: cell.room || "",
       });
     } else {
@@ -298,6 +393,7 @@ export default function AdminDashboardPage() {
         courseCode: "",
         teacherId: "",
         teacherName: "",
+        teacherEmail: "",
         room: `Room ${400 + Number(semester)}`,
       });
     }
@@ -305,6 +401,16 @@ export default function AdminDashboardPage() {
 
   const handleSaveRoutineSlot = async () => {
     if (!editingRoutineCell) return;
+
+    // Strict validation: if courseCode is provided, teacherName must be strictly A, B, or C
+    if (routineFormData.courseCode) {
+      const allowed = ["A", "B", "C"];
+      const selectedUpper = String(routineFormData.teacherName || "").trim().toUpperCase();
+      if (!selectedUpper || !allowed.includes(selectedUpper)) {
+        toast.error("Teacher assignment error: Only Teacher A, Teacher B, or Teacher C can be assigned to a course. All other selections are not allowed.", { duration: 6000 });
+        return;
+      }
+    }
 
     // Check client-side Room conflict
     if (routineFormData.room && routineFormData.courseCode) {
@@ -329,7 +435,7 @@ export default function AdminDashboardPage() {
         routineFormData.teacherName
       );
       if (teacherConflict) {
-        toast.error(`Instructor Conflict: ${routineFormData.teacherName} is already scheduled with Semester ${teacherConflict.semester} on ${editingRoutineCell.day} at ${editingRoutineCell.timeSlot}!`, { duration: 6000 });
+        toast.error(`Instructor Conflict: Teacher ${routineFormData.teacherName} is already scheduled with Semester ${teacherConflict.semester} on ${editingRoutineCell.day} at ${editingRoutineCell.timeSlot}!`, { duration: 6000 });
         return;
       }
     }
@@ -346,18 +452,23 @@ export default function AdminDashboardPage() {
           courseCode: routineFormData.courseCode,
           teacherId: routineFormData.teacherId || null,
           teacherName: routineFormData.teacherName || "",
+          teacherEmail: routineFormData.teacherEmail || null,
           room: routineFormData.room || "",
         }),
       });
 
       if (res.ok) {
-        toast.success(routineFormData.courseCode ? "Routine slot updated successfully!" : "Routine slot cleared!");
+        const respData = await res.json().catch(() => ({}));
+        const countInfo = respData.autoFilledCount > 1 
+          ? ` (Auto-filled all ${respData.autoFilledCount} weekly slots)`
+          : "";
+        toast.success(
+          routineFormData.courseCode
+            ? `Class saved! Teacher ${routineFormData.teacherName} assigned to all ${routineFormData.courseCode} slots${countInfo}.`
+            : "Routine slot cleared!"
+        );
         setEditingRoutineCell(null);
-        const updated = await fetch(`${SERVER_URL}/api/routines`);
-        if (updated.ok) {
-          const data = await updated.json();
-          setRoutines(Array.isArray(data) ? data : (data.routines || []));
-        }
+        await fetchData();
       } else {
         const err = await res.json().catch(() => ({}));
         toast.error(err.error || "Failed to update routine slot", { duration: 6000 });
@@ -668,6 +779,30 @@ export default function AdminDashboardPage() {
       }
     } catch (err) {
       toast.error("Error removing course");
+    }
+  };
+
+  // Quick assign teacher (A, B, or C only) directly to a course
+  const handleQuickAssignCourseFaculty = async (courseId, teacherName) => {
+    try {
+      const res = await fetch(`${SERVER_URL}/api/courses/${courseId}/faculty`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ faculty: teacherName }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to assign teacher to course");
+      }
+      toast.success(data.message || "Teacher assigned to course successfully!");
+      await fetchData();
+      const updatedRoutines = await fetch(`${SERVER_URL}/api/routines`);
+      if (updatedRoutines.ok) {
+        const rData = await updatedRoutines.json();
+        setRoutines(Array.isArray(rData) ? rData : (rData.routines || []));
+      }
+    } catch (err) {
+      toast.error(err.message || "Error assigning teacher to course");
     }
   };
 
@@ -1006,11 +1141,16 @@ export default function AdminDashboardPage() {
             Manage student verification, publish official circulars, configure courses, and monitor department records.
           </p>
         </div>
-        <div className="flex items-center gap-3 relative z-10">
+        <div className="flex items-center flex-wrap gap-3 relative z-10">
+          <DashboardCollapseControls
+            onCollapseAll={collapseAllSections}
+            onExpandAll={expandAllSections}
+            allCollapsed={allCollapsed}
+          />
           <button
             onClick={fetchData}
             disabled={isLoading}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all border border-white/10 backdrop-blur-md shadow-sm"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all border border-white/10 backdrop-blur-md shadow-sm cursor-pointer"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
             <span>Sync Live</span>
@@ -1019,7 +1159,25 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* KPI Statistic Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5">
+      <div className="space-y-3">
+        <div className="flex items-center justify-between px-1">
+          <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Department Overview Metrics
+          </span>
+          <SectionCollapseToggle
+            isCollapsed={collapsedSections.kpi}
+            onToggle={() => toggleSection("kpi")}
+            label="Overview Metrics"
+            size="sm"
+          />
+        </div>
+
+        <CollapsibleBody
+          isCollapsed={collapsedSections.kpi}
+          onExpand={() => toggleSection("kpi")}
+          sectionName="Department Overview Metrics"
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5">
         {/* Total Students */}
         <div className="p-6 rounded-3xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm hover:shadow-md dark:shadow-none transition-shadow">
           <div className="flex items-center justify-between">
@@ -1132,6 +1290,8 @@ export default function AdminDashboardPage() {
           </div>
         </div>
       </div>
+      </CollapsibleBody>
+    </div>
 
       {/* Institutional Analytics & Resource Studio */}
       <div id="analytics" className="scroll-mt-6">
@@ -1141,6 +1301,8 @@ export default function AdminDashboardPage() {
           routines={routines} 
           courses={courses} 
           teachers={teachers} 
+          isCollapsed={collapsedSections.analytics}
+          onToggle={() => toggleSection("analytics")}
         />
       </div>
 
@@ -1184,9 +1346,19 @@ export default function AdminDashboardPage() {
                 <Download className="w-3.5 h-3.5" />
                 <span>Export CSV</span>
               </button>
+              <SectionCollapseToggle
+                isCollapsed={collapsedSections.students}
+                onToggle={() => toggleSection("students")}
+                label="Student Admissions"
+              />
             </div>
           </div>
 
+          <CollapsibleBody
+            isCollapsed={collapsedSections.students}
+            onExpand={() => toggleSection("students")}
+            sectionName="Student Admissions & Verification Hub"
+          >
           {/* Tab & Search Bar */}
           <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-2">
             <div className="flex items-center gap-1.5 p-1 bg-slate-100/80 dark:bg-slate-800/80 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 self-start">
@@ -1235,17 +1407,20 @@ export default function AdminDashboardPage() {
           </div>
 
           {/* Students Table */}
-          <div className="overflow-x-auto">
+          <div
+            data-lenis-prevent
+            className="overflow-auto overscroll-contain max-h-[580px] scrollbar-thin rounded-2xl border border-slate-100 dark:border-white/5"
+          >
             {filteredStudents.length === 0 ? (
               <div className="text-center py-16 text-slate-400 dark:text-slate-500 space-y-2">
                 <UserCheck className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600" />
                 <p className="font-semibold text-sm">No student registrations found for this filter.</p>
               </div>
             ) : (
-              <table className="w-full text-left text-sm">
-                <thead>
+              <table className="w-full text-left text-sm border-collapse">
+                <thead className="sticky top-0 z-10 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-xs">
                   <tr className="border-b border-slate-100 dark:border-white/10 text-[11px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider">
-                    <th className="pb-3 px-4">Student Member</th>
+                    <th className="py-3 px-4">Student Member</th>
                     <th className="pb-3 px-4">Academic & Roll</th>
                     <th className="pb-3 px-4">Batch & Session</th>
                     <th className="pb-3 px-4">Contact Info</th>
@@ -1383,6 +1558,7 @@ export default function AdminDashboardPage() {
               </table>
             )}
           </div>
+          </CollapsibleBody>
         </div>
       </div>
 
@@ -1426,9 +1602,19 @@ export default function AdminDashboardPage() {
                 <Download className="w-3.5 h-3.5" />
                 <span>Export CSV</span>
               </button>
+              <SectionCollapseToggle
+                isCollapsed={collapsedSections.faculty}
+                onToggle={() => toggleSection("faculty")}
+                label="Faculty Admissions"
+              />
             </div>
           </div>
 
+          <CollapsibleBody
+            isCollapsed={collapsedSections.faculty}
+            onExpand={() => toggleSection("faculty")}
+            sectionName="Faculty Admissions & Verification Hub"
+          >
           {/* Tab & Search Bar */}
           <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-2">
             <div className="flex items-center gap-1.5 p-1 bg-slate-100/80 dark:bg-slate-800/80 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 self-start">
@@ -1477,17 +1663,20 @@ export default function AdminDashboardPage() {
           </div>
 
           {/* Faculty Table */}
-          <div className="overflow-x-auto">
+          <div
+            data-lenis-prevent
+            className="overflow-auto overscroll-contain max-h-[580px] scrollbar-thin rounded-2xl border border-slate-100 dark:border-white/5"
+          >
             {filteredTeachers.length === 0 ? (
               <div className="text-center py-16 text-slate-400 dark:text-slate-500 space-y-2">
                 <Presentation className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600" />
                 <p className="font-semibold text-sm">No faculty records found for this filter.</p>
               </div>
             ) : (
-              <table className="w-full text-left text-sm">
-                <thead>
+              <table className="w-full text-left text-sm border-collapse">
+                <thead className="sticky top-0 z-10 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-xs">
                   <tr className="border-b border-slate-100 dark:border-white/10 text-[11px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider">
-                    <th className="pb-3 px-4">Faculty Member</th>
+                    <th className="py-3 px-4">Faculty Member</th>
                     <th className="pb-3 px-4">Academic & Designation</th>
                     <th className="pb-3 px-4">Office & ID</th>
                     <th className="pb-3 px-4">Contact</th>
@@ -1627,6 +1816,7 @@ export default function AdminDashboardPage() {
               </table>
             )}
           </div>
+          </CollapsibleBody>
         </div>
       </div>
 
@@ -1664,9 +1854,19 @@ export default function AdminDashboardPage() {
               <RefreshCw className="w-3.5 h-3.5" />
               <span>Sync Live</span>
             </button>
+            <SectionCollapseToggle
+              isCollapsed={collapsedSections.routine}
+              onToggle={() => toggleSection("routine")}
+              label="Routine Studio"
+            />
           </div>
         </div>
 
+        <CollapsibleBody
+          isCollapsed={collapsedSections.routine}
+          onExpand={() => toggleSection("routine")}
+          sectionName="Class Routine & Master Timetable Studio"
+        >
         {/* Semester Filter Selector */}
         <div className="space-y-3">
           <div className="flex items-center justify-between flex-wrap gap-2">
@@ -1749,11 +1949,15 @@ export default function AdminDashboardPage() {
 
         {/* Timetable Schedule Grid */}
         <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 shadow-xs">
-          <div className="overflow-x-auto scrollbar-thin">
+          <div
+            data-lenis-prevent
+            data-smart-scroll="horizontal"
+            className="overflow-auto overscroll-contain max-h-[640px] scrollbar-thin"
+          >
             <table className="w-full border-collapse text-left">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-slate-800/50 backdrop-blur-md">
-                  <th className="w-20 border-r border-slate-200 dark:border-white/10 py-4 px-3 text-center text-[10px] font-black tracking-widest text-slate-400 uppercase">
+              <thead className="sticky top-0 z-20 shadow-xs">
+                <tr className="border-b border-slate-200 dark:border-white/10 bg-slate-100/95 dark:bg-slate-800/95 backdrop-blur-md">
+                  <th className="sticky left-0 top-0 z-30 w-20 border-r border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-slate-800 py-4 px-3 text-center text-[10px] font-black tracking-widest text-slate-400 uppercase">
                     Day
                   </th>
                   {selectedRoutineSemester === "all" && (
@@ -1796,7 +2000,7 @@ export default function AdminDashboardPage() {
                             {isFirstSemOfDay && (
                               <td
                                 rowSpan={ROUTINE_SEMESTERS.length}
-                                className="w-20 border-r border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-slate-800/30 p-2 text-center align-middle"
+                                className="sticky left-0 z-10 w-20 border-r border-slate-200 dark:border-white/10 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-sm p-2 text-center align-middle"
                               >
                                 <div className="flex h-full items-center justify-center">
                                   <span
@@ -1911,7 +2115,7 @@ export default function AdminDashboardPage() {
                         key={day}
                         className="group transition-colors hover:bg-indigo-50/20 dark:hover:bg-indigo-950/20"
                       >
-                        <td className="w-24 border-r border-slate-200 dark:border-white/10 bg-slate-50/60 dark:bg-slate-800/40 p-4 text-center align-middle font-bold text-slate-800 dark:text-slate-200 text-xs uppercase tracking-wider">
+                        <td className="sticky left-0 z-10 w-24 border-r border-slate-200 dark:border-white/10 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-sm p-4 text-center align-middle font-bold text-slate-800 dark:text-slate-200 text-xs uppercase tracking-wider">
                           {day}
                         </td>
 
@@ -1999,6 +2203,7 @@ export default function AdminDashboardPage() {
             </table>
           </div>
         </div>
+        </CollapsibleBody>
 
         {/* Edit Class Modal */}
         {editingRoutineCell && (() => {
@@ -2043,8 +2248,13 @@ export default function AdminDashboardPage() {
           ]));
 
           return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in">
-              <div className="relative max-w-lg w-full p-6 sm:p-7 rounded-[2rem] bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 shadow-2xl space-y-5 max-h-[92vh] overflow-y-auto">
+            <div
+              data-lenis-prevent
+              role="dialog"
+              aria-modal="true"
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in overscroll-contain"
+            >
+              <div className="relative max-w-lg w-full p-6 sm:p-7 rounded-[2rem] bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 shadow-2xl space-y-5 max-h-[92vh] overflow-y-auto overscroll-contain scrollbar-thin">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-white/10">
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
@@ -2106,14 +2316,29 @@ export default function AdminDashboardPage() {
                       value={routineFormData.courseCode}
                       onChange={(e) => {
                         const code = e.target.value;
-                        const matchedCourse = courses.find((c) => c.code === code);
-                        const matchedTeacher = matchedCourse?.faculty ? teachers.find((t) => t.name === matchedCourse.faculty) : null;
-                        setRoutineFormData({
-                          ...routineFormData,
+                        const cleanCode = code ? code.trim().toUpperCase() : "";
+                        const matchedCourse = courses.find((c) => c.code?.trim().toUpperCase() === cleanCode);
+                        const isCourseFacultyAllowed = matchedCourse?.faculty && ["A", "B", "C"].includes(matchedCourse.faculty.trim().toUpperCase());
+                        let matchedTeacher = isCourseFacultyAllowed ? teachers.find((t) => t.name?.trim().toUpperCase() === matchedCourse.faculty.trim().toUpperCase()) : null;
+
+                        if (!matchedTeacher && cleanCode) {
+                          const sisterSlot = routines.find((r) =>
+                            Number(r.semester) === Number(editingRoutineCell.semester) &&
+                            r.courseCode?.trim().toUpperCase() === cleanCode &&
+                            r.teacherName && ["A", "B", "C"].includes(r.teacherName.trim().toUpperCase())
+                          );
+                          if (sisterSlot) {
+                            matchedTeacher = teachers.find((t) => t.name?.trim().toUpperCase() === sisterSlot.teacherName.trim().toUpperCase());
+                          }
+                        }
+
+                        setRoutineFormData((prev) => ({
+                          ...prev,
                           courseCode: code,
-                          teacherId: matchedTeacher?.teacherId || routineFormData.teacherId || "",
-                          teacherName: matchedCourse?.faculty || routineFormData.teacherName || "",
-                        });
+                          teacherId: matchedTeacher ? (matchedTeacher.teacherId || String(matchedTeacher._id)) : prev.teacherId,
+                          teacherName: matchedTeacher ? matchedTeacher.name.trim().toUpperCase() : prev.teacherName,
+                          teacherEmail: matchedTeacher ? matchedTeacher.email : prev.teacherEmail,
+                        }));
                       }}
                       className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                     >
@@ -2126,11 +2351,16 @@ export default function AdminDashboardPage() {
                     </select>
                   </div>
 
-                  {/* Teacher Selection */}
+                  {/* Teacher Selection (Strictly A, B, or C) */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                      Assigned Faculty / Instructor
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        Assigned Faculty / Instructor
+                      </label>
+                      <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded">
+                        Only Teacher A, B, or C Allowed
+                      </span>
+                    </div>
                     <select
                       value={routineFormData.teacherName}
                       onChange={(e) => {
@@ -2139,7 +2369,8 @@ export default function AdminDashboardPage() {
                         setRoutineFormData({
                           ...routineFormData,
                           teacherName: selectedName,
-                          teacherId: selectedTeacher?.teacherId || selectedTeacher?._id || "",
+                          teacherId: selectedTeacher?.teacherId || (selectedTeacher?._id ? String(selectedTeacher._id) : ""),
+                          teacherEmail: selectedTeacher?.email || "",
                         });
                       }}
                       className={`w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 ${
@@ -2148,18 +2379,32 @@ export default function AdminDashboardPage() {
                           : "border-slate-200 dark:border-slate-700 focus:border-indigo-500 focus:ring-indigo-500"
                       }`}
                     >
-                      <option value="">Select Registered Teacher</option>
+                      <option value="">-- Select Teacher (A, B, or C) --</option>
                       {teachers
-                        .filter((t) => t.status !== "rejected" && !t.name.includes("Faculty Department Instructor") && !t.name.includes("Dept Faculty Member"))
+                        .filter((t) => ["A", "B", "C"].includes(t.name?.trim().toUpperCase()))
+                        .sort((a, b) => a.name.localeCompare(b.name))
                         .map((t) => {
                           const isBusy = busyTeachersAtCurrentSlot.find(b => b.teacherName.trim().toLowerCase() === t.name.trim().toLowerCase());
                           return (
                             <option key={t._id || t.email} value={t.name}>
-                              {t.name} ({t.designation || "Faculty"}) {isBusy ? `⚠️ [Busy: Sem ${isBusy.semester}]` : "✓ [Available]"}
+                              Teacher {t.name} (ID: {t.teacherId || "N/A"}) • {t.designation || "Faculty"} {isBusy ? `⚠️ [Busy: Sem ${isBusy.semester}]` : "✓ [Available]"}
                             </option>
                           );
                       })}
                     </select>
+
+                    {/* Teacher Auto-Fill Helper Notice */}
+                    {routineFormData.courseCode && routineFormData.teacherName && ["A", "B", "C"].includes(routineFormData.teacherName.trim().toUpperCase()) && (
+                      <div className="flex items-start gap-2.5 p-3 rounded-xl bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/60 text-xs text-indigo-700 dark:text-indigo-300 animate-in fade-in">
+                        <Sparkles className="w-4 h-4 text-indigo-500 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold">Routine Auto-Fill Active:</span>
+                          <p className="text-[11px] text-indigo-600/90 dark:text-indigo-300/90 mt-0.5 leading-relaxed">
+                            Assigning <strong>Teacher {routineFormData.teacherName}</strong> will automatically fill all scheduled weekly lecture slots of <strong>{routineFormData.courseCode}</strong> in Semester {editingRoutineCell.semester} with Teacher {routineFormData.teacherName}.
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Room Location */}
@@ -2329,9 +2574,19 @@ export default function AdminDashboardPage() {
               <PlusCircle className="w-4 h-4" />
               <span>{showCourseForm ? "Close Form" : "Add New Course"}</span>
             </button>
+            <SectionCollapseToggle
+              isCollapsed={collapsedSections.courses}
+              onToggle={() => toggleSection("courses")}
+              label="Curriculum Matrix"
+            />
           </div>
         </div>
 
+        <CollapsibleBody
+          isCollapsed={collapsedSections.courses}
+          onExpand={() => toggleSection("courses")}
+          sectionName="Department Curriculum & Course Matrix"
+        >
         {/* Semester Filter Tabs (Semesters 1 to 8) */}
         <div className="space-y-3 pt-2">
           <div className="flex items-center justify-between flex-wrap gap-2">
@@ -2453,12 +2708,21 @@ export default function AdminDashboardPage() {
                   </option>
                 ))}
               </select>
-              <input
-                placeholder="Assigned Faculty"
+              <select
                 value={newCourse.faculty}
                 onChange={(e) => setNewCourse({ ...newCourse, faculty: e.target.value })}
-                className="h-10 px-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-indigo-500"
-              />
+                className="h-10 px-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500"
+              >
+                <option value="">-- Assigned Teacher (A, B, or C) --</option>
+                {teachers
+                  .filter((t) => ["A", "B", "C"].includes(t.name?.trim().toUpperCase()))
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map((t) => (
+                    <option key={t._id || t.email} value={t.name}>
+                      Teacher {t.name} (ID: {t.teacherId || "CSE"})
+                    </option>
+                ))}
+              </select>
             </div>
             <div className="flex justify-end gap-2">
               <button
@@ -2504,7 +2768,11 @@ export default function AdminDashboardPage() {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div
+            data-lenis-prevent
+            className="max-h-[640px] overflow-y-auto overscroll-contain pr-1 scrollbar-thin"
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredCourses.map((course) => (
               <div
                 key={course._id || course.code}
@@ -2531,19 +2799,40 @@ export default function AdminDashboardPage() {
                   </div>
                   <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Faculty: {course.faculty || "Assigned Faculty"}</p>
                 </div>
-                <div className="pt-2 border-t border-slate-200/50 dark:border-slate-700/50 flex justify-end">
-                  <button
-                    onClick={() => handleDeleteCourse(course._id)}
-                    className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300 flex items-center gap-1 cursor-pointer"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Remove</span>
-                  </button>
+                <div className="pt-2 border-t border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-1 min-w-[170px]">
+                      <span className="text-[10px] font-bold text-slate-400 shrink-0">Teacher:</span>
+                      <select
+                        value={["A", "B", "C"].includes(course.faculty?.trim().toUpperCase()) ? course.faculty.trim().toUpperCase() : ""}
+                        onChange={(e) => handleQuickAssignCourseFaculty(course._id, e.target.value)}
+                        className="h-7 px-2 text-[11px] font-bold rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-indigo-600 dark:text-indigo-400 outline-none focus:ring-1 focus:ring-indigo-500 w-full truncate cursor-pointer"
+                        title="Assign Teacher A, B, or C to this course"
+                      >
+                        <option value="">-- Select Teacher --</option>
+                        {teachers
+                          .filter((t) => ["A", "B", "C"].includes(t.name?.trim().toUpperCase()))
+                          .sort((a, b) => a.name.localeCompare(b.name))
+                          .map((t) => (
+                            <option key={t._id || t.email} value={t.name}>
+                              Teacher {t.name} (ID: {t.teacherId || "N/A"})
+                            </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      onClick={() => handleDeleteCourse(course._id)}
+                      className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300 flex items-center gap-1 cursor-pointer shrink-0"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Remove</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
+        </CollapsibleBody>
       </div>
 
       {/* Notice Board Section */}
@@ -2551,6 +2840,8 @@ export default function AdminDashboardPage() {
         isAdmin={true}
         title="Notice Board"
         subtitle="Publish text announcements with files and voice notes, then revise or remove them whenever the department needs an update."
+        isCollapsed={collapsedSections.notices}
+        onToggle={() => toggleSection("notices")}
       />
 
       {/* ── Support & Complaints Management Hub ───────────────── */}
@@ -2585,9 +2876,19 @@ export default function AdminDashboardPage() {
                 <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
                 <span>Refresh Desk</span>
               </button>
+              <SectionCollapseToggle
+                isCollapsed={collapsedSections.support}
+                onToggle={() => toggleSection("support")}
+                label="Support Registry"
+              />
             </div>
           </div>
 
+          <CollapsibleBody
+            isCollapsed={collapsedSections.support}
+            onExpand={() => toggleSection("support")}
+            sectionName="Support & Complaints Registry"
+          >
           {/* Filter Tabs & Search Bar */}
           <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-2">
             <div className="flex items-center gap-1 p-1 bg-slate-100/80 dark:bg-slate-800/80 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 flex-wrap">
@@ -2666,17 +2967,20 @@ export default function AdminDashboardPage() {
           </div>
 
           {/* Records Table */}
-          <div className="overflow-x-auto">
+          <div
+            data-lenis-prevent
+            className="overflow-auto overscroll-contain max-h-[580px] scrollbar-thin rounded-2xl border border-slate-100 dark:border-white/5"
+          >
             {filteredSupportRecords.length === 0 ? (
               <div className="text-center py-16 text-slate-400 dark:text-slate-500 space-y-2">
                 <LifeBuoy className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600" />
                 <p className="font-semibold text-sm">No support tickets or complaints found for this view.</p>
               </div>
             ) : (
-              <table className="w-full text-left text-sm">
-                <thead>
+              <table className="w-full text-left text-sm border-collapse">
+                <thead className="sticky top-0 z-10 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-xs">
                   <tr className="border-b border-slate-100 dark:border-white/10 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                    <th className="pb-3 px-4">Ticket & Origin</th>
+                    <th className="py-3 px-4">Ticket & Origin</th>
                     <th className="pb-3 px-4">Subject & Details</th>
                     <th className="pb-3 px-4">Reporter Information</th>
                     <th className="pb-3 px-4">Status & Priority</th>
@@ -2830,6 +3134,7 @@ export default function AdminDashboardPage() {
               </table>
             )}
           </div>
+          </CollapsibleBody>
         </div>
       </div>
 
@@ -2873,9 +3178,19 @@ export default function AdminDashboardPage() {
                 <Download className="w-3.5 h-3.5" />
                 <span>Export CSV</span>
               </button>
+              <SectionCollapseToggle
+                isCollapsed={collapsedSections.employees}
+                onToggle={() => toggleSection("employees")}
+                label="Staff Verification"
+              />
             </div>
           </div>
 
+          <CollapsibleBody
+            isCollapsed={collapsedSections.employees}
+            onExpand={() => toggleSection("employees")}
+            sectionName="Staff & Employee Verification Hub"
+          >
           {/* Tab & Search Bar */}
           <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-2">
             <div className="flex items-center gap-1.5 p-1 bg-slate-100/80 dark:bg-slate-800/80 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 self-start">
@@ -2924,17 +3239,20 @@ export default function AdminDashboardPage() {
           </div>
 
           {/* Employees Table */}
-          <div className="overflow-x-auto">
+          <div
+            data-lenis-prevent
+            className="overflow-auto overscroll-contain max-h-[580px] scrollbar-thin rounded-2xl border border-slate-100 dark:border-white/5"
+          >
             {filteredEmployees.length === 0 ? (
               <div className="text-center py-16 text-slate-400 dark:text-slate-500 space-y-2">
                 <Briefcase className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600" />
                 <p className="font-semibold text-sm">No department staff records found for this filter.</p>
               </div>
             ) : (
-              <table className="w-full text-left text-sm">
-                <thead>
+              <table className="w-full text-left text-sm border-collapse">
+                <thead className="sticky top-0 z-10 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-xs">
                   <tr className="border-b border-slate-100 dark:border-white/10 text-[11px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider">
-                    <th className="pb-3 px-4">Staff Member</th>
+                    <th className="py-3 px-4">Staff Member</th>
                     <th className="pb-3 px-4">Role & Department</th>
                     <th className="pb-3 px-4">Office & Staff ID</th>
                     <th className="pb-3 px-4">Contact</th>
@@ -3067,6 +3385,7 @@ export default function AdminDashboardPage() {
               </table>
             )}
           </div>
+          </CollapsibleBody>
         </div>
 
         {/* Department Operations & Administrative Desk Summary Bar */}
@@ -3094,8 +3413,13 @@ export default function AdminDashboardPage() {
 
       {/* ── Support & Grievance Review Modal ── */}
       {selectedSupport && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-[2.5rem] border border-white dark:border-white/10 p-6 sm:p-8 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
+        <div
+          data-lenis-prevent
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overscroll-contain"
+        >
+          <div className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-[2.5rem] border border-white dark:border-white/10 p-6 sm:p-8 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto overscroll-contain scrollbar-thin">
             {/* Modal Header */}
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-white/10">
               <div className="flex items-center gap-3">

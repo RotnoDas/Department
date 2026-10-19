@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { ThemeToggle } from "@/components/common/ThemeToggle";
 import { 
@@ -29,14 +29,26 @@ import {
   BarChart3,
   User,
   X,
-  LifeBuoy
+  LifeBuoy,
+  BookMarked,
+  ChevronRight,
+  ExternalLink,
+  ChevronDown
 } from "lucide-react";
 
 export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [currentHash, setCurrentHash] = useState("");
+  const [activeScrollSection, setActiveScrollSection] = useState("");
 
+  // Dynamic state for teacher assigned courses & schedule count
+  const [assignedCourses, setAssignedCourses] = useState([]);
+  const [routineSlotCount, setRoutineSlotCount] = useState(0);
+  const [isLoadingCourses, setIsLoadingCourses] = useState(false);
+
+  // Monitor URL hash changes
   useEffect(() => {
     if (typeof window !== "undefined") {
       setCurrentHash(window.location.hash);
@@ -47,10 +59,7 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
   }, []);
 
   // Resilient role determination:
-  // 1. Current route pathname (if on /dashboard/admin, ALWAYS render admin navigation)
-  // 2. User session role
-  // 3. User email patterns
-  const resolveRole = () => {
+  const resolveRole = useCallback(() => {
     if (pathname?.startsWith("/dashboard/admin")) return "admin";
     if (pathname?.startsWith("/dashboard/teacher")) return "teacher";
     if (pathname?.startsWith("/dashboard/employee")) return "employee";
@@ -65,17 +74,169 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
     if (email.endsWith("@student.cse.edu")) return "student";
 
     return "student";
-  };
+  }, [pathname, user]);
 
   const role = resolveRole();
+
+  // Contextual teacher route detection
+  const isTeacherRoute = pathname?.startsWith("/dashboard/teacher");
+  const isCourseWorkspace = isTeacherRoute && pathname.includes("/courses/");
+  const activeCourseCode = useMemo(() => {
+    if (!isCourseWorkspace) return null;
+    try {
+      const parts = pathname.split("/courses/")[1];
+      const raw = parts ? parts.split("/")[0]?.split("?")[0] : "";
+      return decodeURIComponent(raw).trim().toUpperCase();
+    } catch {
+      return null;
+    }
+  }, [isCourseWorkspace, pathname]);
+
+  // Current active tab when on a course workspace
+  const currentTab = searchParams?.get("tab") || "attendance";
+
+  // Fetch teacher's assigned courses for quick-launcher and navigation badge
+  useEffect(() => {
+    if (role !== "teacher") return;
+
+    const targetEmail = user?.email || profile?.email;
+    if (!targetEmail) return;
+
+    // Load from sessionStorage if available for instantaneous UI hydration
+    try {
+      const cached = sessionStorage.getItem(`dept_teacher_courses_${targetEmail}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setAssignedCourses(parsed);
+        }
+      }
+    } catch (_) {}
+
+    let isMounted = true;
+    const fetchCourses = async () => {
+      setIsLoadingCourses(true);
+      try {
+        const params = new URLSearchParams();
+        params.set("email", targetEmail);
+        if (user?.teacherId || profile?.teacherId) params.set("teacherId", user?.teacherId || profile?.teacherId);
+        if (user?.name || profile?.name) params.set("teacherName", user?.name || profile?.name);
+
+        const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
+        const res = await fetch(`${serverUrl}/api/teacher/routine?${params.toString()}`);
+        if (res.ok && isMounted) {
+          const slots = await res.json();
+          if (Array.isArray(slots)) {
+            setRoutineSlotCount(slots.length);
+            const map = new Map();
+            slots.forEach((s) => {
+              if (s.courseCode) {
+                const code = s.courseCode.trim().toUpperCase();
+                if (!map.has(code)) {
+                  map.set(code, {
+                    code,
+                    title: s.courseTitle || `${code} Course Module`,
+                    semester: s.semester ? `Semester ${s.semester}` : "Semester 7",
+                    semesterNum: s.semester || 7,
+                    count: 1,
+                  });
+                } else {
+                  map.get(code).count++;
+                }
+              }
+            });
+            const list = Array.from(map.values());
+            setAssignedCourses(list);
+            try {
+              sessionStorage.setItem(`dept_teacher_courses_${targetEmail}`, JSON.stringify(list));
+            } catch (_) {}
+          }
+        }
+      } catch (err) {
+        console.warn("Could not fetch sidebar courses:", err);
+      } finally {
+        if (isMounted) setIsLoadingCourses(false);
+      }
+    };
+
+    fetchCourses();
+    return () => { isMounted = false; };
+  }, [role, user?.email, user?.teacherId, user?.name, profile?.email, profile?.teacherId, profile?.name]);
+
+  // Scroll spy on the root teacher dashboard (/dashboard/teacher)
+  useEffect(() => {
+    if (pathname !== "/dashboard/teacher") {
+      setActiveScrollSection("");
+      return;
+    }
+
+    const handleScroll = () => {
+      const scrollPos = window.scrollY + 220;
+      let matched = "";
+
+      // Check if at the bottom of the page
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 60) {
+        matched = "notices";
+      } else {
+        const sections = [
+          { id: "notices", threshold: 0 },
+          { id: "analytics", threshold: 0 },
+          { id: "routine", threshold: 0 },
+          { id: "assigned-courses", threshold: 0 },
+          { id: "profile-settings", threshold: 0 },
+          { id: "profile", threshold: 0 }
+        ];
+
+        for (const sec of sections) {
+          const el = document.getElementById(sec.id);
+          if (el && scrollPos >= el.offsetTop) {
+            matched = sec.id;
+            break;
+          }
+        }
+      }
+
+      if (matched) {
+        setActiveScrollSection(matched);
+      }
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [pathname]);
 
   const handleLogout = async () => {
     await authClient.signOut();
     router.push("/login");
   };
 
-  // Define tailored navigation items strictly scoped to the active role
-  const getNavItems = () => {
+  // Smooth scroll and uncollapse handler
+  const handleNavClick = (e, item) => {
+    setIsOpen(false);
+    if (item.href.includes("#")) {
+      const [itemPath, hash] = item.href.split("#");
+      if (pathname === itemPath) {
+        e.preventDefault();
+        
+        // Dispatch expansion event for collapsible sections
+        window.dispatchEvent(new CustomEvent("dashboard-expand-section", { detail: { id: hash } }));
+        window.history.pushState(null, "", item.href);
+        setCurrentHash(`#${hash}`);
+        window.dispatchEvent(new HashChangeEvent("hashchange"));
+
+        setTimeout(() => {
+          const targetEl = document.getElementById(hash);
+          if (targetEl) {
+            targetEl.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        }, 60);
+      }
+    }
+  };
+
+  // Standard non-teacher navigation items
+  const getStandardNavItems = () => {
     switch (role) {
       case "admin":
         return [
@@ -88,17 +249,6 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
           { name: "Curriculum Matrix (1-8)", href: "/dashboard/admin#courses", icon: BookOpen },
           { name: "Notice Dispatcher", href: "/dashboard/admin#notices", icon: Bell },
           { name: "Department Staff", href: "/dashboard/admin#directory", icon: Users },
-        ];
-      case "teacher":
-        return [
-          { name: "Faculty Hub", href: "/dashboard/teacher", icon: LayoutDashboard },
-          { name: "Notice Board", href: "/dashboard/teacher#notices", icon: Bell },
-          { name: "Teaching Analytics", href: "/dashboard/teacher#analytics", icon: BarChart3 },
-          { name: "Today's Routine", href: "/dashboard/teacher#routine", icon: Clock },
-          { name: "Assignments", href: "/dashboard/teacher#assignments", icon: FileText },
-          { name: "Course Materials", href: "/dashboard/teacher#materials", icon: BookOpen },
-          { name: "Attendance Sessions", href: "/dashboard/teacher#attendance", icon: UserCheck },
-          { name: "Faculty Profile", href: "/dashboard/teacher#profile-settings", icon: User },
         ];
       case "employee":
         return [
@@ -126,24 +276,6 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
     }
   };
 
-  const navItems = getNavItems();
-
-  const handleNavClick = (e, item) => {
-    setIsOpen(false);
-    if (item.href.includes("#")) {
-      const [itemPath, hash] = item.href.split("#");
-      if (pathname === itemPath) {
-        e.preventDefault();
-        const targetEl = document.getElementById(hash);
-        if (targetEl) {
-          targetEl.scrollIntoView({ behavior: "smooth", block: "start" });
-          window.history.pushState(null, "", item.href);
-          setCurrentHash(`#${hash}`);
-        }
-      }
-    }
-  };
-
   const getRoleBadge = () => {
     switch (role) {
       case "admin":
@@ -160,19 +292,31 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
 
   const badge = getRoleBadge();
 
-  const displayName = user?.name || (
+  const displayName = profile?.name || user?.name || (
     role === "admin" ? "System Administrator" :
     role === "teacher" ? "Faculty Member" :
     role === "employee" ? "Staff Officer" :
     "Student"
   );
 
-  const displayEmail = user?.email || (
+  const displayEmail = profile?.email || user?.email || (
     role === "admin" ? "admin@cse.edu" :
     role === "teacher" ? "faculty@cse.edu" :
     role === "employee" ? "staff@cse.edu" :
     "student@student.cse.edu"
   );
+
+  // Course workspace module tabs definition for active course navigation
+  const courseWorkspaceModules = useMemo(() => {
+    if (!activeCourseCode) return [];
+    return [
+      { id: "attendance", name: "Attendance Hub", icon: UserCheck },
+      { id: "materials", name: "Study Materials", icon: BookOpen },
+      { id: "assignments", name: "Continuous Tasks", icon: FileText },
+      { id: "syllabus", name: "Syllabus & Policy", icon: BookMarked },
+      { id: "schedule", name: "Routine Schedule", icon: Calendar },
+    ];
+  }, [activeCourseCode]);
 
   return (
     <>
@@ -185,21 +329,23 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
       )}
 
       {/* Sidebar Container */}
-      <aside className={`
-        fixed top-0 bottom-0 left-0 z-50 w-72 bg-white/85 dark:bg-slate-900/95 backdrop-blur-2xl border-r border-slate-200/80 dark:border-white/10
-        flex flex-col justify-between transition-transform duration-300 ease-in-out
+      <aside 
+        data-lenis-prevent
+        className={`
+        fixed top-0 bottom-0 left-0 z-50 w-72 bg-white/90 dark:bg-slate-900/95 backdrop-blur-2xl border-r border-slate-200/80 dark:border-white/10
+        flex flex-col justify-between transition-transform duration-300 ease-in-out shadow-xl lg:shadow-none overscroll-contain
         ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
       `}>
         {/* Top Header */}
-        <div className="flex flex-col p-6 border-b border-slate-100 dark:border-white/10">
+        <div className="flex flex-col p-5 border-b border-slate-100 dark:border-white/10">
           <div className="flex items-center justify-between">
             <Link href="/" className="flex items-center gap-3 group">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-200 dark:shadow-indigo-950/40">
-                <GraduationCap className="h-6 w-6 transition-transform group-hover:scale-110" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-200 dark:shadow-indigo-950/40">
+                <GraduationCap className="h-5 w-5 transition-transform group-hover:scale-110" />
               </div>
               <div className="flex flex-col">
                 <div className="flex items-center gap-1">
-                  <span className="font-extrabold text-xl text-slate-900 dark:text-white">CSE Portal</span>
+                  <span className="font-extrabold text-lg text-slate-900 dark:text-white tracking-tight">CSE Portal</span>
                   <Sparkles className="w-3.5 h-3.5 text-yellow-500" />
                 </div>
                 <span className="text-[10px] font-bold text-slate-400 dark:text-slate-400 tracking-wider uppercase">
@@ -216,25 +362,25 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
           </div>
 
           {/* User Card */}
-          <div className="mt-6 p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/80 border border-slate-100/80 dark:border-slate-700/80 shadow-xs">
+          <div className="mt-4 p-3.5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/80 border border-slate-100/80 dark:border-slate-700/80 shadow-xs">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 text-white font-bold text-sm shadow-sm">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 text-white font-bold text-xs shadow-sm">
                 {displayName.charAt(0).toUpperCase()}
               </div>
               <div className="flex flex-col overflow-hidden">
-                <span className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
                   {displayName}
                 </span>
-                <span className="text-[11px] font-medium text-slate-400 dark:text-slate-400 truncate">
+                <span className="text-[10px] font-medium text-slate-400 dark:text-slate-400 truncate">
                   {displayEmail}
                 </span>
               </div>
             </div>
-            <div className="mt-3 flex items-center justify-between pt-2.5 border-t border-slate-200/50 dark:border-slate-700/50">
-              <span className={`text-[10px] font-bold tracking-wider uppercase px-2.5 py-1 rounded-md ring-1 ${badge.bg}`}>
+            <div className="mt-2.5 flex items-center justify-between pt-2 border-t border-slate-200/50 dark:border-slate-700/50">
+              <span className={`text-[9px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-md ring-1 ${badge.bg}`}>
                 {badge.label}
               </span>
-              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+              <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full ${
                 role === "admin" || role === "teacher" || role === "employee" || user?.status === "approved"
                   ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400" 
                   : "bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400"
@@ -245,43 +391,318 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
           </div>
         </div>
 
-        {/* Navigation Items */}
-        <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
-          <div>
-            <div className="px-3 pb-2 text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase">
-              {role.toUpperCase()} NAVIGATION
-            </div>
-            <div className="space-y-1">
-              {navItems.map((item) => {
-                const Icon = item.icon;
-                const hasHash = item.href.includes("#");
-                const itemPath = hasHash ? item.href.split("#")[0] : item.href;
-                const itemHash = hasHash ? `#${item.href.split("#")[1]}` : "";
-                
-                const isActive = hasHash 
-                  ? pathname === itemPath && currentHash === itemHash
-                  : pathname === item.href && (!currentHash || currentHash === "#");
+        {/* ── TEACHER NAVIGATION VIEW ───────────────────────────────── */}
+        {role === "teacher" ? (
+          <div 
+            data-lenis-prevent
+            className="flex-1 overflow-y-auto overscroll-contain px-4 py-5 space-y-5 scrollbar-thin"
+          >
+            {/* SUB-VIEW A: INSIDE A SPECIFIC COURSE WORKSPACE */}
+            {isCourseWorkspace && activeCourseCode ? (
+              <div className="space-y-4">
+                {/* Back to Faculty Hub Card */}
+                <Link
+                  href="/dashboard/teacher"
+                  onClick={() => setIsOpen(false)}
+                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-slate-100/90 hover:bg-slate-200/80 dark:bg-slate-800/80 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold transition group border border-slate-200/60 dark:border-white/5 cursor-pointer shadow-xs"
+                >
+                  <ArrowLeft className="w-4 h-4 text-slate-500 group-hover:-translate-x-1 transition-transform" />
+                  <div className="flex flex-col min-w-0">
+                    <span className="truncate">Return to Faculty Hub</span>
+                    <span className="text-[10px] font-normal text-slate-400 dark:text-slate-500">All courses & schedule</span>
+                  </div>
+                </Link>
 
-                return (
-                  <Link
-                    key={item.name}
-                    href={item.href}
-                    onClick={(e) => handleNavClick(e, item)}
-                    className={`
-                      flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer
-                      ${isActive 
-                        ? "bg-indigo-600 text-white shadow-md shadow-indigo-200/60 dark:shadow-indigo-900/40" 
-                        : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"}
-                    `}
-                  >
-                    <Icon className={`w-4 h-4 ${isActive ? "text-white" : "text-slate-400 dark:text-slate-400"}`} />
-                    <span>{item.name}</span>
-                  </Link>
-                );
-              })}
+                {/* Active Workspace Module Navigation */}
+                <div>
+                  <div className="px-2 pb-2 flex items-center justify-between">
+                    <span className="text-[10px] font-extrabold tracking-widest text-indigo-600 dark:text-indigo-400 uppercase">
+                      ACTIVE WORKSPACE
+                    </span>
+                    <span className="text-[10px] font-mono font-extrabold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-200 dark:ring-indigo-800">
+                      {activeCourseCode}
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    {courseWorkspaceModules.map((module) => {
+                      const Icon = module.icon;
+                      const isActive = currentTab === module.id;
+                      const moduleHref = `/dashboard/teacher/courses/${encodeURIComponent(activeCourseCode)}?tab=${module.id}`;
+
+                      return (
+                        <Link
+                          key={module.id}
+                          href={moduleHref}
+                          onClick={() => setIsOpen(false)}
+                          className={`
+                            flex items-center justify-between px-3 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer
+                            ${isActive 
+                              ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30 font-bold" 
+                              : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"}
+                          `}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-white" : "text-slate-400 dark:text-slate-400"}`} />
+                            <span className="truncate">{module.name}</span>
+                          </div>
+                          {isActive && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0 animate-pulse" />
+                          )}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Other Courses Switcher (if teacher has >1 course) */}
+                {assignedCourses.filter((c) => c.code !== activeCourseCode).length > 0 && (
+                  <div>
+                    <div className="px-2 pt-2 pb-1.5 text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase">
+                      OTHER ASSIGNED COURSES
+                    </div>
+                    <div className="space-y-1">
+                      {assignedCourses
+                        .filter((c) => c.code !== activeCourseCode)
+                        .map((c) => (
+                          <Link
+                            key={c.code}
+                            href={`/dashboard/teacher/courses/${encodeURIComponent(c.code)}`}
+                            onClick={() => setIsOpen(false)}
+                            className="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-300 transition group border border-transparent hover:border-indigo-100 dark:hover:border-indigo-900/40"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-700 shrink-0">
+                                {c.code}
+                              </span>
+                              <span className="truncate text-[11px]">{c.title}</span>
+                            </div>
+                            <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                          </Link>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Shortcuts Back to Main Hub Sections */}
+                <div>
+                  <div className="px-2 pt-2 pb-1.5 text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase">
+                    FACULTY HUB JUMPS
+                  </div>
+                  <div className="space-y-1">
+                    {[
+                      { name: "All Assigned Courses", href: "/dashboard/teacher#assigned-courses", icon: BookOpen },
+                      { name: "My Routine Schedule", href: "/dashboard/teacher#routine", icon: Clock },
+                      { name: "Workload Analytics", href: "/dashboard/teacher#analytics", icon: BarChart3 },
+                      { name: "Notice Board", href: "/dashboard/teacher#notices", icon: Bell },
+                      { name: "Faculty Profile", href: "/dashboard/teacher#profile-settings", icon: User },
+                    ].map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <Link
+                          key={item.name}
+                          href={item.href}
+                          onClick={() => setIsOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition"
+                        >
+                          <Icon className="w-3.5 h-3.5 text-slate-400" />
+                          <span>{item.name}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* SUB-VIEW B: ROOT TEACHER DASHBOARD (/dashboard/teacher) */
+              <div className="space-y-5">
+                {/* Faculty Main Sections */}
+                <div>
+                  <div className="px-2 pb-2 flex items-center justify-between">
+                    <span className="text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase">
+                      FACULTY WORKSPACE
+                    </span>
+                    {routineSlotCount > 0 && (
+                      <span className="text-[10px] font-semibold text-slate-400">
+                        {routineSlotCount} Total Classes
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    {[
+                      { 
+                        name: "Faculty Hub Overview", 
+                        href: "/dashboard/teacher", 
+                        hash: "", 
+                        scrollTarget: "profile",
+                        icon: LayoutDashboard 
+                      },
+                      { 
+                        name: "My Assigned Courses", 
+                        href: "/dashboard/teacher#assigned-courses", 
+                        hash: "#assigned-courses", 
+                        scrollTarget: "assigned-courses",
+                        badge: assignedCourses.length > 0 ? `${assignedCourses.length}` : null,
+                        icon: BookOpen 
+                      },
+                      { 
+                        name: "Academic Routine & Schedule", 
+                        href: "/dashboard/teacher#routine", 
+                        hash: "#routine", 
+                        scrollTarget: "routine",
+                        badge: routineSlotCount > 0 ? `${routineSlotCount} slots` : null,
+                        icon: Clock 
+                      },
+                      { 
+                        name: "Workload Analytics", 
+                        href: "/dashboard/teacher#analytics", 
+                        hash: "#analytics", 
+                        scrollTarget: "analytics",
+                        icon: BarChart3 
+                      },
+                      { 
+                        name: "Department Notice Board", 
+                        href: "/dashboard/teacher#notices", 
+                        hash: "#notices", 
+                        scrollTarget: "notices",
+                        icon: Bell 
+                      },
+                      { 
+                        name: "Faculty Profile & Settings", 
+                        href: "/dashboard/teacher#profile-settings", 
+                        hash: "#profile-settings", 
+                        scrollTarget: "profile-settings",
+                        icon: User 
+                      },
+                    ].map((item) => {
+                      const Icon = item.icon;
+                      const hasHash = Boolean(item.hash);
+                      
+                      // Match either current URL hash or scroll spy position
+                      const isHashActive = hasHash ? currentHash === item.hash : (!currentHash || currentHash === "#");
+                      const isScrollActive = activeScrollSection === item.scrollTarget;
+                      const isActive = isHashActive || isScrollActive;
+
+                      return (
+                        <Link
+                          key={item.name}
+                          href={item.href}
+                          onClick={(e) => handleNavClick(e, item)}
+                          className={`
+                            flex items-center justify-between px-3 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer
+                            ${isActive 
+                              ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30" 
+                              : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"}
+                          `}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-white" : "text-slate-400 dark:text-slate-400"}`} />
+                            <span className="truncate">{item.name}</span>
+                          </div>
+                          {item.badge && (
+                            <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full shrink-0 ${
+                              isActive 
+                                ? "bg-white/20 text-white" 
+                                : "bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 ring-1 ring-sky-200 dark:ring-sky-800"
+                            }`}>
+                              {item.badge}
+                            </span>
+                          )}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Course Workspaces Direct Jump Section */}
+                <div>
+                  <div className="px-2 pb-2 flex items-center justify-between">
+                    <span className="text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase">
+                      COURSE WORKSPACES
+                    </span>
+                    <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/60 px-2 py-0.5 rounded-full">
+                      {assignedCourses.length} Active
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {assignedCourses.length > 0 ? (
+                      assignedCourses.map((c) => (
+                        <Link
+                          key={c.code}
+                          href={`/dashboard/teacher/courses/${encodeURIComponent(c.code)}`}
+                          onClick={() => setIsOpen(false)}
+                          className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50/70 hover:bg-indigo-50/80 dark:bg-slate-800/50 dark:hover:bg-indigo-950/50 border border-slate-100 dark:border-white/5 hover:border-indigo-200 dark:hover:border-indigo-800/80 transition group cursor-pointer shadow-xs"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-mono font-black text-[10px] shadow-xs">
+                              {c.code.split(" ")[1] || c.code.slice(0, 4)}
+                            </div>
+                            <div className="flex flex-col min-w-0">
+                              <span className="font-bold text-xs truncate text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-300">
+                                {c.code}
+                              </span>
+                              <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate font-medium">
+                                {c.title}
+                              </span>
+                            </div>
+                          </div>
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:translate-x-0.5 transition shrink-0" />
+                        </Link>
+                      ))
+                    ) : (
+                      <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-dashed border-slate-200 dark:border-slate-700 text-center">
+                        <span className="text-[11px] text-slate-400 font-medium">
+                          {isLoadingCourses ? "Syncing assigned courses..." : "No courses assigned yet"}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          /* ── NON-TEACHER NAVIGATION ITEMS ──────────────────────────── */
+          <div 
+            data-lenis-prevent
+            className="flex-1 overflow-y-auto overscroll-contain px-4 py-6 space-y-4"
+          >
+            <div>
+              <div className="px-3 pb-2 text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase">
+                {role.toUpperCase()} NAVIGATION
+              </div>
+              <div className="space-y-1">
+                {getStandardNavItems().map((item) => {
+                  const Icon = item.icon;
+                  const hasHash = item.href.includes("#");
+                  const itemPath = hasHash ? item.href.split("#")[0] : item.href;
+                  const itemHash = hasHash ? `#${item.href.split("#")[1]}` : "";
+                  
+                  const isActive = hasHash 
+                    ? pathname === itemPath && currentHash === itemHash
+                    : pathname === item.href && (!currentHash || currentHash === "#");
+
+                  return (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      onClick={(e) => handleNavClick(e, item)}
+                      className={`
+                        flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer
+                        ${isActive 
+                          ? "bg-indigo-600 text-white shadow-md shadow-indigo-200/60 dark:shadow-indigo-900/40" 
+                          : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"}
+                      `}
+                    >
+                      <Icon className={`w-4 h-4 ${isActive ? "text-white" : "text-slate-400 dark:text-slate-400"}`} />
+                      <span>{item.name}</span>
+                    </Link>
+                  );
+                })}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Bottom Actions */}
         <div className="p-4 border-t border-slate-100 dark:border-white/10 space-y-2">

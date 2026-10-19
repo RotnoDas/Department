@@ -49,7 +49,8 @@ router.get('/', async (req, res) => {
       ];
     }
     if (course && course !== 'all') {
-      query.course = { $regex: course, $options: 'i' };
+      const clean = String(course).replace(/[\s-]/g, '');
+      query.course = { $regex: clean.split('').join('\\s*[-]?\\s*'), $options: 'i' };
     }
     if (search) {
       query.$or = [

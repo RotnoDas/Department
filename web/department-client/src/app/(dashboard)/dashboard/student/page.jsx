@@ -58,9 +58,13 @@ import Loading from "@/components/common/Loading";
 import { StudentAnalyticsCharts } from "@/components/dashboard/DashboardCharts";
 import { apiFetch } from "@/lib/api";
 import FaceVerificationModal from "@/components/dashboard/FaceVerificationModal";
-import NoticeBoardSection from "@/components/notice/NoticeBoardSection";
 import StudentAssignmentsSection from "@/components/assignment/StudentAssignmentsSection";
 import StudentMaterialsSection from "@/components/materials/StudentMaterialsSection";
+import { 
+  SectionCollapseToggle, 
+  CollapsibleBody, 
+  DashboardCollapseControls 
+} from "@/components/dashboard/CollapsibleSection";
 
 const ROUTINE_DAYS = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday"];
 const ROUTINE_TIME_SLOTS = [
@@ -132,6 +136,40 @@ export default function StudentDashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isMarking, setIsMarking] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Collapsible sections state
+  const [collapsedSections, setCollapsedSections] = useState({
+    profile: false,
+    analytics: false,
+    attendance: false,
+    routine: false,
+    materials: false,
+    assignments: false,
+    notices: false,
+    credentials: false,
+  });
+
+  const toggleSection = (key) => setCollapsedSections((p) => ({ ...p, [key]: !p[key] }));
+  const collapseAllSections = () => setCollapsedSections({ profile: true, analytics: true, attendance: true, routine: true, materials: true, assignments: true, notices: true, credentials: true });
+  const expandAllSections = () => setCollapsedSections({ profile: false, analytics: false, attendance: false, routine: false, materials: false, assignments: false, notices: false, credentials: false });
+  const allCollapsed = Object.values(collapsedSections).every(Boolean);
+
+  useEffect(() => {
+    const handleHash = () => {
+      const hash = window.location.hash.replace("#", "");
+      if (!hash) return;
+      if (hash === "profile-settings" || hash === "profile") setCollapsedSections((p) => ({ ...p, profile: false, credentials: false }));
+      if (hash === "analytics") setCollapsedSections((p) => ({ ...p, analytics: false }));
+      if (hash === "attendance") setCollapsedSections((p) => ({ ...p, attendance: false }));
+      if (hash === "routine" || hash === "courses") setCollapsedSections((p) => ({ ...p, routine: false }));
+      if (hash === "materials") setCollapsedSections((p) => ({ ...p, materials: false }));
+      if (hash === "assignments") setCollapsedSections((p) => ({ ...p, assignments: false }));
+      if (hash === "notices") setCollapsedSections((p) => ({ ...p, notices: false }));
+    };
+    handleHash();
+    window.addEventListener("hashchange", handleHash);
+    return () => window.removeEventListener("hashchange", handleHash);
+  }, []);
 
   // Profile Edit State
   const [isEditing, setIsEditing] = useState(false);
@@ -730,17 +768,24 @@ export default function StudentDashboardPage() {
               </span>
             </div>
 
-            <button
-              onClick={() => {
-                setIsEditing(!isEditing);
-                const el = document.getElementById("profile-settings");
-                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-              }}
-              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/20 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-sm"
-            >
-              <Edit3 className="w-4 h-4 text-indigo-300" />
-              <span>{isEditing ? "Close Profile Editor" : "Edit Profile Data"}</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <DashboardCollapseControls
+                onCollapseAll={collapseAllSections}
+                onExpandAll={expandAllSections}
+                allCollapsed={allCollapsed}
+              />
+              <button
+                onClick={() => {
+                  setIsEditing(!isEditing);
+                  const el = document.getElementById("profile-settings");
+                  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/20 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-sm"
+              >
+                <Edit3 className="w-4 h-4 text-indigo-300" />
+                <span>{isEditing ? "Close Profile Editor" : "Edit Profile Data"}</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -830,9 +875,19 @@ export default function StudentDashboardPage() {
                 <span>Cancel</span>
               </button>
             )}
+            <SectionCollapseToggle
+              isCollapsed={collapsedSections.profile}
+              onToggle={() => toggleSection("profile")}
+              label="Student Profile"
+            />
           </div>
         </div>
 
+        <CollapsibleBody
+          isCollapsed={collapsedSections.profile}
+          onExpand={() => toggleSection("profile")}
+          sectionName="Student Profile & Information Center"
+        >
         {isEditing ? (
           /* Profile Edit Form */
           <form onSubmit={handleUpdateProfile} className="space-y-6">
@@ -1349,8 +1404,8 @@ export default function StudentDashboardPage() {
             )}
           </div>
         )}
+        </CollapsibleBody>
       </div>
-
 
       {/* Academic Performance & Routine Workload Visualizations */}
       <div id="analytics" className="scroll-mt-6">
@@ -1360,6 +1415,8 @@ export default function StudentDashboardPage() {
           semesterCredits={semesterCredits} 
           attendanceStats={attendanceStats}
           attendanceSummary={attendanceSummary}
+          isCollapsed={collapsedSections.analytics}
+          onToggle={() => toggleSection("analytics")}
         />
       </div>
 
@@ -1399,9 +1456,19 @@ export default function StudentDashboardPage() {
               <RefreshCw className={`w-3.5 h-3.5 ${isAttendanceLoading ? "animate-spin text-indigo-500" : ""}`} />
               <span>Sync Records</span>
             </button>
+            <SectionCollapseToggle
+              isCollapsed={collapsedSections.attendance}
+              onToggle={() => toggleSection("attendance")}
+              label="Class Attendance"
+            />
           </div>
         </div>
 
+        <CollapsibleBody
+          isCollapsed={collapsedSections.attendance}
+          onExpand={() => toggleSection("attendance")}
+          sectionName="Class Attendance & Presence Tracking"
+        >
         {/* Live Geolocation Status Card */}
         <div className="relative overflow-hidden rounded-2xl border transition-all">
           {geoStatus === "unsupported" ? (
@@ -1866,6 +1933,7 @@ export default function StudentDashboardPage() {
             </div>
           </div>
         </div>
+        </CollapsibleBody>
       </div>
 
       {/* Routine & Semester Courses (Enrolled Registered Semester) */}
@@ -1905,9 +1973,19 @@ export default function StudentDashboardPage() {
               <RefreshCw className={`w-3.5 h-3.5 ${isRoutineLoading ? "animate-spin text-indigo-500" : ""}`} />
               <span>Sync Routine</span>
             </button>
+            <SectionCollapseToggle
+              isCollapsed={collapsedSections.routine}
+              onToggle={() => toggleSection("routine")}
+              label="Routine & Courses"
+            />
           </div>
         </div>
 
+        <CollapsibleBody
+          isCollapsed={collapsedSections.routine}
+          onExpand={() => toggleSection("routine")}
+          sectionName="Curriculum Courses & Weekly Routine"
+        >
         {/* View Mode Tabs: Weekly Routine Grid vs Curriculum Courses */}
         <div className="flex items-center justify-between flex-wrap gap-3 pt-1">
           <div className="inline-flex items-center p-1 rounded-2xl bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/50 dark:border-slate-700/50 text-xs font-bold">
@@ -2008,11 +2086,15 @@ export default function StudentDashboardPage() {
         {routineTab === "grid" && (
           <div className="space-y-4">
             <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 shadow-xs">
-              <div className="overflow-x-auto scrollbar-thin">
+              <div
+                data-lenis-prevent
+                data-smart-scroll="horizontal"
+                className="overflow-auto overscroll-contain max-h-[640px] scrollbar-thin"
+              >
                 <table className="w-full border-collapse text-left">
-                  <thead>
-                    <tr className="border-b border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-slate-800/50 backdrop-blur-md">
-                      <th className="w-24 border-r border-slate-200 dark:border-white/10 py-4 px-3 text-center text-[10px] font-black tracking-widest text-slate-400 uppercase">
+                  <thead className="sticky top-0 z-20 shadow-xs">
+                    <tr className="border-b border-slate-200 dark:border-white/10 bg-slate-100/95 dark:bg-slate-800/95 backdrop-blur-md">
+                      <th className="sticky left-0 top-0 z-30 w-24 border-r border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-slate-800 py-4 px-3 text-center text-[10px] font-black tracking-widest text-slate-400 uppercase">
                         Day
                       </th>
                       {ROUTINE_TIME_SLOTS.map((slot) => {
@@ -2039,7 +2121,7 @@ export default function StudentDashboardPage() {
                         key={day}
                         className="group transition-colors hover:bg-indigo-50/20 dark:hover:bg-indigo-950/20"
                       >
-                        <td className="w-24 border-r border-slate-200 dark:border-white/10 bg-slate-50/60 dark:bg-slate-800/40 p-4 text-center align-middle font-bold text-slate-800 dark:text-slate-200 text-xs uppercase tracking-wider">
+                        <td className="sticky left-0 z-10 w-24 border-r border-slate-200 dark:border-white/10 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-sm p-4 text-center align-middle font-bold text-slate-800 dark:text-slate-200 text-xs uppercase tracking-wider">
                           {day}
                         </td>
 
@@ -2240,25 +2322,66 @@ export default function StudentDashboardPage() {
             )}
           </div>
         )}
+        </CollapsibleBody>
       </div>
 
       {/* Official Notice Board */}
       <NoticeBoardSection
         title="Notice Board"
         subtitle="Department broadcast & official academic circulars."
+        isCollapsed={collapsedSections.notices}
+        onToggle={() => toggleSection("notices")}
       />
 
       {/* ── Learning Resources & Course Materials ───────────────── */}
-      <StudentMaterialsSection
-        student={profile || user}
-        semester={enrolledSemester}
-      />
+      <div id="materials" className="space-y-3 scroll-mt-6">
+        <div className="flex items-center justify-between px-1">
+          <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Course Notes & Slide Repositories
+          </span>
+          <SectionCollapseToggle
+            isCollapsed={collapsedSections.materials}
+            onToggle={() => toggleSection("materials")}
+            label="Learning Resources"
+            size="sm"
+          />
+        </div>
+        <CollapsibleBody
+          isCollapsed={collapsedSections.materials}
+          onExpand={() => toggleSection("materials")}
+          sectionName="Course Materials & Slide Repositories"
+        >
+          <StudentMaterialsSection
+            student={profile || user}
+            semester={enrolledSemester}
+          />
+        </CollapsibleBody>
+      </div>
 
       {/* ── Coursework & Assignments Hub ────────────────────────── */}
-      <StudentAssignmentsSection
-        student={profile || user}
-        semester={enrolledSemester}
-      />
+      <div id="assignments" className="space-y-3 scroll-mt-6">
+        <div className="flex items-center justify-between px-1">
+          <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Continuous Assessments & Homework Tasks
+          </span>
+          <SectionCollapseToggle
+            isCollapsed={collapsedSections.assignments}
+            onToggle={() => toggleSection("assignments")}
+            label="Coursework & Assignments"
+            size="sm"
+          />
+        </div>
+        <CollapsibleBody
+          isCollapsed={collapsedSections.assignments}
+          onExpand={() => toggleSection("assignments")}
+          sectionName="Coursework & Assignments Hub"
+        >
+          <StudentAssignmentsSection
+            student={profile || user}
+            semester={enrolledSemester}
+          />
+        </CollapsibleBody>
+      </div>
 
       {/* ── Student Profile & Academic Information Hub ────────────── */}
       <div id="profile-settings" className="p-7 sm:p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
@@ -2278,10 +2401,20 @@ export default function StudentDashboardPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <SectionCollapseToggle
+              isCollapsed={collapsedSections.credentials}
+              onToggle={() => toggleSection("credentials")}
+              label="Contact Info"
+            />
             {!isEditing ? (
               <button
                 type="button"
-                onClick={() => setIsEditing(true)}
+                onClick={() => {
+                  if (collapsedSections.credentials) {
+                    setCollapsedSections((p) => ({ ...p, credentials: false }));
+                  }
+                  setIsEditing(true);
+                }}
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-200 dark:shadow-none transition-all cursor-pointer"
               >
                 <Edit3 className="w-4 h-4" />
@@ -2300,6 +2433,11 @@ export default function StudentDashboardPage() {
           </div>
         </div>
 
+        <CollapsibleBody
+          isCollapsed={collapsedSections.credentials}
+          onExpand={() => toggleSection("credentials")}
+          sectionName="Personal & Contact Credentials"
+        >
         {isEditing ? (
           <form onSubmit={handleUpdateProfile} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -2401,6 +2539,7 @@ export default function StudentDashboardPage() {
             </div>
           </div>
         )}
+        </CollapsibleBody>
       </div>
 
       {/* Live Face Verification & Enrollment Modal */}

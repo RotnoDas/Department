@@ -32,6 +32,7 @@ import {
   Calendar,
   Layers
 } from "lucide-react";
+import { SectionCollapseToggle, CollapsibleBody } from "@/components/dashboard/CollapsibleSection";
 
 // Modern harmonious color palettes
 export const CHART_COLORS = {
@@ -87,7 +88,19 @@ export const CustomChartTooltip = ({ active, payload, label, unit = "", prefix =
 };
 
 // ── 1. STUDENT DASHBOARD ANALYTICS ────────────────────────────────────────
-export function StudentAnalyticsCharts({ enrolledSemester = 6, routineCount = 18, semesterCredits = 21, attendanceStats = [], attendanceSummary = null }) {
+export function StudentAnalyticsCharts({ 
+  enrolledSemester = 6, 
+  routineCount = 18, 
+  semesterCredits = 21, 
+  attendanceStats = [], 
+  attendanceSummary = null,
+  isCollapsed: controlledCollapsed,
+  onToggle: controlledOnToggle,
+  defaultCollapsed = false,
+}) {
+  const [internalCollapsed, setInternalCollapsed] = useState(defaultCollapsed);
+  const isCollapsed = controlledCollapsed !== undefined ? controlledCollapsed : internalCollapsed;
+  const toggleCollapse = controlledOnToggle || (() => setInternalCollapsed(!internalCollapsed));
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => setIsMounted(true), []);
 
@@ -153,11 +166,21 @@ export function StudentAnalyticsCharts({ enrolledSemester = 6, routineCount = 18
           <span className="text-xs font-bold px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
             Cumulative GPA: 3.78 / 4.00
           </span>
+          <SectionCollapseToggle
+            isCollapsed={isCollapsed}
+            onToggle={toggleCollapse}
+            label="Academic Analytics"
+          />
         </div>
       </div>
 
-      {/* Grid of 2 Key Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <CollapsibleBody
+        isCollapsed={isCollapsed}
+        onExpand={toggleCollapse}
+        sectionName="Academic Performance Analytics"
+      >
+        {/* Grid of 2 Key Charts */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Chart 1: GPA Growth Progression */}
         <div className="p-6 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
@@ -323,12 +346,25 @@ export function StudentAnalyticsCharts({ enrolledSemester = 6, routineCount = 18
           </div>
         </div>
       </div>
+      </CollapsibleBody>
     </div>
   );
 }
 
 // ── 2. ADMIN DASHBOARD ANALYTICS ──────────────────────────────────────────
-export function AdminAnalyticsCharts({ stats, students = [], routines = [], courses = [], teachers = [] }) {
+export function AdminAnalyticsCharts({ 
+  stats, 
+  students = [], 
+  routines = [], 
+  courses = [], 
+  teachers = [],
+  isCollapsed: controlledCollapsed,
+  onToggle: controlledOnToggle,
+  defaultCollapsed = false,
+}) {
+  const [internalCollapsed, setInternalCollapsed] = useState(defaultCollapsed);
+  const isCollapsed = controlledCollapsed !== undefined ? controlledCollapsed : internalCollapsed;
+  const toggleCollapse = controlledOnToggle || (() => setInternalCollapsed(!internalCollapsed));
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => setIsMounted(true), []);
 
@@ -408,10 +444,20 @@ export function AdminAnalyticsCharts({ stats, students = [], routines = [], cour
           <span className="text-xs font-bold px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
             {stats?.totalUsers || 18} Registered Members
           </span>
+          <SectionCollapseToggle
+            isCollapsed={isCollapsed}
+            onToggle={toggleCollapse}
+            label="Institutional Analytics"
+          />
         </div>
       </div>
 
-      {/* Row 1: Student Semester Distribution & Department Demographics Donut */}
+      <CollapsibleBody
+        isCollapsed={isCollapsed}
+        onExpand={toggleCollapse}
+        sectionName="Demographics & Resource Utilization Studio"
+      >
+        {/* Row 1: Student Semester Distribution & Department Demographics Donut */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Student Enrollment Stacked Bar */}
         <div className="lg:col-span-2 p-6 rounded-[2rem] bg-slate-50/70 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 space-y-4">
@@ -572,12 +618,22 @@ export function AdminAnalyticsCharts({ stats, students = [], routines = [], cour
           </div>
         </div>
       </div>
+      </CollapsibleBody>
     </div>
   );
 }
 
 // ── 3. EMPLOYEE / STAFF DASHBOARD ANALYTICS ──────────────────────────────
-export function EmployeeAnalyticsCharts({ tasks = [], labFacilities = [] }) {
+export function EmployeeAnalyticsCharts({ 
+  tasks = [], 
+  labFacilities = [],
+  isCollapsed: controlledCollapsed,
+  onToggle: controlledOnToggle,
+  defaultCollapsed = false,
+}) {
+  const [internalCollapsed, setInternalCollapsed] = useState(defaultCollapsed);
+  const isCollapsed = controlledCollapsed !== undefined ? controlledCollapsed : internalCollapsed;
+  const toggleCollapse = controlledOnToggle || (() => setInternalCollapsed(!internalCollapsed));
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => setIsMounted(true), []);
 
@@ -625,12 +681,24 @@ export function EmployeeAnalyticsCharts({ tasks = [], labFacilities = [] }) {
             Operational status of 147 workstations, network switches, and weekly resolution output.
           </p>
         </div>
-        <span className="text-xs font-bold px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-          97.3% Fleet Operational
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+            97.3% Fleet Operational
+          </span>
+          <SectionCollapseToggle
+            isCollapsed={isCollapsed}
+            onToggle={toggleCollapse}
+            label="Hardware Analytics"
+          />
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <CollapsibleBody
+        isCollapsed={isCollapsed}
+        onExpand={toggleCollapse}
+        sectionName="Hardware & Ticket Analytics"
+      >
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Workstations Status BarChart */}
         <div className="lg:col-span-2 p-6 rounded-[2rem] bg-slate-50/70 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 space-y-4">
           <div className="flex items-center justify-between">
@@ -712,12 +780,21 @@ export function EmployeeAnalyticsCharts({ tasks = [], labFacilities = [] }) {
           </div>
         </div>
       </div>
+      </CollapsibleBody>
     </div>
   );
 }
 
 // ── 4. TEACHER / FACULTY DASHBOARD ANALYTICS ──────────────────────────────
-export function TeacherAnalyticsCharts({ teacherSchedule = [] }) {
+export function TeacherAnalyticsCharts({ 
+  teacherSchedule = [],
+  isCollapsed: controlledCollapsed,
+  onToggle: controlledOnToggle,
+  defaultCollapsed = false,
+}) {
+  const [internalCollapsed, setInternalCollapsed] = useState(defaultCollapsed);
+  const isCollapsed = controlledCollapsed !== undefined ? controlledCollapsed : internalCollapsed;
+  const toggleCollapse = controlledOnToggle || (() => setInternalCollapsed(!internalCollapsed));
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => setIsMounted(true), []);
 
@@ -754,12 +831,24 @@ export function TeacherAnalyticsCharts({ teacherSchedule = [] }) {
             Class student enrollment, lecture hours distribution, and student presence.
           </p>
         </div>
-        <span className="text-xs font-bold px-3 py-1.5 rounded-xl bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800">
-          16 Hours / Week Lecture Load
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold px-3 py-1.5 rounded-xl bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800">
+            16 Hours / Week Lecture Load
+          </span>
+          <SectionCollapseToggle
+            isCollapsed={isCollapsed}
+            onToggle={toggleCollapse}
+            label="Teaching Analytics"
+          />
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <CollapsibleBody
+        isCollapsed={isCollapsed}
+        onExpand={toggleCollapse}
+        sectionName="Teaching Workload & Trends"
+      >
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Chart 1: Enrolled Students per Course */}
         <div className="p-6 rounded-[2rem] bg-slate-50/70 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 space-y-4">
           <div className="flex items-center justify-between">
@@ -816,6 +905,7 @@ export function TeacherAnalyticsCharts({ teacherSchedule = [] }) {
           </div>
         </div>
       </div>
+      </CollapsibleBody>
     </div>
   );
 }

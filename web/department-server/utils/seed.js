@@ -59,23 +59,41 @@ const buildSampleRoutinesList = (teachersList = []) => {
 
   const otherSemesters = [1, 2, 3, 4, 5, 6, 8];
   let otherOffset = 0;
-  let teachOffset = 0;
   const coursePointers = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0 };
+
+  // Map each registered faculty member to 2 distinct specific courses with ~4 slots per week
+  // Faculty workload: realistic 2 courses per teacher, remainder assigned to "Dept Faculty Member"
+  const teacherCourseAssignments = new Map();
+  if (registeredPool.length > 0) {
+    // Teacher 0 (e.g. Teacher A): CSE 4101 (Sem 7) and CSE 3101 (Sem 5)
+    teacherCourseAssignments.set("7_CSE 4101", registeredPool[0]);
+    teacherCourseAssignments.set("5_CSE 3101", registeredPool[0]);
+  }
+  if (registeredPool.length > 1) {
+    // Teacher 1 (e.g. Teacher B): CSE 1101 (Sem 1) and CSE 3201 (Sem 6)
+    teacherCourseAssignments.set("1_CSE 1101", registeredPool[1]);
+    teacherCourseAssignments.set("6_CSE 3201", registeredPool[1]);
+  }
+  if (registeredPool.length > 2) {
+    // Teacher 2 (e.g. Teacher C): CSE 2201 (Sem 4) and CSE 4201 (Sem 8)
+    teacherCourseAssignments.set("4_CSE 2201", registeredPool[2]);
+    teacherCourseAssignments.set("8_CSE 4201", registeredPool[2]);
+  }
+
+  const busyTeachersInSlot = new Set();
 
   days.forEach((day, dIdx) => {
     allSlots.forEach((slot, sIdx) => {
       const isAfternoon = sIdx >= 4; // Slots 02:00-03:00, 03:00-04:00, 04:00-05:00
       
-      // Semester 7 is strictly scheduled in EVERY slot of EVERY routine day!
-      // Along with 2 rotating conflict-free semesters from [1, 2, 3, 4, 5, 6, 8]
+      // Semester 7 is scheduled in every routine day slot along with 2 rotating conflict-free semesters
       const s1 = 7;
       const s2 = otherSemesters[(otherOffset) % otherSemesters.length];
       const s3 = otherSemesters[(otherOffset + 3) % otherSemesters.length];
       otherOffset++;
 
       const slotSemesters = [s1, s2, s3];
-      slotSemesters.forEach((sem, idx) => {
-        const teacher = registeredPool[(teachOffset + idx) % registeredPool.length];
+      slotSemesters.forEach((sem) => {
         const semData = semCoursesMap[sem];
         const isLab = isAfternoon && (dIdx % 2 === 0);
         const coursePool = isLab ? semData.lab : semData.theory;
@@ -85,21 +103,35 @@ const buildSampleRoutinesList = (teachersList = []) => {
 
         const room = isLab ? semLabRooms[sem] : semRooms[sem];
 
+        // Check if this specific course has an assigned faculty member
+        let assignedFaculty = teacherCourseAssignments.get(`${sem}_${course.code}`);
+        if (assignedFaculty) {
+          const teacherKey = `${day}__${slot}__${assignedFaculty.name}`.toLowerCase();
+          if (busyTeachersInSlot.has(teacherKey)) {
+            assignedFaculty = null; // Do not double-book teacher across semesters in the same slot
+          } else {
+            busyTeachersInSlot.add(teacherKey);
+          }
+        }
+
+        const teacherName = assignedFaculty ? assignedFaculty.name : "Dept Faculty Member";
+        const teacherId = assignedFaculty ? (assignedFaculty.teacherId || assignedFaculty.id || (assignedFaculty._id ? String(assignedFaculty._id) : null)) : null;
+        const teacherEmail = assignedFaculty ? (assignedFaculty.email || null) : null;
+
         sampleList.push({
           day,
           semester: sem,
           timeSlot: slot,
           courseCode: course.code,
           courseTitle: course.title,
-          teacherId: teacher.teacherId || teacher.id || (teacher._id ? String(teacher._id) : null),
-          teacherName: teacher.name,
+          teacherId: teacherId,
+          teacherName: teacherName,
+          teacherEmail: teacherEmail,
           room: room,
           createdAt: new Date(),
           updatedAt: new Date(),
         });
       });
-
-      teachOffset = (teachOffset + 1) % registeredPool.length;
     });
   });
 

@@ -17,15 +17,23 @@ import toast from "react-hot-toast";
 import { authClient } from "@/lib/auth-client";
 import NoticeCard from "./NoticeCard";
 import NoticeModal from "./NoticeModal";
+import { SectionCollapseToggle, CollapsibleBody } from "@/components/dashboard/CollapsibleSection";
 
 export default function NoticeBoardSection({
   isAdmin = false,
   title = "Department Notice Board",
   subtitle = "Official circulars, academic notices, and audio announcements for all department members.",
   defaultFilter = "all",
+  isCollapsed: controlledCollapsed,
+  onToggle: controlledOnToggle,
+  defaultCollapsed = false,
 }) {
   const { data: session } = authClient.useSession();
   const user = session?.user;
+
+  const [internalCollapsed, setInternalCollapsed] = useState(defaultCollapsed);
+  const isCollapsed = controlledCollapsed !== undefined ? controlledCollapsed : internalCollapsed;
+  const toggleCollapse = controlledOnToggle || (() => setInternalCollapsed(!internalCollapsed));
 
   const [notices, setNotices] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -169,10 +177,21 @@ export default function NoticeBoardSection({
               <span>Publish Notice</span>
             </button>
           )}
+
+          <SectionCollapseToggle
+            isCollapsed={isCollapsed}
+            onToggle={toggleCollapse}
+            label={title}
+          />
         </div>
       </div>
 
-      {/* Guest Notice Callout Banner */}
+      <CollapsibleBody
+        isCollapsed={isCollapsed}
+        onExpand={toggleCollapse}
+        sectionName={title}
+      >
+        {/* Guest Notice Callout Banner */}
       {!user && (
         <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-indigo-500/10 to-purple-500/10 border border-emerald-200/80 dark:border-emerald-800/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -312,18 +331,24 @@ export default function NoticeBoardSection({
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filteredNotices.map((notice, idx) => (
-            <NoticeCard
-              key={notice._id || notice.id || `notice-${idx}`}
-              notice={notice}
-              isAdmin={isAdmin}
-              onEdit={openEditModal}
-              onDelete={handleDelete}
-            />
-          ))}
+        <div
+          data-lenis-prevent
+          className="max-h-[620px] overflow-y-auto overscroll-contain pr-1 scrollbar-thin"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {filteredNotices.map((notice, idx) => (
+              <NoticeCard
+                key={notice._id || notice.id || `notice-${idx}`}
+                notice={notice}
+                isAdmin={isAdmin}
+                onEdit={openEditModal}
+                onDelete={handleDelete}
+              />
+            ))}
+          </div>
         </div>
       )}
+      </CollapsibleBody>
 
       {/* Admin Publish/Edit Modal */}
       {isAdmin && (

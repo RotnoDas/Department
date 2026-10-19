@@ -530,7 +530,12 @@ export default function FaceVerificationModal({
   const isLastStep = challenge && currentStepIndex === challenge.steps.length - 1;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
+    <div
+      data-lenis-prevent
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200 overscroll-contain"
+    >
       {/* Offscreen Canvas for Frame Capture */}
       <canvas ref={canvasRef} className="hidden" />
 
@@ -543,7 +548,7 @@ export default function FaceVerificationModal({
         onChange={handlePhotoUpload}
       />
 
-      <div className="relative w-full max-w-lg overflow-hidden rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 shadow-2xl space-y-0 transition-all">
+      <div className="relative w-full max-w-lg overflow-hidden rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 shadow-2xl space-y-0 transition-all max-h-[92vh] overflow-y-auto overscroll-contain scrollbar-thin">
         {/* Modal Header */}
         <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-white/10 bg-slate-50/50 dark:bg-slate-800/40">
           <div className="flex items-center gap-3">

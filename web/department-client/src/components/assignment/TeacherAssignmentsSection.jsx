@@ -20,11 +20,19 @@ import {
   Send,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { SectionCollapseToggle, CollapsibleBody } from "@/components/dashboard/CollapsibleSection";
 
 export default function TeacherAssignmentsSection({
   teacher,
   courses = [],
+  isCollapsed: controlledCollapsed,
+  onToggle: controlledOnToggle,
+  defaultCollapsed = false,
 }) {
+  const [internalCollapsed, setInternalCollapsed] = useState(defaultCollapsed);
+  const isCollapsed = controlledCollapsed !== undefined ? controlledCollapsed : internalCollapsed;
+  const toggleCollapse = controlledOnToggle || (() => setInternalCollapsed(!internalCollapsed));
+
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -272,16 +280,28 @@ export default function TeacherAssignmentsSection({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowCreateModal(true)}
-          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold shadow-md shadow-indigo-600/30 transition cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Create Assignment</span>
-        </button>
+        <div className="flex items-center flex-wrap gap-2.5">
+          <button
+            type="button"
+            onClick={() => setShowCreateModal(true)}
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold shadow-md shadow-indigo-600/30 transition cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Create Assignment</span>
+          </button>
+          <SectionCollapseToggle
+            isCollapsed={isCollapsed}
+            onToggle={toggleCollapse}
+            label="Faculty Assignments"
+          />
+        </div>
       </div>
 
+      <CollapsibleBody
+        isCollapsed={isCollapsed}
+        onExpand={toggleCollapse}
+        sectionName="Faculty Assignment Manager"
+      >
       {/* Filter & Search Bar */}
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-2">
         <div className="flex items-center gap-2">
@@ -441,6 +461,7 @@ export default function TeacherAssignmentsSection({
           })}
         </div>
       )}
+      </CollapsibleBody>
 
       {/* ── CREATE ASSIGNMENT MODAL ───────────────────────────── */}
       {showCreateModal && (

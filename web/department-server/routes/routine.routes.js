@@ -213,7 +213,12 @@ const handleTeacherGetRoutine = async (req, res) => {
       resolvedTeacherDoc = await teachers.findOne({ email });
     }
     if (!resolvedTeacherDoc && teacherId) {
-      resolvedTeacherDoc = await teachers.findOne({ teacherId });
+      resolvedTeacherDoc = await teachers.findOne({
+        $or: [
+          { teacherId },
+          ...(ObjectId.isValid(teacherId) ? [{ _id: new ObjectId(teacherId) }] : [])
+        ]
+      });
     }
     if (!resolvedTeacherDoc && teacherName) {
       resolvedTeacherDoc = await teachers.findOne({
@@ -223,9 +228,8 @@ const handleTeacherGetRoutine = async (req, res) => {
 
     const orConditions = [];
     if (teacherId) orConditions.push({ teacherId });
-    if (teacherName) {
+    if (teacherName && teacherName.trim()) {
       orConditions.push({ teacherName: { $regex: `^${escapeRegex(teacherName.trim())}$`, $options: 'i' } });
-      orConditions.push({ teacherName: { $regex: escapeRegex(teacherName.trim()), $options: 'i' } });
     }
     if (email) {
       orConditions.push({ teacherEmail: email });
@@ -236,17 +240,23 @@ const handleTeacherGetRoutine = async (req, res) => {
         orConditions.push({ teacherId: resolvedTeacherDoc.teacherId });
       }
       if (resolvedTeacherDoc.name) {
-        orConditions.push({ teacherName: resolvedTeacherDoc.name });
         orConditions.push({ teacherName: { $regex: `^${escapeRegex(resolvedTeacherDoc.name.trim())}$`, $options: 'i' } });
+      }
+      if (resolvedTeacherDoc.email) {
+        orConditions.push({ teacherEmail: resolvedTeacherDoc.email });
       }
       if (resolvedTeacherDoc._id) {
         orConditions.push({ teacherId: String(resolvedTeacherDoc._id) });
       }
     }
 
-    if (orConditions.length > 0) {
-      query.$or = orConditions;
+    // STRICT ISOLATION: If no valid teacher identity is provided, return [] immediately.
+    // Never fallback to returning all routines!
+    if (orConditions.length === 0) {
+      return res.json([]);
     }
+
+    query.$or = orConditions;
 
     const routineList = await routines.find(query).sort({ day: 1, timeSlot: 1 }).toArray();
     res.json(routineList);
@@ -291,12 +301,34 @@ const handleSaveRoutineSlot = async (req, res) => {
       if (dbCourse) finalCourseTitle = dbCourse.title;
     }
 
-    // Resolve teacher name if teacherId given
-    if (teacherId && !finalTeacherName) {
+    // ── STRICT TEACHER ALLOWLIST VALIDATION (Only Teacher A, B, or C allowed) ──
+    const ALLOWED_TEACHERS = ["A", "B", "C"];
+    let resolvedTeacherId = teacherId || null;
+    let resolvedTeacherEmail = req.body.teacherEmail || null;
+
+    if (finalTeacherName && !finalTeacherName.toLowerCase().includes("pool") && !finalTeacherName.toLowerCase().includes("dept faculty")) {
       const dbTeacher = await teachers.findOne({
-        $or: [{ teacherId: teacherId }, { email: teacherId }]
+        $or: [
+          ...(teacherId ? [{ teacherId: teacherId }, ...(ObjectId.isValid(teacherId) ? [{ _id: new ObjectId(teacherId) }] : [])] : []),
+          { name: { $regex: `^${escapeRegex(finalTeacherName.trim())}$`, $options: 'i' } }
+        ]
       });
-      if (dbTeacher) finalTeacherName = dbTeacher.name;
+
+      const teacherNameUpper = (dbTeacher?.name || finalTeacherName).trim().toUpperCase();
+      const isAllowed = ALLOWED_TEACHERS.includes(teacherNameUpper) || 
+                        ALLOWED_TEACHERS.some(t => teacherNameUpper === `TEACHER ${t}`);
+
+      if (!isAllowed) {
+        return res.status(400).json({
+          error: "Teacher assignment error: Only Teacher A, Teacher B, or Teacher C can be assigned to a course. All other selections are not allowed."
+        });
+      }
+
+      if (dbTeacher) {
+        finalTeacherName = dbTeacher.name;
+        resolvedTeacherEmail = dbTeacher.email;
+        resolvedTeacherId = dbTeacher.teacherId || (dbTeacher._id ? String(dbTeacher._id) : null);
+      }
     }
 
     // ── 1. ROOM CONFLICT VALIDATION ──────────────────────────────────────────
@@ -331,8 +363,8 @@ const handleSaveRoutineSlot = async (req, res) => {
           { teacherName: teacherRegex }
         ]
       };
-      if (teacherId) {
-        teacherQuery.$or.push({ teacherId: teacherId });
+      if (resolvedTeacherId) {
+        teacherQuery.$or.push({ teacherId: resolvedTeacherId });
       }
 
       const existingTeacherConflict = await routines.findOne(teacherQuery);
@@ -355,8 +387,9 @@ const handleSaveRoutineSlot = async (req, res) => {
           timeSlot: normalizedSlot,
           courseCode: courseCode.trim().toUpperCase(),
           courseTitle: finalCourseTitle || "Academic Lecture",
-          teacherId: teacherId || null,
-          teacherName: finalTeacherName || "Faculty Instructor",
+          teacherId: resolvedTeacherId,
+          teacherName: finalTeacherName || "Dept Faculty Member",
+          teacherEmail: resolvedTeacherEmail || null,
           room: finalRoom,
           updatedAt: new Date()
         },
@@ -367,8 +400,58 @@ const handleSaveRoutineSlot = async (req, res) => {
       { upsert: true }
     );
 
+    // ── 4. AUTO-FILL ALL OTHER SLOTS OF THIS COURSE IN THIS SEMESTER ─────────
+    let autoFilledCount = 0;
+    if (finalTeacherName && ALLOWED_TEACHERS.includes(finalTeacherName.trim().toUpperCase())) {
+      const cleanUpperCode = courseCode.trim().toUpperCase();
+      const noSpaceCode = cleanUpperCode.replace(/\s+/g, '');
+
+      // Automatically update all slots of this course in this semester with the assigned teacher
+      const updateAllSlotsResult = await routines.updateMany(
+        {
+          semester: semNum,
+          $or: [
+            { courseCode: cleanUpperCode },
+            { courseCode: new RegExp(`^${escapeRegex(cleanUpperCode)}$`, 'i') },
+            { courseCode: new RegExp(`^${escapeRegex(noSpaceCode)}$`, 'i') }
+          ]
+        },
+        {
+          $set: {
+            teacherName: finalTeacherName,
+            teacherId: resolvedTeacherId,
+            teacherEmail: resolvedTeacherEmail,
+            updatedAt: new Date()
+          }
+        }
+      );
+      autoFilledCount = updateAllSlotsResult.modifiedCount || 0;
+
+      // Keep course catalog faculty field in sync with assigned teacher (A, B, or C)
+      await courses.updateMany(
+        {
+          $or: [
+            { code: cleanUpperCode },
+            { code: new RegExp(`^${escapeRegex(cleanUpperCode)}$`, 'i') },
+            { code: new RegExp(`^${escapeRegex(noSpaceCode)}$`, 'i') }
+          ]
+        },
+        {
+          $set: {
+            faculty: finalTeacherName,
+            updatedAt: new Date()
+          }
+        }
+      );
+    }
+
     const savedSlot = await routines.findOne({ day, semester: semNum, timeSlot: normalizedSlot });
-    res.json({ success: true, message: "Routine updated successfully.", routine: savedSlot });
+    res.json({
+      success: true,
+      message: `Routine updated successfully.${autoFilledCount > 1 ? ` Auto-filled ${autoFilledCount} class slots for ${courseCode.trim().toUpperCase()} with Teacher ${finalTeacherName}.` : ''}`,
+      autoFilledCount,
+      routine: savedSlot
+    });
   } catch (err) {
     console.error("Error saving routine slot:", err);
     res.status(500).json({ error: "Failed to update routine slot." });

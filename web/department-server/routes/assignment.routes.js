@@ -49,7 +49,10 @@ router.get('/', async (req, res) => {
         { semester: `${semNum}th Semester` },
       ];
     }
-    if (courseCode) query.courseCode = courseCode;
+    if (courseCode) {
+      const clean = String(courseCode).replace(/[\s-]/g, '');
+      query.courseCode = { $regex: clean.split('').join('\\s*'), $options: 'i' };
+    }
     if (teacherEmail) query.teacherEmail = teacherEmail;
 
     const list = await assignments.find(query).sort({ createdAt: -1 }).toArray();

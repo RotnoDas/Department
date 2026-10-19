@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import Link from "next/link";
 import { authClient } from "@/lib/auth-client";
 import { 
   Presentation, 
@@ -36,14 +37,21 @@ import {
   Link2,
   Upload,
   Check,
-  Coffee
+  Coffee,
+  ChevronRight,
+  Search,
+  ArrowRight
 } from "lucide-react";
 import { FaGithub, FaLinkedin } from "react-icons/fa";
 import toast from "react-hot-toast";
 import Loading from "@/components/common/Loading";
 import { TeacherAnalyticsCharts } from "@/components/dashboard/DashboardCharts";
 import NoticeBoardSection from "@/components/notice/NoticeBoardSection";
-import TeacherAssignmentsSection from "@/components/assignment/TeacherAssignmentsSection";
+import { 
+  SectionCollapseToggle, 
+  CollapsibleBody, 
+  DashboardCollapseControls 
+} from "@/components/dashboard/CollapsibleSection";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
@@ -82,6 +90,12 @@ export default function TeacherDashboardPage() {
   const [scheduleLoading, setScheduleLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState("All Days");
 
+  // Planned Classes Target State
+  const [coursePlannedMap, setCoursePlannedMap] = useState({});
+  const [editingTargetCourse, setEditingTargetCourse] = useState(null);
+  const [targetClassesInput, setTargetClassesInput] = useState(36);
+  const [isSavingDashboardTarget, setIsSavingDashboardTarget] = useState(false);
+
   // Profile Edit & Photo State
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -109,23 +123,52 @@ export default function TeacherDashboardPage() {
     image: "",
   });
 
-  // Materials state & modal
-  const [materials, setMaterials] = useState([
-    { id: "1", title: "Course Introduction & Syllabus Overview", course: "CSE Core", type: "PDF Document", date: "Just now" },
-  ]);
-  const [showUploadModal, setShowUploadModal] = useState(false);
-  const [materialForm, setMaterialForm] = useState({ title: "", course: "", type: "Lecture Slides (PDF)" });
-  const [materialFile, setMaterialFile] = useState(null);
-  const [uploadingMaterial, setUploadingMaterial] = useState(false);
+  // Collapsible sections state
+  const [collapsedSections, setCollapsedSections] = useState({
+    profile: false,
+    courses: false,
+    routine: false,
+    analytics: false,
+    notices: false,
+  });
 
-  // Course-wise Attendance Roster Modal
-  const [showRosterModal, setShowRosterModal] = useState(false);
-  const [selectedRosterCourse, setSelectedRosterCourse] = useState("all");
-  const [rosterData, setRosterData] = useState(null);
-  const [rosterLoading, setRosterLoading] = useState(false);
+  const toggleSection = (key) => setCollapsedSections((p) => ({ ...p, [key]: !p[key] }));
+  const collapseAllSections = () => setCollapsedSections({ profile: true, courses: true, routine: true, analytics: true, notices: true });
+  const expandAllSections = () => setCollapsedSections({ profile: false, courses: false, routine: false, analytics: false, notices: false });
+  const allCollapsed = Object.values(collapsedSections).every(Boolean);
 
-  // Attendance history state
-  const [attendanceLogs, setAttendanceLogs] = useState([]);
+  useEffect(() => {
+    const handleHash = (customId) => {
+      const hash = (typeof customId === "string" ? customId : window.location.hash).replace("#", "");
+      if (!hash) return;
+      if (hash === "profile-settings" || hash === "profile") setCollapsedSections((p) => ({ ...p, profile: false }));
+      if (hash === "assigned-courses" || hash === "courses") setCollapsedSections((p) => ({ ...p, courses: false }));
+      if (hash === "routine") setCollapsedSections((p) => ({ ...p, routine: false }));
+      if (hash === "analytics") setCollapsedSections((p) => ({ ...p, analytics: false }));
+      if (hash === "notices") setCollapsedSections((p) => ({ ...p, notices: false }));
+
+      setTimeout(() => {
+        const el = document.getElementById(hash);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 60);
+    };
+
+    const handleCustomExpand = (e) => {
+      if (e.detail?.id) {
+        handleHash(e.detail.id);
+      }
+    };
+
+    handleHash();
+    window.addEventListener("hashchange", handleHash);
+    window.addEventListener("dashboard-expand-section", handleCustomExpand);
+    return () => {
+      window.removeEventListener("hashchange", handleHash);
+      window.removeEventListener("dashboard-expand-section", handleCustomExpand);
+    };
+  }, []);
 
   const syncFormData = (data) => {
     setFormData({
@@ -195,9 +238,10 @@ export default function TeacherDashboardPage() {
       if (teacherName) params.set("teacherName", teacherName);
       if (email) params.set("email", email);
 
-      const [myRes, allRes] = await Promise.all([
+      const [myRes, allRes, coursesRes] = await Promise.all([
         fetch(`${SERVER_URL}/api/teacher/routine?${params.toString()}`),
-        fetch(`${SERVER_URL}/api/routines`)
+        fetch(`${SERVER_URL}/api/routines`),
+        fetch(`${SERVER_URL}/api/courses`).catch(() => null),
       ]);
 
       if (myRes.ok) {
@@ -220,6 +264,17 @@ export default function TeacherDashboardPage() {
         const aData = await allRes.json();
         const aList = Array.isArray(aData) ? aData : (aData.routines || []);
         setAllRoutines(aList);
+      }
+
+      if (coursesRes && coursesRes.ok) {
+        const cData = await coursesRes.json();
+        const map = {};
+        (cData.courses || []).forEach((c) => {
+          if (c.code) {
+            map[c.code.toUpperCase()] = c.totalClasses;
+          }
+        });
+        setCoursePlannedMap(map);
       }
     } catch (err) {
       console.error("Failed to load schedule:", err);
@@ -400,19 +455,12 @@ export default function TeacherDashboardPage() {
       toast.error("Your faculty account is pending administrator approval.");
       return;
     }
-    const newLog = {
-      id: Date.now().toString(),
-      course: cls.code,
-      title: cls.title,
-      room: cls.room,
-      date: `Today, ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
-      present: Math.floor(cls.enrolled * 0.92),
-      absent: Math.floor(cls.enrolled * 0.08),
-      percentage: "92.0%"
-    };
-    setAttendanceLogs(prev => [newLog, ...prev]);
 
     try {
+      const targetRoom = cls.room || (cls.rooms ? Array.from(cls.rooms)[0] : "Room 407");
+      const targetTime = cls.time || (cls.slots && cls.slots[0]?.time) || "09:00 - 10:00";
+      const targetDay = cls.day || (cls.slots && cls.slots[0]?.day) || "Saturday";
+
       await fetch(`${SERVER_URL}/api/attendance/session/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -421,93 +469,83 @@ export default function TeacherDashboardPage() {
           courseTitle: cls.title,
           semester: cls.semesterNum || cls.semester,
           teacherName: activeName,
-          room: cls.room,
-          timeSlot: cls.time,
-          day: cls.day
+          room: targetRoom,
+          timeSlot: targetTime,
+          day: targetDay
         })
       });
-      toast.success(`Live attendance session launched for ${cls.code} (${cls.room})! Students can now check in.`);
+      toast.success(`Live attendance session launched for ${cls.code} (${targetRoom})! Students can now check in.`);
     } catch (e) {
       console.error(e);
-      toast.success(`Active attendance session started for ${cls.code} (${cls.room})!`);
+      toast.success(`Active attendance session started for ${cls.code}!`);
     }
   };
 
-  const fetchPersistedMaterials = async () => {
-    try {
-      const res = await fetch("/backend/api/materials");
-      const data = await res.json();
-      if (res.ok && data.materials && data.materials.length > 0) {
-        setMaterials(data.materials);
-      }
-    } catch (e) {
-      console.warn("Could not load persisted materials:", e);
-    }
-  };
-
-  useEffect(() => {
-    fetchPersistedMaterials();
-  }, []);
-
-  const handleUploadMaterial = async (e) => {
-    e.preventDefault();
-    if (!materialForm.title.trim() || !materialForm.course.trim()) {
-      toast.error("Please enter material title and course code.");
+  // Quick update planned classes from dashboard card
+  const handleSaveDashboardTargetClasses = async (customCount) => {
+    if (!editingTargetCourse?.code) return;
+    const count = parseInt(customCount ?? targetClassesInput, 10);
+    if (isNaN(count) || count < 1 || count > 300) {
+      toast.error("Please enter a valid planned classes count (1 - 300).");
       return;
     }
-    setUploadingMaterial(true);
+    setIsSavingDashboardTarget(true);
     try {
-      const formData = new FormData();
-      formData.append("title", materialForm.title.trim());
-      formData.append("course", materialForm.course.trim());
-      formData.append("type", materialForm.type);
-      formData.append("teacherName", activeName || user?.name || "Faculty Member");
-      formData.append("teacherEmail", user?.email || "");
-      if (materialFile) {
-        formData.append("file", materialFile);
-      }
-
-      const res = await fetch("/backend/api/materials", {
-        method: "POST",
-        body: formData,
+      const res = await fetch(`${SERVER_URL}/api/courses/code/${encodeURIComponent(editingTargetCourse.code)}/classes`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ totalClasses: count }),
       });
       const data = await res.json();
-      if (res.ok && data.success) {
-        toast.success("Study material published for students!");
-        setMaterialForm({ title: "", course: "", type: "Lecture Slides (PDF)" });
-        setMaterialFile(null);
-        setShowUploadModal(false);
-        fetchPersistedMaterials();
-      } else {
-        toast.error(data.error || "Failed to upload study material");
-      }
-    } catch {
-      toast.error("Network error uploading material");
+      if (!res.ok) throw new Error(data.error || "Failed to update target classes");
+      toast.success(data.message || `Planned classes for ${editingTargetCourse.code} updated to ${count}`);
+      setCoursePlannedMap((prev) => ({
+        ...prev,
+        [editingTargetCourse.code.toUpperCase()]: count,
+      }));
+      setEditingTargetCourse(null);
+    } catch (err) {
+      console.error("Error updating course classes:", err);
+      toast.error(err.message || "Failed to update target classes");
     } finally {
-      setUploadingMaterial(false);
-    }
-  };
-
-  const handleLoadRosterReport = async (courseCode) => {
-    setRosterLoading(true);
-    setShowRosterModal(true);
-    try {
-      const url = courseCode && courseCode !== "all"
-        ? `/backend/api/attendance/teacher/roster-report?courseCode=${encodeURIComponent(courseCode)}`
-        : `/backend/api/attendance/teacher/roster-report`;
-      const res = await fetch(url);
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setRosterData(data);
-      }
-    } catch (e) {
-      toast.error("Could not fetch roster report.");
-    } finally {
-      setRosterLoading(false);
+      setIsSavingDashboardTarget(false);
     }
   };
 
   const isPending = (profile?.status || user?.status) === "pending";
+
+  // Dynamically group unique courses assigned to this teacher from the routine schedule
+  const assignedCourses = useMemo(() => {
+    const map = new Map();
+    (teacherSchedule || []).forEach((slot) => {
+      if (!slot.code) return;
+      const key = slot.code.toUpperCase();
+      if (!map.has(key)) {
+        const planned = coursePlannedMap[key] || 36;
+        map.set(key, {
+          code: slot.code,
+          title: slot.title,
+          semester: slot.semester,
+          semesterNum: slot.semesterNum,
+          enrolled: slot.enrolled || 45,
+          totalClasses: planned,
+          slots: [],
+          rooms: new Set(),
+        });
+      }
+      const entry = map.get(key);
+      entry.slots.push({
+        day: slot.day,
+        time: slot.time,
+        room: slot.room,
+      });
+      if (slot.room) entry.rooms.add(slot.room);
+    });
+    return Array.from(map.values()).map((c) => ({
+      ...c,
+      totalClasses: coursePlannedMap[c.code.toUpperCase()] || c.totalClasses || 36,
+    }));
+  }, [teacherSchedule, coursePlannedMap]);
 
   const filteredSchedule = selectedDay === "All Days"
     ? teacherSchedule
@@ -619,17 +657,24 @@ export default function TeacherDashboardPage() {
               </span>
             </div>
 
-            <button
-              onClick={() => {
-                setIsEditing(!isEditing);
-                const el = document.getElementById("profile-settings");
-                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-              }}
-              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/20 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-sm"
-            >
-              <Edit3 className="w-4 h-4 text-sky-300" />
-              <span>{isEditing ? "Close Profile Editor" : "Edit Profile Data"}</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <DashboardCollapseControls
+                onCollapseAll={collapseAllSections}
+                onExpandAll={expandAllSections}
+                allCollapsed={allCollapsed}
+              />
+              <button
+                onClick={() => {
+                  setIsEditing(!isEditing);
+                  const el = document.getElementById("profile-settings");
+                  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/20 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-sm"
+              >
+                <Edit3 className="w-4 h-4 text-sky-300" />
+                <span>{isEditing ? "Close Profile Editor" : "Edit Profile Data"}</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -720,9 +765,19 @@ export default function TeacherDashboardPage() {
                 <span>Cancel</span>
               </button>
             )}
+            <SectionCollapseToggle
+              isCollapsed={collapsedSections.profile}
+              onToggle={() => toggleSection("profile")}
+              label="Faculty Profile"
+            />
           </div>
         </div>
 
+        <CollapsibleBody
+          isCollapsed={collapsedSections.profile}
+          onExpand={() => toggleSection("profile")}
+          sectionName="Faculty Profile & Information Center"
+        >
         {isEditing ? (
           /* Profile Edit Form */
           <form onSubmit={handleUpdateProfile} className="space-y-6">
@@ -1197,6 +1252,188 @@ export default function TeacherDashboardPage() {
             </div>
           </div>
         )}
+        </CollapsibleBody>
+      </div>
+
+      {/* ── Dynamic My Assigned Courses Section (Synchronized with Routine) ── */}
+      <div id="assigned-courses" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-50 dark:bg-sky-950/60 text-xs font-semibold text-sky-600 dark:text-sky-400 mb-1.5">
+              <BookOpen className="w-3.5 h-3.5 text-sky-500" />
+              <span>Dynamic Course Workspaces • Assigned by Admin</span>
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">My Assigned Courses</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+              Courses dynamically assigned to you in the academic routine. Select any course to access its dedicated workspace for individual attendance tracking, lecture materials, and coursework assignments.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-bold text-sky-600 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/60 px-3 py-1.5 rounded-xl ring-1 ring-sky-200 dark:ring-sky-800">
+              {assignedCourses.length} Assigned {assignedCourses.length === 1 ? "Course" : "Courses"}
+            </span>
+            <button
+              onClick={() => loadProfile(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
+              title="Refresh Assigned Courses"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${scheduleLoading ? "animate-spin text-sky-500" : ""}`} />
+              <span>Sync</span>
+            </button>
+            <SectionCollapseToggle
+              isCollapsed={collapsedSections.courses}
+              onToggle={() => toggleSection("courses")}
+              label="Assigned Courses"
+            />
+          </div>
+        </div>
+
+        <CollapsibleBody
+          isCollapsed={collapsedSections.courses}
+          onExpand={() => toggleSection("courses")}
+          sectionName="My Assigned Courses"
+        >
+          {scheduleLoading ? (
+            <div className="py-12 flex justify-center items-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-600"></div>
+            </div>
+          ) : assignedCourses.length === 0 ? (
+            <div className="py-12 text-center rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
+              <div className="h-12 w-12 rounded-2xl bg-sky-100 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center mx-auto">
+                <BookOpen className="w-6 h-6" />
+              </div>
+              <h4 className="text-base font-bold text-slate-800 dark:text-slate-200">
+                No Courses Assigned in Routine
+              </h4>
+              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                When the department administrator assigns you to lecture courses in the Academic Routine Studio, your courses will dynamically appear here with individual workspaces for attendance calculation, course materials, and assignments.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {assignedCourses.map((course) => (
+                <div
+                  key={course.code}
+                  className="p-6 rounded-[1.75rem] bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 hover:border-sky-400 dark:hover:border-sky-500/60 hover:shadow-xl transition-all duration-300 flex flex-col justify-between space-y-5 group"
+                >
+                  <div className="space-y-3.5">
+                    {/* Header Badges */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono font-extrabold text-xs text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/60 px-3 py-1 rounded-lg border border-sky-200/60 dark:border-sky-900/60 uppercase tracking-wider">
+                          {course.code}
+                        </span>
+                        <span className="text-[10px] font-bold px-2.5 py-1 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300">
+                          {course.semester}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingTargetCourse(course);
+                            setTargetClassesInput(course.totalClasses || 36);
+                          }}
+                          className="text-[10px] font-extrabold px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 dark:hover:bg-indigo-900/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800 transition-all flex items-center gap-1 cursor-pointer"
+                          title="Click to edit how many classes will be held for this course"
+                        >
+                          <Calendar className="w-3 h-3 text-indigo-500" />
+                          <span>{course.totalClasses || 36} Classes</span>
+                          <Edit3 className="w-2.5 h-2.5 text-indigo-400" />
+                        </button>
+                        <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
+                          {course.slots.length} {course.slots.length === 1 ? "Slot" : "Slots"} / Wk
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Course Title Link */}
+                    <Link
+                      href={`/dashboard/teacher/courses/${encodeURIComponent(course.code)}`}
+                      className="block group/link"
+                      title="Enter Dedicated Course Workspace"
+                    >
+                      <h3 className="font-extrabold text-slate-900 dark:text-white text-lg leading-snug group-hover/link:text-sky-600 dark:group-hover/link:text-sky-400 transition-colors flex items-center justify-between gap-2">
+                        <span>{course.title}</span>
+                        <ChevronRight className="w-5 h-5 text-slate-400 group-hover/link:text-sky-600 dark:group-hover/link:text-sky-400 group-hover/link:translate-x-1 transition-all shrink-0" />
+                      </h3>
+                    </Link>
+
+                    {/* Scheduled Slots Pills */}
+                    <div className="space-y-1.5 pt-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Routine Timetable:
+                      </span>
+                      <div className="flex flex-col gap-1.5">
+                        {course.slots.map((s, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between text-xs px-3 py-1.5 rounded-xl bg-white/80 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800 text-slate-600 dark:text-slate-300 font-medium"
+                          >
+                            <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                              <Calendar className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                              <span>{s.day}</span>
+                            </span>
+                            <span className="flex items-center gap-2">
+                              <span>{s.time}</span>
+                              <span className="text-[10px] text-slate-400 font-mono">({s.room})</span>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Dedicated Capabilities */}
+                    <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center gap-2 text-[10px] font-semibold text-slate-500 dark:text-slate-400 flex-wrap">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 font-bold">
+                        <UserCheck className="w-3 h-3" />
+                        <span>Individual Attendance</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingTargetCourse(course);
+                          setTargetClassesInput(course.totalClasses || 36);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-bold transition cursor-pointer"
+                        title="Edit target classes for this semester"
+                      >
+                        <Calendar className="w-3 h-3 text-indigo-500" />
+                        <span>Target: {course.totalClasses || 36}</span>
+                        <Edit3 className="w-2.5 h-2.5 ml-0.5 text-indigo-400" />
+                      </button>
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 font-bold">
+                        <FileText className="w-3 h-3" />
+                        <span>Assignments</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Primary CTA Buttons */}
+                  <div className="pt-2 flex items-center gap-2.5">
+                    <Link
+                      href={`/dashboard/teacher/courses/${encodeURIComponent(course.code)}`}
+                      className="flex-1 inline-flex items-center justify-center gap-2 h-11 px-4 rounded-xl font-bold text-xs bg-sky-600 hover:bg-sky-500 text-white shadow-md shadow-sky-600/20 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
+                    >
+                      <BookOpen className="w-4 h-4" />
+                      <span>Course Workspace ➔</span>
+                    </Link>
+                    <button
+                      onClick={() => handleStartAttendance(course.slots[0] || course)}
+                      disabled={isPending}
+                      title="Launch live attendance session for this course"
+                      className="inline-flex items-center justify-center gap-1.5 px-3 h-11 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20 transition-all active:scale-95 cursor-pointer shrink-0 disabled:opacity-50"
+                    >
+                      <UserCheck className="w-4 h-4" />
+                      <span>Take Attendance</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CollapsibleBody>
       </div>
 
       {/* Routine & Class Schedule */}
@@ -1223,9 +1460,19 @@ export default function TeacherDashboardPage() {
               <RefreshCw className={`w-3.5 h-3.5 ${scheduleLoading ? "animate-spin text-sky-500" : ""}`} />
               <span>Sync Routine</span>
             </button>
+            <SectionCollapseToggle
+              isCollapsed={collapsedSections.routine}
+              onToggle={() => toggleSection("routine")}
+              label="Academic Routine"
+            />
           </div>
         </div>
 
+        <CollapsibleBody
+          isCollapsed={collapsedSections.routine}
+          onExpand={() => toggleSection("routine")}
+          sectionName="Academic Routine & Class Schedule"
+        >
         {/* View Mode Tabs: My Assigned Lectures vs Full Department Routine Grid */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-1">
           <div className="inline-flex items-center p-1 rounded-2xl bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/50 dark:border-slate-700/50 text-xs font-bold">
@@ -1310,49 +1557,91 @@ export default function TeacherDashboardPage() {
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {filteredSchedule.map((cls, idx) => (
-                  <div key={cls.id || idx} className="p-6 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 hover:border-sky-300 dark:hover:border-sky-500/50 transition-all space-y-4">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-[11px] font-bold text-sky-600 dark:text-sky-400 uppercase tracking-wider">{cls.code}</span>
-                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300">{cls.day}</span>
+                  <div 
+                    key={cls.id || idx} 
+                    className="p-6 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 hover:border-indigo-400 dark:hover:border-indigo-500/60 hover:shadow-lg transition-all duration-200 flex flex-col justify-between space-y-4 group"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between">
+                        <Link
+                          href={`/dashboard/teacher/courses/${encodeURIComponent(cls.code)}`}
+                          className="block flex-1 pr-2 group/title"
+                          title="Click to open course workspace"
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs font-mono font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider group-hover/title:underline">
+                              {cls.code}
+                            </span>
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300">
+                              {cls.day}
+                            </span>
+                          </div>
+                          <h3 className="font-extrabold text-slate-900 dark:text-white text-base leading-snug group-hover/title:text-indigo-600 dark:group-hover/title:text-indigo-400 transition-colors flex items-center gap-1.5">
+                            <span>{cls.title}</span>
+                            <ChevronRight className="w-4 h-4 opacity-0 -translate-x-1 group-hover/title:opacity-100 group-hover/title:translate-x-0 transition-all text-indigo-600 dark:text-indigo-400 shrink-0" />
+                          </h3>
+                        </Link>
+                        <div className="h-8 w-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                          <Clock className="w-4 h-4" />
                         </div>
-                        <h3 className="font-bold text-slate-900 dark:text-white text-base leading-snug">{cls.title}</h3>
                       </div>
-                      <div className="h-8 w-8 rounded-lg bg-sky-100 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
-                        <Clock className="w-4 h-4" />
+
+                      <div className="space-y-1.5 text-xs text-slate-500 dark:text-slate-400">
+                        <div className="flex items-center justify-between">
+                          <span>Time Slot:</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">{cls.time}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span>Classroom / Lab:</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">{cls.room}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span>Target Cohort:</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">{cls.semester}</span>
+                        </div>
+                      </div>
+
+                      {/* Capabilities pills */}
+                      <div className="flex items-center gap-1.5 pt-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400 flex-wrap">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300">
+                          <UserCheck className="w-2.5 h-2.5" />
+                          <span>Attendance</span>
+                        </span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300">
+                          <BookOpen className="w-2.5 h-2.5" />
+                          <span>Materials</span>
+                        </span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300">
+                          <FileText className="w-2.5 h-2.5" />
+                          <span>Tasks</span>
+                        </span>
                       </div>
                     </div>
 
-                    <div className="space-y-1.5 text-xs text-slate-500 dark:text-slate-400">
-                      <div className="flex items-center justify-between">
-                        <span>Time Slot:</span>
-                        <span className="font-semibold text-slate-800 dark:text-slate-200">{cls.time}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>Classroom / Lab:</span>
-                        <span className="font-semibold text-slate-800 dark:text-slate-200">{cls.room}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>Target Cohort:</span>
-                        <span className="font-semibold text-slate-800 dark:text-slate-200">{cls.semester}</span>
-                      </div>
+                    <div className="pt-2 flex items-center gap-2">
+                      <Link
+                        href={`/dashboard/teacher/courses/${encodeURIComponent(cls.code)}`}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 h-10 px-3 rounded-xl font-bold text-xs bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white shadow-xs transition-colors cursor-pointer"
+                      >
+                        <BookOpen className="w-3.5 h-3.5" />
+                        <span>Course Workspace ➔</span>
+                      </Link>
+                      <button 
+                        onClick={() => handleStartAttendance(cls)}
+                        disabled={isPending}
+                        title="Start live geofenced attendance session"
+                        className={`inline-flex items-center justify-center gap-1 px-3 h-10 rounded-xl font-bold text-xs transition-colors shrink-0 ${
+                          isPending
+                            ? "bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed shadow-none"
+                            : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 cursor-pointer"
+                        }`}
+                      >
+                        <Play className="w-3 h-3 fill-current text-emerald-600 dark:text-emerald-400" />
+                        <span className="hidden sm:inline">Live</span>
+                      </button>
                     </div>
-
-                    <button 
-                      onClick={() => handleStartAttendance(cls)}
-                      disabled={isPending}
-                      className={`w-full inline-flex items-center justify-center gap-2 h-10 rounded-xl font-bold text-xs transition-colors ${
-                        isPending
-                          ? "bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed shadow-none"
-                          : "bg-sky-600 hover:bg-sky-700 dark:bg-sky-600 dark:hover:bg-sky-500 text-white shadow-md shadow-sky-200/60 dark:shadow-none cursor-pointer"
-                      }`}
-                    >
-                      <Play className="w-3.5 h-3.5 fill-current" />
-                      <span>{isPending ? "Awaiting Approval" : "Start Attendance Session"}</span>
-                    </button>
                   </div>
                 ))}
               </div>
@@ -1414,11 +1703,15 @@ export default function TeacherDashboardPage() {
 
             {/* Timetable Grid */}
             <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 shadow-xs">
-              <div className="overflow-x-auto scrollbar-thin">
+              <div
+                data-lenis-prevent
+                data-smart-scroll="horizontal"
+                className="overflow-auto overscroll-contain max-h-[640px] scrollbar-thin"
+              >
                 <table className="w-full border-collapse text-left">
-                  <thead>
-                    <tr className="border-b border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-slate-800/50 backdrop-blur-md">
-                      <th className="w-24 border-r border-slate-200 dark:border-white/10 py-4 px-3 text-center text-[10px] font-black tracking-widest text-slate-400 uppercase">
+                  <thead className="sticky top-0 z-20 shadow-xs">
+                    <tr className="border-b border-slate-200 dark:border-white/10 bg-slate-100/95 dark:bg-slate-800/95 backdrop-blur-md">
+                      <th className="sticky left-0 top-0 z-30 w-24 border-r border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-slate-800 py-4 px-3 text-center text-[10px] font-black tracking-widest text-slate-400 uppercase">
                         Day
                       </th>
                       {ROUTINE_TIME_SLOTS.map((slot) => {
@@ -1445,7 +1738,7 @@ export default function TeacherDashboardPage() {
                         key={day}
                         className="group transition-colors hover:bg-sky-50/20 dark:hover:bg-sky-950/20"
                       >
-                        <td className="w-24 border-r border-slate-200 dark:border-white/10 bg-slate-50/60 dark:bg-slate-800/40 p-4 text-center align-middle font-bold text-slate-800 dark:text-slate-200 text-xs uppercase tracking-wider">
+                        <td className="sticky left-0 z-10 w-24 border-r border-slate-200 dark:border-white/10 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-sm p-4 text-center align-middle font-bold text-slate-800 dark:text-slate-200 text-xs uppercase tracking-wider">
                           {day}
                         </td>
 
@@ -1543,319 +1836,142 @@ export default function TeacherDashboardPage() {
             </div>
           </div>
         )}
+        </CollapsibleBody>
       </div>
 
       {/* Faculty Workload & Engagement Studio */}
       <div id="analytics" className="scroll-mt-6">
-        <TeacherAnalyticsCharts teacherSchedule={teacherSchedule} />
-      </div>
-
-      {/* ── Faculty Assignments & Coursework Manager ────────────── */}
-      <TeacherAssignmentsSection
-        teacher={profile || user}
-        courses={teacherSchedule}
-      />
-
-      {/* Materials & Assignment Center */}
-      <div id="materials" className="grid grid-cols-1 lg:grid-cols-2 gap-8 scroll-mt-6">
-        <div className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-4 transition-colors">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2">
-              <BookOpen className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-              <span>Published Study Materials</span>
-            </h3>
-            <button 
-              onClick={() => {
-                if (isPending) {
-                  toast.error("Upload locked until administrator verifies your faculty account.");
-                  return;
-                }
-                setShowUploadModal(true);
-              }}
-              disabled={isPending}
-              className={`text-xs font-bold inline-flex items-center gap-1 ${
-                isPending
-                  ? "text-slate-400 dark:text-slate-500 cursor-not-allowed"
-                  : "text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-              }`}
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Upload Material</span>
-            </button>
-          </div>
-
-          <div className="space-y-3">
-            {materials.map((mat, idx) => (
-              <div key={mat._id || mat.id || `mat-${idx}`} className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/50 flex items-center justify-between text-xs">
-                <div>
-                  <div className="font-bold text-slate-800 dark:text-slate-100">{mat.title}</div>
-                  <div className="text-slate-400 dark:text-slate-400">{mat.course} • {mat.type}</div>
-                </div>
-                <span className="text-slate-400 dark:text-slate-500 font-medium">
-                  {mat.date || (mat.createdAt ? new Date(mat.createdAt).toLocaleDateString() : "Recent")}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Attendance History */}
-        <div id="attendance" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-4 transition-colors scroll-mt-6">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2">
-              <UserCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-              <span>Attendance History</span>
-            </h3>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => handleLoadRosterReport(selectedRosterCourse)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 text-xs font-bold transition cursor-pointer"
-              >
-                <Users className="w-3.5 h-3.5" />
-                <span>Student Roster</span>
-              </button>
-              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-1 rounded-md">
-                Live Session Tracker
-              </span>
-            </div>
-          </div>
-
-          {attendanceLogs.length === 0 ? (
-            <div className="py-8 text-center text-xs text-slate-400 dark:text-slate-500">
-              No live attendance sessions taken yet today. Click "Start Attendance Session" on any scheduled class slot above to initialize roll-call.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {attendanceLogs.map((att, idx) => (
-                <div key={att._id || att.id || `att-${idx}`} className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-emerald-200/40 dark:border-emerald-800/40 flex items-center justify-between text-xs">
-                  <div>
-                    <div className="font-bold text-slate-800 dark:text-slate-100">{att.course} Attendance</div>
-                    <div className="text-slate-400 dark:text-slate-400">{att.date} • {att.present} Present, {att.absent} Absent</div>
-                  </div>
-                  <span className="font-bold text-emerald-600 dark:text-emerald-400 text-sm">{att.percentage}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <TeacherAnalyticsCharts 
+          teacherSchedule={teacherSchedule} 
+          isCollapsed={collapsedSections.analytics}
+          onToggle={() => toggleSection("analytics")}
+        />
       </div>
 
       {/* Official Notice Board */}
-      <NoticeBoardSection
-        title="Notice Board"
-        subtitle="Department broadcast & official faculty circulars."
-      />
+      <div id="notices" className="scroll-mt-6">
+        <NoticeBoardSection
+          title="Notice Board"
+          subtitle="Department broadcast & official faculty circulars."
+          isCollapsed={collapsedSections.notices}
+          onToggle={() => toggleSection("notices")}
+        />
+      </div>
 
-      {/* Upload Material Modal */}
-      {showUploadModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-[2rem] border border-white dark:border-white/10 p-7 shadow-2xl space-y-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <UploadCloud className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Publish Study Material</h3>
+      {/* ── Quick Edit Target Classes Modal on Dashboard ── */}
+      {editingTargetCourse && (
+        <div
+          data-lenis-prevent
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in overscroll-contain"
+        >
+          <div className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-7 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-5 max-h-[90vh] overflow-y-auto overscroll-contain scrollbar-thin">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white">
+                    Planned Classes • {editingTargetCourse.code}
+                  </h3>
+                  <p className="text-xs text-slate-400 line-clamp-1">{editingTargetCourse.title}</p>
+                </div>
               </div>
-              <button 
-                onClick={() => setShowUploadModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+              <button
+                type="button"
+                onClick={() => setEditingTargetCourse(null)}
+                className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleUploadMaterial} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Material Title</label>
-                <input 
-                  type="text"
-                  placeholder="e.g. Chapter 3 - CPU Scheduling & Multithreading"
-                  value={materialForm.title}
-                  onChange={(e) => setMaterialForm({ ...materialForm, title: e.target.value })}
-                  className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Course Code</label>
-                <input 
-                  type="text"
-                  placeholder="e.g. CSE 3101"
-                  value={materialForm.course}
-                  onChange={(e) => setMaterialForm({ ...materialForm, course: e.target.value })}
-                  className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Material Format</label>
-                <select
-                  value={materialForm.type}
-                  onChange={(e) => setMaterialForm({ ...materialForm, type: e.target.value })}
-                  className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500"
-                >
-                  <option value="Lecture Slides (PDF)">Lecture Slides (PDF)</option>
-                  <option value="Reference Notes (PDF)">Reference Notes (PDF)</option>
-                  <option value="Lab Manual & Exercises">Lab Manual & Exercises</option>
-                  <option value="Problem Set & Code Solution">Problem Set & Code Solution</option>
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                  <span>Attach File</span>
-                  <span className="text-[10px] text-slate-400">PDF, PPTX, DOCX, ZIP</span>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSaveDashboardTargetClasses(targetClassesInput);
+              }}
+              className="space-y-4"
+            >
+              {/* Presets */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Quick Presets
                 </label>
-                <input
-                  type="file"
-                  onChange={(e) => setMaterialFile(e.target.files?.[0] || null)}
-                  className="w-full text-xs text-slate-600 dark:text-slate-300 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100 cursor-pointer"
-                />
+                <div className="grid grid-cols-4 gap-2">
+                  {[24, 30, 36, 40].map((preset) => {
+                    const isSelected = Number(targetClassesInput) === preset;
+                    return (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setTargetClassesInput(preset)}
+                        className={`py-2 px-2 rounded-xl text-xs font-extrabold border transition-all cursor-pointer ${
+                          isSelected
+                            ? "bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-600/30 scale-102"
+                            : "bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-400"
+                        }`}
+                      >
+                        {preset} Cls
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-2">
+              {/* Number Input */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Total Planned Classes For Semester
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="1"
+                    max="300"
+                    required
+                    value={targetClassesInput}
+                    onChange={(e) => setTargetClassesInput(e.target.value)}
+                    className="w-full h-11 px-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-extrabold text-slate-900 dark:text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  />
+                  <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
+                    Sessions Target
+                  </span>
+                </div>
+              </div>
+
+              {/* Info note */}
+              <div className="p-3.5 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50 text-xs text-indigo-950 dark:text-indigo-200 space-y-1">
+                <span className="font-bold flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                  <span>Attendance Threshold Impact</span>
+                </span>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Minimum 75% attendance for {targetClassesInput || 0} classes equals <strong>{Math.ceil(0.75 * (parseInt(targetClassesInput, 10) || 0))} attended classes</strong>.
+                </p>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setShowUploadModal(false)}
-                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                  onClick={() => setEditingTargetCourse(null)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-600 dark:text-slate-300 font-bold text-xs transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={uploadingMaterial}
-                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-200 dark:shadow-none cursor-pointer disabled:opacity-50"
+                  disabled={isSavingDashboardTarget}
+                  className="inline-flex items-center gap-1.5 px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition cursor-pointer shadow-md shadow-indigo-600/30 disabled:opacity-50"
                 >
-                  {uploadingMaterial ? "Uploading..." : "Publish Material"}
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{isSavingDashboardTarget ? "Saving..." : "Save Target"}</span>
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* ── COURSE ATTENDANCE ROSTER MODAL ────────────────────── */}
-      {showRosterModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="w-full max-w-4xl bg-white dark:bg-slate-900 rounded-[2rem] border border-white dark:border-white/10 p-6 sm:p-7 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
-            {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-white/10">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
-                  <UserCheck className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
-                    Course Attendance Roster & Student Log
-                  </h3>
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                    Roll-Call Verification • Cumulative Attendance Percentages
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowRosterModal(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Course Selector Bar */}
-            <div className="flex items-center justify-between gap-3 pt-1">
-              <div className="flex items-center gap-2">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Select Course:
-                </label>
-                <select
-                  value={selectedRosterCourse}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setSelectedRosterCourse(val);
-                    handleLoadRosterReport(val);
-                  }}
-                  className="h-9 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500"
-                >
-                  <option value="all">All Scheduled Courses</option>
-                  {Array.from(new Set(teacherSchedule.map((s) => s.code))).map((code) => (
-                    <option key={code} value={code}>{code}</option>
-                  ))}
-                </select>
-              </div>
-
-              {rosterData && (
-                <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
-                  <span>Total Classes Conducted: <strong className="text-slate-900 dark:text-white">{rosterData.totalSessions}</strong></span>
-                  <span>•</span>
-                  <span>Students Enrolled: <strong className="text-slate-900 dark:text-white">{rosterData.studentCount}</strong></span>
-                </div>
-              )}
-            </div>
-
-            {/* Roster Table */}
-            {rosterLoading ? (
-              <div className="py-12 text-center text-xs text-slate-400 animate-pulse">
-                Generating course attendance roster...
-              </div>
-            ) : !rosterData || rosterData.roster.length === 0 ? (
-              <div className="py-12 text-center text-xs text-slate-400 space-y-2">
-                <AlertCircle className="w-8 h-8 text-slate-300 mx-auto" />
-                <p>No student records or class sessions found for this course.</p>
-              </div>
-            ) : (
-              <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-800">
-                    <tr>
-                      <th className="p-3.5">Student ID</th>
-                      <th className="p-3.5">Full Name</th>
-                      <th className="p-3.5">Batch / Sem</th>
-                      <th className="p-3.5 text-center">Classes Attended</th>
-                      <th className="p-3.5 text-center">Attendance Rate</th>
-                      <th className="p-3.5 text-center">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {rosterData.roster.map((stu) => (
-                      <tr key={stu.id || stu.studentId} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition">
-                        <td className="p-3.5 font-mono font-bold text-indigo-600 dark:text-indigo-400">
-                          {stu.studentId}
-                        </td>
-                        <td className="p-3.5 font-bold text-slate-800 dark:text-white">
-                          {stu.name}
-                          <span className="block text-[10px] text-slate-400 font-normal">{stu.email}</span>
-                        </td>
-                        <td className="p-3.5 text-slate-500">
-                          Batch {stu.batch || "N/A"} • Sem {stu.semester || "N/A"}
-                        </td>
-                        <td className="p-3.5 text-center font-bold text-slate-700 dark:text-slate-300">
-                          {stu.attendedCount} / {rosterData.totalSessions}
-                        </td>
-                        <td className="p-3.5 text-center">
-                          <span className="font-extrabold text-sm font-mono text-slate-900 dark:text-white">
-                            {stu.percentage}%
-                          </span>
-                        </td>
-                        <td className="p-3.5 text-center">
-                          <span
-                            className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                              stu.isAtRisk
-                                ? "bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300"
-                                : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
-                            }`}
-                          >
-                            {stu.isAtRisk ? "Low Attendance" : "Good Standing"}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
           </div>
         </div>
       )}
