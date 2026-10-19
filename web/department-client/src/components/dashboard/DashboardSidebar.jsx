@@ -106,6 +106,8 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
           { name: "Shift Check-in", href: "/dashboard/employee#shift", icon: Clock },
           { name: "Lab Infrastructure", href: "/dashboard/employee#inventory", icon: Layers },
           { name: "Maintenance Tasks", href: "/dashboard/employee#tasks", icon: Wrench },
+          { name: "Lab Timetable", href: "/dashboard/employee#schedule", icon: Calendar },
+          { name: "Staff Profile", href: "/dashboard/employee#profile", icon: User },
         ];
       case "student":
       default:

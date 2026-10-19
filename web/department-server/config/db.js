@@ -42,6 +42,10 @@ const connectDB = async () => {
     assignments: db.collection('assignments'),
     assignmentSubmissions: db.collection('assignment_submissions'),
     materials: db.collection('materials'),
+    // Employee operations
+    maintenanceTasks: db.collection('maintenance_tasks'),
+    employeeShifts: db.collection('employee_shifts'),
+    labFacilities: db.collection('lab_facilities'),
   };
 
   const ensureIndex = async (collection, spec, options = {}) => {
