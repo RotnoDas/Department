@@ -7,8 +7,14 @@ import {
   RefreshCw,
   Search,
   X,
+  Globe,
+  Lock,
+  ArrowRight,
+  Sparkles,
 } from "lucide-react";
+import Link from "next/link";
 import toast from "react-hot-toast";
+import { authClient } from "@/lib/auth-client";
 import NoticeCard from "./NoticeCard";
 import NoticeModal from "./NoticeModal";
 
@@ -16,10 +22,15 @@ export default function NoticeBoardSection({
   isAdmin = false,
   title = "Department Notice Board",
   subtitle = "Official circulars, academic notices, and audio announcements for all department members.",
+  defaultFilter = "all",
 }) {
+  const { data: session } = authClient.useSession();
+  const user = session?.user;
+
   const [notices, setNotices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [filterType, setFilterType] = useState(defaultFilter); // "all" | "public" | "internal"
 
   // Admin modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -90,23 +101,32 @@ export default function NoticeBoardSection({
     fetchNotices();
   };
 
-  // Real-time keyword filter
+  const publicCount = useMemo(() => notices.filter((n) => n.isPublic).length, [notices]);
+  const internalCount = useMemo(() => notices.filter((n) => !n.isPublic).length, [notices]);
+
+  // Real-time keyword & category filter
   const filteredNotices = useMemo(() => {
-    if (!searchQuery.trim()) return notices;
-    const q = searchQuery.toLowerCase().trim();
-    return notices.filter(
-      (n) =>
+    return notices.filter((n) => {
+      // Visibility filter
+      if (filterType === "public" && !n.isPublic) return false;
+      if (filterType === "internal" && n.isPublic) return false;
+
+      // Keyword filter
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase().trim();
+      return (
         n.title?.toLowerCase().includes(q) ||
         n.content?.toLowerCase().includes(q) ||
         n.authorName?.toLowerCase().includes(q) ||
         n.originalName?.toLowerCase().includes(q)
-    );
-  }, [notices, searchQuery]);
+      );
+    });
+  }, [notices, searchQuery, filterType]);
 
   return (
     <div
       id="notices"
-      className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6"
+      className="p-6 sm:p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6"
     >
       {/* Section Header matching main project hub design */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -115,7 +135,7 @@ export default function NoticeBoardSection({
             <Bell className="w-3.5 h-3.5 text-indigo-500" />
             <span>Official Broadcasts & Circulars</span>
           </div>
-          <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2.5">
+          <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2.5 flex-wrap">
             <span>{title}</span>
             {notices.length > 0 && (
               <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 font-extrabold">
@@ -152,8 +172,77 @@ export default function NoticeBoardSection({
         </div>
       </div>
 
-      {/* Tab & Search Bar matching employee/student directory in main project */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-2">
+      {/* Guest Notice Callout Banner */}
+      {!user && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-indigo-500/10 to-purple-500/10 border border-emerald-200/80 dark:border-emerald-800/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+              <Globe className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                <span>Public Notice Board • Open to All</span>
+                <span className="text-[10px] font-extrabold px-2 py-0.2 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300">
+                  Guest Accessible
+                </span>
+              </h4>
+              <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5">
+                All public notices, event announcements, and admission circulars can be viewed by anyone without signing in. Internal notices require student or faculty sign in.
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/login?redirect=/notices"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition shrink-0"
+          >
+            <span>Sign In for Members Portal</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      )}
+
+      {/* Filter Tabs & Search Bar */}
+      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-1">
+        {/* Visibility Filter Tabs */}
+        <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 shrink-0">
+          <button
+            type="button"
+            onClick={() => setFilterType("all")}
+            className={`py-1.5 px-3 rounded-xl text-xs font-bold transition-all ${
+              filterType === "all"
+                ? "bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs"
+                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+            }`}
+          >
+            All Broadcasts ({notices.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterType("public")}
+            className={`py-1.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+              filterType === "public"
+                ? "bg-emerald-600 text-white shadow-xs"
+                : "text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400"
+            }`}
+          >
+            <Globe className="w-3.5 h-3.5" />
+            <span>Public Notices ({publicCount})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterType("internal")}
+            className={`py-1.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+              filterType === "internal"
+                ? "bg-amber-600 text-white shadow-xs"
+                : "text-slate-600 dark:text-slate-400 hover:text-amber-600 dark:hover:text-amber-400"
+            }`}
+          >
+            <Lock className="w-3.5 h-3.5" />
+            <span>Members Only ({internalCount})</span>
+          </button>
+        </div>
+
+        {/* Search Input */}
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input

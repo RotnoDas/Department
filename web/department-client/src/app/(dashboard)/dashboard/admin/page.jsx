@@ -38,7 +38,10 @@ import {
   User,
   Lock,
   ShieldAlert,
-  Check
+  Check,
+  LifeBuoy,
+  MessageSquareWarning,
+  Eye
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { SEMESTER_COURSES, SEMESTER_LABELS, SEMESTER_KEYS } from "@/data/courses";
@@ -98,6 +101,15 @@ export default function AdminDashboardPage() {
   const [teacherSearch, setTeacherSearch] = useState("");
   const [employeeTab, setEmployeeTab] = useState("all");
   const [employeeSearch, setEmployeeSearch] = useState("");
+
+  // Support & Complaints states
+  const [supportRecords, setSupportRecords] = useState([]);
+  const [supportFilter, setSupportFilter] = useState("all");
+  const [supportSearch, setSupportSearch] = useState("");
+  const [selectedSupport, setSelectedSupport] = useState(null);
+  const [adminResponseDraft, setAdminResponseDraft] = useState("");
+  const [selectedNewStatus, setSelectedNewStatus] = useState("Resolved");
+  const [updatingSupportId, setUpdatingSupportId] = useState(null);
 
   // Routine Studio states
   const [selectedRoutineSemester, setSelectedRoutineSemester] = useState("7");
@@ -171,6 +183,17 @@ export default function AdminDashboardPage() {
       if (routineRes.ok) {
         const rData = await routineRes.json();
         setRoutines(Array.isArray(rData) ? rData : (rData.routines || []));
+      }
+
+      // 8. Fetch Support & Complaints
+      try {
+        const supportRes = await fetch(`${SERVER_URL}/api/support/admin/all`);
+        if (supportRes.ok) {
+          const sData = await supportRes.json();
+          setSupportRecords(sData.items || []);
+        }
+      } catch (e) {
+        console.warn("Support records fetch error:", e);
       }
     } catch (err) {
       console.error("Failed to load dashboard data:", err);
@@ -841,6 +864,121 @@ export default function AdminDashboardPage() {
 
   const totalFilteredCredits = filteredCourses.reduce((sum, c) => sum + (parseFloat(c.credits) || 0), 0);
 
+  const pendingSupportCount = supportRecords.filter(r =>
+    ["submitted", "open", "received", "under review", "in progress", "investigating"].includes(String(r.status || "").toLowerCase())
+  ).length;
+  const complaintsCount = supportRecords.filter(r => r.type === "complaint").length;
+  const techCount = supportRecords.filter(r => r.type === "technical_support").length;
+  const inquiriesCount = supportRecords.filter(r => r.type === "general_inquiry").length;
+  const resolvedSupportCount = supportRecords.filter(r =>
+    ["resolved", "closed"].includes(String(r.status || "").toLowerCase())
+  ).length;
+
+  const filteredSupportRecords = supportRecords.filter(record => {
+    const statusLower = String(record.status || "").toLowerCase();
+    if (supportFilter === "pending") {
+      const isPending = ["submitted", "open", "received", "under review", "in progress", "investigating"].includes(statusLower);
+      if (!isPending) return false;
+    } else if (supportFilter === "resolved") {
+      const isResolved = ["resolved", "closed"].includes(statusLower);
+      if (!isResolved) return false;
+    } else if (supportFilter === "complaint") {
+      if (record.type !== "complaint") return false;
+    } else if (supportFilter === "technical_support") {
+      if (record.type !== "technical_support") return false;
+    } else if (supportFilter === "general_inquiry") {
+      if (record.type !== "general_inquiry") return false;
+    }
+
+    if (supportSearch.trim()) {
+      const q = supportSearch.toLowerCase();
+      const titleMatch = (record.title || "").toLowerCase().includes(q);
+      const descMatch = (record.description || "").toLowerCase().includes(q);
+      const trackMatch = (record.trackingId || "").toLowerCase().includes(q);
+      const authorMatch = (record.authorName || "").toLowerCase().includes(q);
+      const emailMatch = (record.authorEmail || "").toLowerCase().includes(q);
+      const catMatch = (record.category || record.topic || "").toLowerCase().includes(q);
+      if (!titleMatch && !descMatch && !trackMatch && !authorMatch && !emailMatch && !catMatch) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  const handleUpdateSupportStatus = async (id, newStatus, responseNote = null) => {
+    setUpdatingSupportId(id);
+    try {
+      const res = await fetch(`${SERVER_URL}/api/support/admin/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: newStatus,
+          adminResponse: responseNote || undefined,
+          note: responseNote || `Status updated to "${newStatus}" by Administration.`,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to update record status");
+      }
+      toast.success(`Status updated to "${newStatus}"`);
+      setSupportRecords(prev =>
+        prev.map(item => {
+          if (item._id === id || item.id === id) {
+            const now = new Date().toISOString();
+            return {
+              ...item,
+              status: newStatus,
+              adminResponse: responseNote || item.adminResponse,
+              updatedAt: now,
+              timeline: [
+                ...(item.timeline || []),
+                {
+                  status: newStatus,
+                  note: responseNote || `Status updated to ${newStatus}`,
+                  at: now,
+                },
+              ],
+            };
+          }
+          return item;
+        })
+      );
+      if (selectedSupport && (selectedSupport._id === id || selectedSupport.id === id)) {
+        setSelectedSupport(prev => ({
+          ...prev,
+          status: newStatus,
+          adminResponse: responseNote || prev.adminResponse,
+        }));
+      }
+    } catch (err) {
+      toast.error(err.message || "Failed to update status");
+    } finally {
+      setUpdatingSupportId(null);
+    }
+  };
+
+  const handleDeleteSupport = async (id, title) => {
+    if (!window.confirm(`Are you sure you want to delete this record?\n\n"${title}"`)) return;
+    try {
+      const res = await fetch(`${SERVER_URL}/api/support/admin/${id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to delete record");
+      }
+      toast.success("Record deleted successfully");
+      setSupportRecords(prev => prev.filter(r => r._id !== id && r.id !== id));
+      if (selectedSupport && (selectedSupport._id === id || selectedSupport.id === id)) {
+        setSelectedSupport(null);
+      }
+    } catch (err) {
+      toast.error(err.message || "Failed to delete record");
+    }
+  };
+
   if (initialLoading) {
     return (
       <Loading 
@@ -881,7 +1019,7 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* KPI Statistic Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5">
         {/* Total Students */}
         <div className="p-6 rounded-3xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm hover:shadow-md dark:shadow-none transition-shadow">
           <div className="flex items-center justify-between">
@@ -964,6 +1102,32 @@ export default function AdminDashboardPage() {
               </span>
             ) : (
               <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Officers & Staff</span>
+            )}
+          </div>
+        </div>
+
+        {/* Support & Grievances */}
+        <div className="p-6 rounded-3xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm hover:shadow-md dark:shadow-none transition-shadow relative overflow-hidden">
+          {pendingSupportCount > 0 && (
+            <div className="absolute top-3 right-3 flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400">Support & Grievances</span>
+            <div className="h-10 w-10 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+              <LifeBuoy className="w-5 h-5" />
+            </div>
+          </div>
+          <div className="mt-4 flex items-baseline gap-2">
+            <span className="text-3xl font-black text-slate-900 dark:text-white">{supportRecords.length}</span>
+            {pendingSupportCount > 0 ? (
+              <span className="text-xs font-semibold text-rose-600 dark:text-rose-400 font-bold">
+                {pendingSupportCount} Requires Review
+              </span>
+            ) : (
+              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">All Addressed</span>
             )}
           </div>
         </div>
@@ -2389,6 +2553,286 @@ export default function AdminDashboardPage() {
         subtitle="Publish text announcements with files and voice notes, then revise or remove them whenever the department needs an update."
       />
 
+      {/* ── Support & Complaints Management Hub ───────────────── */}
+      <div id="support-complaints" className="scroll-mt-6 space-y-6">
+        <div className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-50 dark:bg-rose-950/60 text-xs font-semibold text-rose-600 dark:text-rose-400 mb-1.5">
+                <LifeBuoy className="w-3.5 h-3.5 text-rose-500" />
+                <span>Centralized Grievance & Technical Helpdesk</span>
+              </div>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2.5">
+                <span>Support & Complaints Registry</span>
+                {pendingSupportCount > 0 && (
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 font-extrabold flex items-center gap-1 border border-rose-300 dark:border-rose-700 animate-pulse">
+                    <Clock className="w-3 h-3" />
+                    <span>{pendingSupportCount} Active / Requires Action</span>
+                  </span>
+                )}
+              </h2>
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5">
+                Review submitted grievances, IT helpdesk tickets, and general inquiries. Update case resolution status and publish official administrative responses.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={fetchData}
+                disabled={isLoading}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
+                <span>Refresh Desk</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Filter Tabs & Search Bar */}
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-2">
+            <div className="flex items-center gap-1 p-1 bg-slate-100/80 dark:bg-slate-800/80 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 flex-wrap">
+              <button
+                onClick={() => setSupportFilter("all")}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  supportFilter === "all"
+                    ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-bold"
+                    : "hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                All Records ({supportRecords.length})
+              </button>
+              <button
+                onClick={() => setSupportFilter("pending")}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  supportFilter === "pending"
+                    ? "bg-white dark:bg-slate-700 text-rose-600 dark:text-rose-400 shadow-xs font-bold"
+                    : "hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                Active / Needs Action ({pendingSupportCount})
+              </button>
+              <button
+                onClick={() => setSupportFilter("complaint")}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  supportFilter === "complaint"
+                    ? "bg-white dark:bg-slate-700 text-rose-600 dark:text-rose-400 shadow-xs font-bold"
+                    : "hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                Grievances ({complaintsCount})
+              </button>
+              <button
+                onClick={() => setSupportFilter("technical_support")}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  supportFilter === "technical_support"
+                    ? "bg-white dark:bg-slate-700 text-sky-600 dark:text-sky-400 shadow-xs font-bold"
+                    : "hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                IT Support ({techCount})
+              </button>
+              <button
+                onClick={() => setSupportFilter("general_inquiry")}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  supportFilter === "general_inquiry"
+                    ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-xs font-bold"
+                    : "hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                Inquiries ({inquiriesCount})
+              </button>
+              <button
+                onClick={() => setSupportFilter("resolved")}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  supportFilter === "resolved"
+                    ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-xs font-bold"
+                    : "hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                Resolved ({resolvedSupportCount})
+              </button>
+            </div>
+
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search by tracking ID, subject, author, category..."
+                value={supportSearch}
+                onChange={(e) => setSupportSearch(e.target.value)}
+                className="w-full h-10 pl-11 pr-4 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-white placeholder-slate-400 outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all"
+              />
+            </div>
+          </div>
+
+          {/* Records Table */}
+          <div className="overflow-x-auto">
+            {filteredSupportRecords.length === 0 ? (
+              <div className="text-center py-16 text-slate-400 dark:text-slate-500 space-y-2">
+                <LifeBuoy className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600" />
+                <p className="font-semibold text-sm">No support tickets or complaints found for this view.</p>
+              </div>
+            ) : (
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 dark:border-white/10 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    <th className="pb-3 px-4">Ticket & Origin</th>
+                    <th className="pb-3 px-4">Subject & Details</th>
+                    <th className="pb-3 px-4">Reporter Information</th>
+                    <th className="pb-3 px-4">Status & Priority</th>
+                    <th className="pb-3 px-4">Date</th>
+                    <th className="pb-3 px-4 text-right">Administrative Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-white/10">
+                  {filteredSupportRecords.map((record) => {
+                    const recId = record._id || record.id;
+                    const isComplaint = record.type === "complaint";
+                    const isTech = record.type === "technical_support";
+                    const statusStr = String(record.status || "Submitted").toLowerCase();
+                    const isResolved = ["resolved", "closed"].includes(statusStr);
+
+                    return (
+                      <tr key={recId} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/50 transition-colors">
+                        {/* Ticket & Origin */}
+                        <td className="py-4 px-4 align-top">
+                          <div className="flex flex-col gap-1.5">
+                            <span className="font-mono text-xs font-extrabold text-slate-900 dark:text-white bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-700 w-fit">
+                              {record.trackingId || "N/A"}
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md ${
+                                isComplaint
+                                  ? "bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 ring-1 ring-rose-200 dark:ring-rose-800/60"
+                                  : isTech
+                                  ? "bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 ring-1 ring-sky-200 dark:ring-sky-800/60"
+                                  : "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200 dark:ring-emerald-800/60"
+                              }`}>
+                                {isComplaint ? "Grievance" : isTech ? "IT Helpdesk" : "Inquiry"}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Subject & Details */}
+                        <td className="py-4 px-4 align-top max-w-xs">
+                          <div className="space-y-1">
+                            <div className="font-bold text-slate-900 dark:text-white text-xs leading-snug line-clamp-1">
+                              {record.title}
+                            </div>
+                            <div className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
+                              {record.description}
+                            </div>
+                            <div className="flex items-center gap-1.5 pt-0.5">
+                              <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold capitalize">
+                                {record.category || record.topic || "General"}
+                              </span>
+                              {record.adminResponse && (
+                                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  Responded
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Reporter Information */}
+                        <td className="py-4 px-4 align-top">
+                          {record.isAnonymous ? (
+                            <div className="flex items-center gap-1.5 text-xs text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 px-2.5 py-1 rounded-xl border border-rose-200 dark:border-rose-900/40 w-fit">
+                              <Lock className="w-3 h-3 text-rose-500" />
+                              <span className="font-bold text-[11px]">Anonymous Member</span>
+                            </div>
+                          ) : (
+                            <div className="space-y-0.5 text-xs">
+                              <div className="font-bold text-slate-800 dark:text-slate-200">
+                                {record.authorName || "Guest User"}
+                              </div>
+                              {record.authorEmail && (
+                                <a
+                                  href={`mailto:${record.authorEmail}`}
+                                  className="text-[11px] text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-1"
+                                >
+                                  <Mail className="w-3 h-3" />
+                                  <span>{record.authorEmail}</span>
+                                </a>
+                              )}
+                              {record.authorPhone && (
+                                <div className="text-[11px] text-slate-400 flex items-center gap-1">
+                                  <Phone className="w-3 h-3" />
+                                  <span>{record.authorPhone}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Status & Priority */}
+                        <td className="py-4 px-4 align-top">
+                          <div className="space-y-1.5">
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider ${
+                              isResolved
+                                ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200 dark:ring-emerald-800"
+                                : statusStr.includes("progress") || statusStr.includes("investigating")
+                                ? "bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 ring-1 ring-purple-200 dark:ring-purple-800"
+                                : "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 ring-1 ring-amber-200 dark:ring-amber-800"
+                            }`}>
+                              {isResolved ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                              <span>{record.status}</span>
+                            </span>
+                            {record.priority && (
+                              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                Priority: <span className={record.priority === "Urgent" ? "text-rose-600" : "text-slate-600 dark:text-slate-300"}>{record.priority}</span>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Date */}
+                        <td className="py-4 px-4 align-top text-xs text-slate-400">
+                          {new Date(record.createdAt).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })}
+                        </td>
+
+                        {/* Administrative Action */}
+                        <td className="py-4 px-4 align-top text-right">
+                          <div className="inline-flex items-center gap-2">
+                            <button
+                              onClick={() => {
+                                setSelectedSupport(record);
+                                setAdminResponseDraft(record.adminResponse || "");
+                                setSelectedNewStatus(record.status === "Resolved" ? "Resolved" : "In Progress");
+                              }}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-300 text-xs font-bold transition-colors cursor-pointer"
+                              title="Inspect & Respond"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Review & Resolve</span>
+                            </button>
+
+                            <button
+                              onClick={() => handleDeleteSupport(recId, record.title)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                              title="Delete Record"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* ── Staff & Employee Verification Hub ─────────────────── */}
       <div id="directory" className="scroll-mt-6 space-y-6">
         <div id="employees" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
@@ -2641,10 +3085,160 @@ export default function AdminDashboardPage() {
             <span className="text-slate-300 dark:text-slate-600">•</span>
             <a href="#faculty" className="text-sky-600 dark:text-sky-400 hover:underline">Faculty Approvals ↑</a>
             <span className="text-slate-300 dark:text-slate-600">•</span>
+            <a href="#support-complaints" className="text-rose-600 dark:text-rose-400 hover:underline">Support & Grievances ↑</a>
+            <span className="text-slate-300 dark:text-slate-600">•</span>
             <a href="#routine" className="text-slate-600 dark:text-slate-400 hover:underline">Academic Routine ↑</a>
           </div>
         </div>
       </div>
+
+      {/* ── Support & Grievance Review Modal ── */}
+      {selectedSupport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-[2.5rem] border border-white dark:border-white/10 p-6 sm:p-8 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-white/10">
+              <div className="flex items-center gap-3">
+                <div className="h-11 w-11 rounded-2xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+                  <LifeBuoy className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-black text-indigo-600 dark:text-indigo-400">
+                      {selectedSupport.trackingId}
+                    </span>
+                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                      {selectedSupport.type}
+                    </span>
+                  </div>
+                  <h3 className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-white mt-0.5">
+                    {selectedSupport.title}
+                  </h3>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedSupport(null)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Reporter details */}
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 space-y-2">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Reporter Identity
+              </div>
+              {selectedSupport.isAnonymous ? (
+                <div className="flex items-center gap-2 text-rose-700 dark:text-rose-300 font-bold text-xs">
+                  <Lock className="w-4 h-4 text-rose-500 shrink-0" />
+                  <span>100% Anonymous Submission — Reporter identity strictly protected by the grievance protocol.</span>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <span className="text-slate-400 text-[11px] block">Name:</span>
+                    <span className="font-bold text-slate-900 dark:text-white">{selectedSupport.authorName || "Guest User"}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 text-[11px] block">Email:</span>
+                    <span className="font-bold text-slate-900 dark:text-white">{selectedSupport.authorEmail || "Not provided"}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Full Description */}
+            <div className="space-y-1.5">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Case Description & Details
+              </div>
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">
+                {selectedSupport.description}
+              </div>
+            </div>
+
+            {/* Activity Timeline */}
+            {selectedSupport.timeline && selectedSupport.timeline.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Case Activity Timeline
+                </div>
+                <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
+                  {selectedSupport.timeline.map((entry, idx) => (
+                    <div key={idx} className="flex items-start gap-2.5 text-xs p-2 rounded-xl bg-slate-50 dark:bg-slate-800/50">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-indigo-500 shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-800 dark:text-slate-200">{entry.status}</span>
+                          <span className="text-[10px] text-slate-400">{new Date(entry.at).toLocaleString()}</span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">{entry.note}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Official Administrative Response Composer */}
+            <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-white/10">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-900 dark:text-white">
+                  Official Administrative Response & Resolution Note
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-slate-400">Set Status:</span>
+                  <select
+                    value={selectedNewStatus}
+                    onChange={(e) => setSelectedNewStatus(e.target.value)}
+                    className="h-8 px-2.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-white outline-none cursor-pointer"
+                  >
+                    <option value="Under Review">Under Review</option>
+                    <option value="In Progress">In Progress</option>
+                    <option value="Resolved">Resolved</option>
+                    <option value="Closed">Closed</option>
+                  </select>
+                </div>
+              </div>
+
+              <textarea
+                rows={3}
+                placeholder="Type the department's resolution statement, investigative findings, or guidance for the reporter..."
+                value={adminResponseDraft}
+                onChange={(e) => setAdminResponseDraft(e.target.value)}
+                className="w-full p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm text-slate-800 dark:text-white placeholder-slate-400 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition"
+              />
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedSupport(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={updatingSupportId === (selectedSupport._id || selectedSupport.id)}
+                  onClick={() => handleUpdateSupportStatus(selectedSupport._id || selectedSupport.id, selectedNewStatus, adminResponseDraft)}
+                  className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-600/30 transition cursor-pointer flex items-center gap-2"
+                >
+                  {updatingSupportId ? (
+                    <span>Saving...</span>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>Save Status & Response</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

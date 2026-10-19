@@ -104,11 +104,17 @@ router.get('/', async (req, res) => {
       .limit(maxItems)
       .toArray();
 
-    const noticeList = rawList.map((n) => ({
-      ...n,
-      id: n._id.toString(),
-      authorName: n.authorName || n.author?.name || 'Department Admin',
-    }));
+    const noticeList = rawList.map((n) => {
+      const isPublic = n.isPublic !== undefined 
+        ? Boolean(n.isPublic) 
+        : (n.visibility === 'public' || n.category === 'Event' || n.category === 'Public' || String(n.title).toLowerCase().includes('contest') || String(n.title).toLowerCase().includes('greetings') || String(n.title).toLowerCase().includes('hackathon'));
+      return {
+        ...n,
+        id: n._id.toString(),
+        isPublic,
+        authorName: n.authorName || n.author?.name || 'Department Admin',
+      };
+    });
 
     res.json({
       success: true,
@@ -133,7 +139,10 @@ router.get('/:id', async (req, res) => {
     if (!notice) {
       return res.status(404).json({ success: false, error: 'Notice not found.' });
     }
-    res.json({ success: true, notice: { ...notice, id: notice._id.toString() } });
+    const isPublic = notice.isPublic !== undefined 
+      ? Boolean(notice.isPublic) 
+      : (notice.visibility === 'public' || notice.category === 'Event' || notice.category === 'Public' || String(notice.title).toLowerCase().includes('contest') || String(notice.title).toLowerCase().includes('greetings') || String(notice.title).toLowerCase().includes('hackathon'));
+    res.json({ success: true, notice: { ...notice, id: notice._id.toString(), isPublic } });
   } catch (err) {
     console.error('[GET /api/notices/:id] Error:', err);
     res.status(500).json({ success: false, error: 'Failed to retrieve notice.' });
@@ -188,10 +197,12 @@ router.post('/', (req, res) => {
       }
 
       const now = new Date();
+      const isPublic = req.body.isPublic === 'true' || req.body.isPublic === true || req.body.visibility === 'public';
 
       const newNotice = {
         title: title.trim(),
         content: content.trim(),
+        isPublic: Boolean(isPublic),
         attachments,
         audio,
         filePath: attachments[0]?.filePath || null,
@@ -308,6 +319,9 @@ router.put('/:id', (req, res) => {
       };
       if (title !== undefined) updateFields.title = title.trim();
       if (content !== undefined) updateFields.content = content.trim();
+      if (req.body.isPublic !== undefined || req.body.visibility !== undefined) {
+        updateFields.isPublic = req.body.isPublic === 'true' || req.body.isPublic === true || req.body.visibility === 'public';
+      }
 
       updateFields.attachments = updatedAttachments;
       updateFields.audio = updatedAudio;

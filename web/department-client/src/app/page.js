@@ -12,7 +12,6 @@ import { NoticeMarquee } from "@/components/landing/NoticeMarquee";
 import { KeyStatistics } from "@/components/landing/KeyStatistics";
 import { CoreFeatures } from "@/components/landing/CoreFeatures";
 
-import { PortalsPreview } from "@/components/landing/PortalsPreview";
 import { EventsNotices } from "@/components/landing/EventsNotices";
 import { HelpSupport } from "@/components/landing/HelpSupport";
 import { FloatingActions } from "@/components/landing/FloatingActions";
@@ -115,7 +114,6 @@ export default function LandingPage() {
 
           <KeyStatistics />
           <CoreFeatures />
-          <PortalsPreview />
           <EventsNotices />
           <HelpSupport />
           

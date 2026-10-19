@@ -1,20 +1,26 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell, Sparkles, Megaphone, Flame, ExternalLink } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Bell, Sparkles, Megaphone, Flame, ExternalLink, Lock, Globe } from "lucide-react";
 import Link from "next/link";
+import toast from "react-hot-toast";
+import { authClient } from "@/lib/auth-client";
 
 const DEFAULT_NOTICES = [
-  { id: 1, text: "Semester Final Examination Seating & Schedule published. Exams commence from Nov 15.", badge: "Urgent", category: "Exam" },
-  { id: 2, text: "Annual Department Programming Contest & TechFest 2026 registration is now open.", badge: "New", category: "Event" },
-  { id: 3, text: "Course registration for upcoming semester portal open for batches 8, 9, and 10.", badge: "Academic", category: "Academic" },
-  { id: 4, text: "Software Lab 1 workstation upgrade completed with modern AI/ML toolchains.", badge: "Lab", category: "Notice" },
-  { id: 5, text: "Guest seminar on 'Large Language Models in Autonomous Systems' on Friday at 3:00 PM.", badge: "Seminar", category: "Event" }
+  { id: "1", text: "Semester Final Examination Seating & Schedule published. Exams commence from Nov 15.", badge: "Members Only", category: "Exam", isPublic: false },
+  { id: "2", text: "Annual Department Programming Contest & TechFest 2026 registration is now open.", badge: "Public", category: "Event", isPublic: true },
+  { id: "3", text: "Course registration for upcoming semester portal open for batches 8, 9, and 10.", badge: "Members Only", category: "Academic", isPublic: false },
+  { id: "4", text: "Software Lab 1 workstation upgrade completed with modern AI/ML toolchains.", badge: "Internal", category: "Notice", isPublic: false },
+  { id: "5", text: "Undergraduate Admission & Open Day Orientation 2026 for prospective students.", badge: "Public", category: "Event", isPublic: true }
 ];
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
 export function NoticeMarquee() {
+  const router = useRouter();
+  const { data: session } = authClient.useSession();
+  const user = session?.user;
   const [notices, setNotices] = useState(DEFAULT_NOTICES);
 
   useEffect(() => {
@@ -24,12 +30,16 @@ export function NoticeMarquee() {
         if (res.ok) {
           const data = await res.json();
           if (data?.notices && data.notices.length > 0) {
-            const mapped = data.notices.map((n, i) => ({
-              id: n._id || i,
-              text: n.title + (n.content ? ` — ${n.content.slice(0, 75)}...` : ""),
-              badge: n.priority === "High" ? "Urgent" : n.category || "Notice",
-              category: n.category || "General",
-            }));
+            const mapped = data.notices.map((n, i) => {
+              const isPub = Boolean(n.isPublic);
+              return {
+                id: String(n._id || n.id || i + 1),
+                text: n.title + (n.content ? ` — ${n.content.slice(0, 75)}...` : ""),
+                badge: isPub ? "Public" : (n.priority === "High" ? "Urgent" : n.category || "Notice"),
+                category: n.category || "General",
+                isPublic: isPub,
+              };
+            });
             setNotices(mapped);
           }
         }
@@ -40,14 +50,28 @@ export function NoticeMarquee() {
     fetchNotices();
   }, []);
 
-  const getBadgeStyle = (badge) => {
+  const handleNoticeClick = (e, n) => {
+    e.preventDefault();
+    const targetUrl = `/notices/${n.id}`;
+    if (n.isPublic || user) {
+      router.push(targetUrl);
+    } else {
+      toast("Please sign in to read this internal notice", { icon: "🔒" });
+      router.push(`/login?redirect=${encodeURIComponent(targetUrl)}`);
+    }
+  };
+
+  const getBadgeStyle = (badge, isPublic) => {
+    if (isPublic || badge?.toLowerCase() === "public") {
+      return "bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-300/40 dark:border-emerald-500/30";
+    }
     switch (badge?.toLowerCase()) {
       case "urgent":
       case "high":
         return "bg-rose-500/15 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 border-rose-300/40 dark:border-rose-500/30";
       case "new":
       case "event":
-        return "bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-300/40 dark:border-emerald-500/30";
+        return "bg-teal-500/15 dark:bg-teal-500/20 text-teal-600 dark:text-teal-400 border-teal-300/40 dark:border-teal-500/30";
       case "academic":
       case "exam":
         return "bg-sky-500/15 dark:bg-sky-500/20 text-sky-600 dark:text-sky-400 border-sky-300/40 dark:border-sky-500/30";
@@ -84,25 +108,32 @@ export function NoticeMarquee() {
           <div className="flex w-fit animate-marquee hover:[animation-play-state:paused] whitespace-nowrap py-3.5">
             
             {/* Duplicated list for infinite seamless loop */}
-            {[...notices, ...notices].map((notice, index) => (
-              <Link 
-                key={`${notice.id}-${index}`}
-                href="#notices"
-                className="flex items-center gap-3.5 px-8 md:px-10 border-l border-slate-200/80 dark:border-slate-800/80 group/item transition-colors"
-              >
-                {notice.badge && (
-                  <span className={`text-[10px] uppercase tracking-wider font-bold px-2.5 py-0.5 rounded-full border shadow-sm transition-transform duration-200 group-hover/item:scale-105 shrink-0 ${getBadgeStyle(notice.badge)}`}>
-                    {notice.badge}
+            {[...notices, ...notices].map((notice, index) => {
+              const noticeUrl = `/notices/${notice.id}`;
+              const targetHref = (notice.isPublic || user) ? noticeUrl : `/login?redirect=${encodeURIComponent(noticeUrl)}`;
+              return (
+                <Link 
+                  key={`${notice.id}-${index}`}
+                  href={targetHref}
+                  onClick={(e) => handleNoticeClick(e, notice)}
+                  className="flex items-center gap-3.5 px-8 md:px-10 border-l border-slate-200/80 dark:border-slate-800/80 group/item transition-colors cursor-pointer"
+                  title={notice.isPublic ? "Click to view public notice" : (user ? "Click to view official circular" : "Sign in required to view this notice")}
+                >
+                  {notice.badge && (
+                    <span className={`inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-bold px-2.5 py-0.5 rounded-full border shadow-sm transition-transform duration-200 group-hover/item:scale-105 shrink-0 ${getBadgeStyle(notice.badge, notice.isPublic)}`}>
+                      {notice.isPublic ? <Globe className="w-2.5 h-2.5 text-emerald-500" /> : <Lock className="w-2.5 h-2.5 text-amber-500" />}
+                      <span>{notice.badge}</span>
+                    </span>
+                  )}
+                  
+                  <span className="text-[13px] md:text-[14px] font-medium text-slate-700 dark:text-slate-300 group-hover/item:text-indigo-600 dark:group-hover/item:text-indigo-400 transition-colors tracking-wide">
+                    {notice.text}
                   </span>
-                )}
-                
-                <span className="text-[13px] md:text-[14px] font-medium text-slate-700 dark:text-slate-300 group-hover/item:text-indigo-600 dark:group-hover/item:text-indigo-400 transition-colors tracking-wide">
-                  {notice.text}
-                </span>
 
-                <Sparkles className="h-3.5 w-3.5 text-indigo-400/60 dark:text-indigo-400/40 group-hover/item:text-indigo-400 ml-1 shrink-0 transition-colors" />
-              </Link>
-            ))}
+                  <ExternalLink className="h-3.5 w-3.5 text-indigo-400/60 dark:text-indigo-400/40 group-hover/item:text-indigo-500 ml-1 shrink-0 transition-colors" />
+                </Link>
+              );
+            })}
             
           </div>
         </div>

@@ -35,11 +35,10 @@ if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollToPlugin);
 }
 
-// Structured Navigation Mapping for Homepage and Portals
+// Structured Navigation Mapping for Homepage
 export const NAV_ITEMS = [
   { label: "Overview", href: "#overview", targetId: "overview", icon: Sparkles, description: "Department highlight & welcome" },
   { label: "Features", href: "#features", targetId: "features", icon: Layers, description: "Key platform capabilities" },
-  { label: "Portals", href: "#portals", targetId: "portals", icon: GraduationCap, description: "Student, Teacher & Staff desks" },
   { label: "Notices", href: "#notices", targetId: "notices", icon: Bell, description: "Latest circulars & announcements" },
   { label: "Support", href: "#support", targetId: "support", icon: LifeBuoy, description: "Student support & administrative help" },
 ];

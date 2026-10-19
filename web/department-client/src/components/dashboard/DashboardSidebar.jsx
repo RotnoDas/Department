@@ -28,7 +28,8 @@ import {
   Compass,
   BarChart3,
   User,
-  X
+  X,
+  LifeBuoy
 } from "lucide-react";
 
 export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
@@ -80,6 +81,7 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
         return [
           { name: "Overview", href: "/dashboard/admin", icon: LayoutDashboard },
           { name: "Institutional Analytics", href: "/dashboard/admin#analytics", icon: BarChart3 },
+          { name: "Support & Complaints", href: "/dashboard/admin#support-complaints", icon: LifeBuoy },
           { name: "Student Approvals", href: "/dashboard/admin#pending", icon: UserCheck },
           { name: "Faculty Approvals", href: "/dashboard/admin#faculty", icon: Presentation },
           { name: "Class Routine", href: "/dashboard/admin#routine", icon: Calendar },

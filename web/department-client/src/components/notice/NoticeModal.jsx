@@ -10,6 +10,7 @@ import {
   Mic,
   AlertCircle,
   FileText,
+  Globe,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import VoiceRecorder from "./VoiceRecorder";
@@ -23,6 +24,7 @@ export default function NoticeModal({
 }) {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [isPublic, setIsPublic] = useState(true);
   const [file, setFile] = useState(null);
   const [removeExistingFile, setRemoveExistingFile] = useState(false);
 
@@ -37,6 +39,7 @@ export default function NoticeModal({
     if (editingNotice) {
       setTitle(editingNotice.title || "");
       setContent(editingNotice.content || "");
+      setIsPublic(editingNotice.isPublic !== undefined ? Boolean(editingNotice.isPublic) : true);
       setFile(null);
       setRemoveExistingFile(false);
       setAudioData(null);
@@ -44,6 +47,7 @@ export default function NoticeModal({
     } else {
       setTitle("");
       setContent("");
+      setIsPublic(true);
       setFile(null);
       setRemoveExistingFile(false);
       setAudioData(null);
@@ -105,6 +109,7 @@ export default function NoticeModal({
       const formData = new FormData();
       formData.append("title", title.trim());
       formData.append("content", content.trim());
+      formData.append("isPublic", isPublic ? "true" : "false");
 
       // File attachment
       if (file) {
@@ -222,6 +227,30 @@ export default function NoticeModal({
               onChange={(e) => setContent(e.target.value)}
               className="w-full p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500 leading-relaxed resize-y"
               disabled={saving}
+            />
+          </div>
+
+          {/* Public Notice Visibility Toggle */}
+          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <label 
+                htmlFor="notice-is-public-toggle"
+                className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5 cursor-pointer"
+              >
+                <Globe className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Make Public Notice (Open to All Visitors)</span>
+              </label>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Visible to everyone without login on the homepage and dedicated notices page. Uncheck for internal member circulars.
+              </p>
+            </div>
+            <input
+              id="notice-is-public-toggle"
+              type="checkbox"
+              checked={isPublic}
+              onChange={(e) => setIsPublic(e.target.checked)}
+              disabled={saving}
+              className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
             />
           </div>
 

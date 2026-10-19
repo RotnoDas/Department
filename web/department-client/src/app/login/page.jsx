@@ -2,7 +2,8 @@
 
 import { Button } from '@heroui/react';
 import Link from 'next/link';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { authClient } from '@/lib/auth-client';
 import toast from 'react-hot-toast';
 import { Lock, Mail, KeyRound, Eye, EyeOff, ArrowRight } from 'lucide-react';
@@ -10,7 +11,11 @@ import { ThemeToggle } from '@/components/common/ThemeToggle';
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
-const redirectByRole = (role, email) => {
+const redirectByRole = (role, email, redirectParam) => {
+    if (redirectParam && redirectParam.startsWith('/')) {
+        window.location.href = redirectParam;
+        return;
+    }
     const cleanEmail = (email || "").toLowerCase().trim();
     if (role === "admin" || cleanEmail === "admin@cse.edu") {
         window.location.href = "/dashboard/admin";
@@ -23,9 +28,11 @@ const redirectByRole = (role, email) => {
     }
 };
 
-const LoginPage = () => {
+const LoginContent = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [isVisible, setIsVisible] = useState(false);
+    const searchParams = useSearchParams();
+    const redirectParam = searchParams.get('redirect');
     const { data: sessionData } = authClient.useSession();
 
     useEffect(() => {
@@ -45,7 +52,7 @@ const LoginPage = () => {
                     })
                     .then((student) => {
                         if (student?.status === "approved") {
-                            window.location.href = "/dashboard/student";
+                            window.location.href = redirectParam && redirectParam.startsWith('/') ? redirectParam : "/dashboard/student";
                         } else if (student?.status === "rejected") {
                             window.location.href = `/rejected?email=${encodeURIComponent(cleanEmail)}`;
                         } else {
@@ -72,18 +79,18 @@ const LoginPage = () => {
                         } else if (teacher?.status === "rejected") {
                             window.location.href = `/rejected?email=${encodeURIComponent(cleanEmail)}`;
                         } else {
-                            window.location.href = "/dashboard/teacher";
+                            window.location.href = redirectParam && redirectParam.startsWith('/') ? redirectParam : "/dashboard/teacher";
                         }
                     })
                     .catch(() => {
-                        window.location.href = "/dashboard/teacher";
+                        window.location.href = redirectParam && redirectParam.startsWith('/') ? redirectParam : "/dashboard/teacher";
                     });
                 return;
             }
 
-            redirectByRole(role, cleanEmail);
+            redirectByRole(role, cleanEmail, redirectParam);
         }
-    }, [sessionData]);
+    }, [sessionData, redirectParam]);
 
     const toggleVisibility = () => setIsVisible(!isVisible);
 
@@ -135,8 +142,8 @@ const LoginPage = () => {
                 return;
             }
 
-            toast.success("Welcome! Entering student dashboard...");
-            window.location.href = "/dashboard/student";
+            toast.success("Welcome! Entering workspace...");
+            window.location.href = redirectParam && redirectParam.startsWith('/') ? redirectParam : "/dashboard/student";
             return;
         }
 
@@ -162,7 +169,7 @@ const LoginPage = () => {
             }
 
             toast.success("Welcome! Entering faculty workspace...");
-            window.location.href = "/dashboard/teacher";
+            window.location.href = redirectParam && redirectParam.startsWith('/') ? redirectParam : "/dashboard/teacher";
             return;
         }
 
@@ -179,7 +186,7 @@ const LoginPage = () => {
                 console.error("User role lookup:", e);
             }
         }
-        redirectByRole(role, email);
+        redirectByRole(role, email, redirectParam);
     };
 
     return (
@@ -284,4 +291,14 @@ const LoginPage = () => {
     );
 };
 
-export default LoginPage;
+export default function LoginPage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#030712] flex items-center justify-center">
+                <div className="h-10 w-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+            </div>
+        }>
+            <LoginContent />
+        </Suspense>
+    );
+}
