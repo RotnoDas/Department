@@ -38,6 +38,10 @@ const connectDB = async () => {
     faceProfiles: db.collection('face_profiles'),
     faceChallenges: db.collection('face_challenges'),
     attendanceAttempts: db.collection('attendance_attempts'),
+    // Academic coursework & study materials
+    assignments: db.collection('assignments'),
+    assignmentSubmissions: db.collection('assignment_submissions'),
+    materials: db.collection('materials'),
   };
 
   const ensureIndex = async (collection, spec, options = {}) => {

@@ -20,6 +20,8 @@ const courseRoutes = require('./routes/course.routes');
 const routineRoutes = require('./routes/routine.routes');
 const attendanceRoutes = require('./routes/attendance.routes');
 const faceRoutes = require('./routes/face.routes');
+const assignmentRoutes = require('./routes/assignment.routes');
+const materialRoutes = require('./routes/material.routes');
 const attendanceConfig = require('./config/attendance');
 
 const path = require('path');
@@ -29,9 +31,10 @@ const app = express();
 const port = process.env.PORT || 5000;
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:3000";
 
-// Ensure uploads directory exists
-const uploadsDir = path.join(__dirname, 'uploads', 'notices');
-fs.mkdirSync(uploadsDir, { recursive: true });
+// Ensure upload directories exist
+fs.mkdirSync(path.join(__dirname, 'uploads', 'notices'), { recursive: true });
+fs.mkdirSync(path.join(__dirname, 'uploads', 'assignments'), { recursive: true });
+fs.mkdirSync(path.join(__dirname, 'uploads', 'materials'), { recursive: true });
 
 const allowedOrigins = [
   CLIENT_URL,
@@ -93,6 +96,12 @@ app.get('/api/teacher/routine', routineRoutes.handleTeacherGetRoutine);
 // Smart Geofence Attendance (/api/attendance) and face enrollment (/api/face)
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/face', faceRoutes);
+
+// Coursework & Assignments (/api/assignments)
+app.use('/api/assignments', assignmentRoutes);
+
+// Course Study Materials & Slides (/api/materials)
+app.use('/api/materials', materialRoutes);
 
 // ── ROOT & HEALTH ─────────────────────────────────────────────
 app.get('/', (req, res) => {

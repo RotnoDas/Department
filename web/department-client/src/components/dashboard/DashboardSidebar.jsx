@@ -93,6 +93,7 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
           { name: "Notice Board", href: "/dashboard/teacher#notices", icon: Bell },
           { name: "Teaching Analytics", href: "/dashboard/teacher#analytics", icon: BarChart3 },
           { name: "Today's Routine", href: "/dashboard/teacher#routine", icon: Clock },
+          { name: "Assignments", href: "/dashboard/teacher#assignments", icon: FileText },
           { name: "Course Materials", href: "/dashboard/teacher#materials", icon: BookOpen },
           { name: "Attendance Sessions", href: "/dashboard/teacher#attendance", icon: UserCheck },
           { name: "Faculty Profile", href: "/dashboard/teacher#profile-settings", icon: User },
@@ -113,6 +114,8 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
           { name: "Notice Board", href: "/dashboard/student#notices", icon: Bell },
           { name: "Academic Analytics", href: "/dashboard/student#analytics", icon: BarChart3 },
           { name: "Semester Curriculum", href: "/dashboard/student#routine", icon: BookOpen },
+          { name: "Course Materials", href: "/dashboard/student#materials", icon: BookOpen },
+          { name: "My Assignments", href: "/dashboard/student#assignments", icon: FileText },
           { name: "Geofence Check-in", href: "/dashboard/student#checkin", icon: UserCheck },
           { name: "Academic Profile", href: "/dashboard/student#profile-settings", icon: GraduationCap },
         ];

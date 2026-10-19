@@ -318,4 +318,105 @@ router.post(
   }
 );
 
+// ── GET /api/attendance/teacher/roster-report ──────────────────────────────────────────
+// Detailed course-wise student attendance roster with attendance percentage & session logs
+router.get('/teacher/roster-report', async (req, res) => {
+  try {
+    const { students, attendanceSessions, attendanceRecords } = getCollections();
+    const { courseCode, semester } = req.query;
+
+    const sessionQuery = {};
+    if (courseCode && courseCode !== 'all') {
+      sessionQuery.courseCode = { $regex: `^${courseCode.trim()}$`, $options: 'i' };
+    }
+
+    // Find all sessions held for this course
+    const sessions = await attendanceSessions
+      .find(sessionQuery)
+      .sort({ sessionDate: -1, timeSlot: 1 })
+      .toArray();
+
+    // Student filter (approved students in this semester if provided)
+    const studentQuery = { status: { $ne: 'rejected' } };
+    if (semester && semester !== 'all') {
+      const semNum = String(semester).replace(/[^0-9]/g, '');
+      studentQuery.$or = [
+        { semester: semester },
+        { semester: semNum },
+        { semester: `${semNum}th Semester` },
+      ];
+    }
+
+    const studentList = await students.find(studentQuery).sort({ studentId: 1 }).toArray();
+
+    // Map records for quick lookup: sessionKey -> Set of student emails
+    const sessionKeys = sessions.map((s) => s.sessionKey).filter(Boolean);
+    const records = await attendanceRecords
+      .find({ sessionKey: { $in: sessionKeys } })
+      .toArray();
+
+    const recordMap = new Map(); // key: `${sessionKey}_${studentEmail}` -> record
+    records.forEach((r) => {
+      const email = (r.studentEmail || '').toLowerCase();
+      if (r.sessionKey && email) {
+        recordMap.set(`${r.sessionKey}_${email}`, r);
+      }
+    });
+
+    const totalSessions = sessions.length;
+
+    const roster = studentList.map((stu) => {
+      const email = (stu.email || '').toLowerCase();
+      let attendedCount = 0;
+      const history = sessions.map((s) => {
+        const rec = recordMap.get(`${s.sessionKey}_${email}`);
+        const present = Boolean(rec);
+        if (present) attendedCount++;
+        return {
+          sessionKey: s.sessionKey,
+          date: s.sessionDate,
+          timeSlot: s.timeSlot,
+          status: present ? 'present' : 'absent',
+          markedAt: rec?.markedAt || null,
+          distance: rec?.distanceMeters || null,
+        };
+      });
+
+      const percentage = totalSessions > 0 ? Math.round((attendedCount / totalSessions) * 100) : 100;
+
+      return {
+        id: stu._id,
+        studentId: stu.studentId || 'N/A',
+        name: stu.name,
+        email: stu.email,
+        semester: stu.semester,
+        batch: stu.batch,
+        attendedCount,
+        totalSessions,
+        percentage,
+        isAtRisk: totalSessions > 0 && percentage < 75,
+        history,
+      };
+    });
+
+    res.json({
+      success: true,
+      courseCode: courseCode || 'All Courses',
+      totalSessions,
+      studentCount: roster.length,
+      sessions: sessions.map((s) => ({
+        sessionKey: s.sessionKey,
+        courseCode: s.courseCode,
+        date: s.sessionDate,
+        timeSlot: s.timeSlot,
+      })),
+      roster,
+    });
+  } catch (err) {
+    console.error('Error fetching roster report:', err);
+    res.status(500).json({ error: 'Failed to fetch attendance roster report' });
+  }
+});
+
 module.exports = router;
+

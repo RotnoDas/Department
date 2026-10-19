@@ -28,6 +28,7 @@ import {
   Edit3,
   Trash2,
   User,
+  Users,
   Globe,
   Award,
   GraduationCap,
@@ -42,6 +43,7 @@ import toast from "react-hot-toast";
 import Loading from "@/components/common/Loading";
 import { TeacherAnalyticsCharts } from "@/components/dashboard/DashboardCharts";
 import NoticeBoardSection from "@/components/notice/NoticeBoardSection";
+import TeacherAssignmentsSection from "@/components/assignment/TeacherAssignmentsSection";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
@@ -113,6 +115,14 @@ export default function TeacherDashboardPage() {
   ]);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [materialForm, setMaterialForm] = useState({ title: "", course: "", type: "Lecture Slides (PDF)" });
+  const [materialFile, setMaterialFile] = useState(null);
+  const [uploadingMaterial, setUploadingMaterial] = useState(false);
+
+  // Course-wise Attendance Roster Modal
+  const [showRosterModal, setShowRosterModal] = useState(false);
+  const [selectedRosterCourse, setSelectedRosterCourse] = useState("all");
+  const [rosterData, setRosterData] = useState(null);
+  const [rosterLoading, setRosterLoading] = useState(false);
 
   // Attendance history state
   const [attendanceLogs, setAttendanceLogs] = useState([]);
@@ -423,23 +433,78 @@ export default function TeacherDashboardPage() {
     }
   };
 
-  const handleUploadMaterial = (e) => {
+  const fetchPersistedMaterials = async () => {
+    try {
+      const res = await fetch("/backend/api/materials");
+      const data = await res.json();
+      if (res.ok && data.materials && data.materials.length > 0) {
+        setMaterials(data.materials);
+      }
+    } catch (e) {
+      console.warn("Could not load persisted materials:", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchPersistedMaterials();
+  }, []);
+
+  const handleUploadMaterial = async (e) => {
     e.preventDefault();
     if (!materialForm.title.trim() || !materialForm.course.trim()) {
       toast.error("Please enter material title and course code.");
       return;
     }
-    const newMat = {
-      id: Date.now().toString(),
-      title: materialForm.title,
-      course: materialForm.course,
-      type: materialForm.type,
-      date: "Just now"
-    };
-    setMaterials(prev => [newMat, ...prev]);
-    setMaterialForm({ title: "", course: "", type: "Lecture Slides (PDF)" });
-    setShowUploadModal(false);
-    toast.success("Study material published for students!");
+    setUploadingMaterial(true);
+    try {
+      const formData = new FormData();
+      formData.append("title", materialForm.title.trim());
+      formData.append("course", materialForm.course.trim());
+      formData.append("type", materialForm.type);
+      formData.append("teacherName", activeName || user?.name || "Faculty Member");
+      formData.append("teacherEmail", user?.email || "");
+      if (materialFile) {
+        formData.append("file", materialFile);
+      }
+
+      const res = await fetch("/backend/api/materials", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success("Study material published for students!");
+        setMaterialForm({ title: "", course: "", type: "Lecture Slides (PDF)" });
+        setMaterialFile(null);
+        setShowUploadModal(false);
+        fetchPersistedMaterials();
+      } else {
+        toast.error(data.error || "Failed to upload study material");
+      }
+    } catch {
+      toast.error("Network error uploading material");
+    } finally {
+      setUploadingMaterial(false);
+    }
+  };
+
+  const handleLoadRosterReport = async (courseCode) => {
+    setRosterLoading(true);
+    setShowRosterModal(true);
+    try {
+      const url = courseCode && courseCode !== "all"
+        ? `/backend/api/attendance/teacher/roster-report?courseCode=${encodeURIComponent(courseCode)}`
+        : `/backend/api/attendance/teacher/roster-report`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setRosterData(data);
+      }
+    } catch (e) {
+      toast.error("Could not fetch roster report.");
+    } finally {
+      setRosterLoading(false);
+    }
   };
 
   const isPending = (profile?.status || user?.status) === "pending";
@@ -1485,6 +1550,12 @@ export default function TeacherDashboardPage() {
         <TeacherAnalyticsCharts teacherSchedule={teacherSchedule} />
       </div>
 
+      {/* ── Faculty Assignments & Coursework Manager ────────────── */}
+      <TeacherAssignmentsSection
+        teacher={profile || user}
+        courses={teacherSchedule}
+      />
+
       {/* Materials & Assignment Center */}
       <div id="materials" className="grid grid-cols-1 lg:grid-cols-2 gap-8 scroll-mt-6">
         <div className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-4 transition-colors">
@@ -1514,13 +1585,15 @@ export default function TeacherDashboardPage() {
           </div>
 
           <div className="space-y-3">
-            {materials.map((mat) => (
-              <div key={mat.id} className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/50 flex items-center justify-between text-xs">
+            {materials.map((mat, idx) => (
+              <div key={mat._id || mat.id || `mat-${idx}`} className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/50 flex items-center justify-between text-xs">
                 <div>
                   <div className="font-bold text-slate-800 dark:text-slate-100">{mat.title}</div>
                   <div className="text-slate-400 dark:text-slate-400">{mat.course} • {mat.type}</div>
                 </div>
-                <span className="text-slate-400 dark:text-slate-500 font-medium">{mat.date}</span>
+                <span className="text-slate-400 dark:text-slate-500 font-medium">
+                  {mat.date || (mat.createdAt ? new Date(mat.createdAt).toLocaleDateString() : "Recent")}
+                </span>
               </div>
             ))}
           </div>
@@ -1533,9 +1606,19 @@ export default function TeacherDashboardPage() {
               <UserCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
               <span>Attendance History</span>
             </h3>
-            <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-1 rounded-md">
-              Live Session Tracker
-            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleLoadRosterReport(selectedRosterCourse)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 text-xs font-bold transition cursor-pointer"
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>Student Roster</span>
+              </button>
+              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-1 rounded-md">
+                Live Session Tracker
+              </span>
+            </div>
           </div>
 
           {attendanceLogs.length === 0 ? (
@@ -1544,8 +1627,8 @@ export default function TeacherDashboardPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {attendanceLogs.map((att) => (
-                <div key={att.id} className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-emerald-200/40 dark:border-emerald-800/40 flex items-center justify-between text-xs">
+              {attendanceLogs.map((att, idx) => (
+                <div key={att._id || att.id || `att-${idx}`} className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-emerald-200/40 dark:border-emerald-800/40 flex items-center justify-between text-xs">
                   <div>
                     <div className="font-bold text-slate-800 dark:text-slate-100">{att.course} Attendance</div>
                     <div className="text-slate-400 dark:text-slate-400">{att.date} • {att.present} Present, {att.absent} Absent</div>
@@ -1620,6 +1703,18 @@ export default function TeacherDashboardPage() {
                 </select>
               </div>
 
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                  <span>Attach File</span>
+                  <span className="text-[10px] text-slate-400">PDF, PPTX, DOCX, ZIP</span>
+                </label>
+                <input
+                  type="file"
+                  onChange={(e) => setMaterialFile(e.target.files?.[0] || null)}
+                  className="w-full text-xs text-slate-600 dark:text-slate-300 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100 cursor-pointer"
+                />
+              </div>
+
               <div className="flex items-center justify-end gap-3 pt-2">
                 <button
                   type="button"
@@ -1630,12 +1725,137 @@ export default function TeacherDashboardPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-200 dark:shadow-none cursor-pointer"
+                  disabled={uploadingMaterial}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-200 dark:shadow-none cursor-pointer disabled:opacity-50"
                 >
-                  Publish Material
+                  {uploadingMaterial ? "Uploading..." : "Publish Material"}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── COURSE ATTENDANCE ROSTER MODAL ────────────────────── */}
+      {showRosterModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="w-full max-w-4xl bg-white dark:bg-slate-900 rounded-[2rem] border border-white dark:border-white/10 p-6 sm:p-7 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-white/10">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
+                  <UserCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
+                    Course Attendance Roster & Student Log
+                  </h3>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    Roll-Call Verification • Cumulative Attendance Percentages
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRosterModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Course Selector Bar */}
+            <div className="flex items-center justify-between gap-3 pt-1">
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Select Course:
+                </label>
+                <select
+                  value={selectedRosterCourse}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSelectedRosterCourse(val);
+                    handleLoadRosterReport(val);
+                  }}
+                  className="h-9 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                >
+                  <option value="all">All Scheduled Courses</option>
+                  {Array.from(new Set(teacherSchedule.map((s) => s.code))).map((code) => (
+                    <option key={code} value={code}>{code}</option>
+                  ))}
+                </select>
+              </div>
+
+              {rosterData && (
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
+                  <span>Total Classes Conducted: <strong className="text-slate-900 dark:text-white">{rosterData.totalSessions}</strong></span>
+                  <span>•</span>
+                  <span>Students Enrolled: <strong className="text-slate-900 dark:text-white">{rosterData.studentCount}</strong></span>
+                </div>
+              )}
+            </div>
+
+            {/* Roster Table */}
+            {rosterLoading ? (
+              <div className="py-12 text-center text-xs text-slate-400 animate-pulse">
+                Generating course attendance roster...
+              </div>
+            ) : !rosterData || rosterData.roster.length === 0 ? (
+              <div className="py-12 text-center text-xs text-slate-400 space-y-2">
+                <AlertCircle className="w-8 h-8 text-slate-300 mx-auto" />
+                <p>No student records or class sessions found for this course.</p>
+              </div>
+            ) : (
+              <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-800">
+                    <tr>
+                      <th className="p-3.5">Student ID</th>
+                      <th className="p-3.5">Full Name</th>
+                      <th className="p-3.5">Batch / Sem</th>
+                      <th className="p-3.5 text-center">Classes Attended</th>
+                      <th className="p-3.5 text-center">Attendance Rate</th>
+                      <th className="p-3.5 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {rosterData.roster.map((stu) => (
+                      <tr key={stu.id || stu.studentId} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition">
+                        <td className="p-3.5 font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                          {stu.studentId}
+                        </td>
+                        <td className="p-3.5 font-bold text-slate-800 dark:text-white">
+                          {stu.name}
+                          <span className="block text-[10px] text-slate-400 font-normal">{stu.email}</span>
+                        </td>
+                        <td className="p-3.5 text-slate-500">
+                          Batch {stu.batch || "N/A"} • Sem {stu.semester || "N/A"}
+                        </td>
+                        <td className="p-3.5 text-center font-bold text-slate-700 dark:text-slate-300">
+                          {stu.attendedCount} / {rosterData.totalSessions}
+                        </td>
+                        <td className="p-3.5 text-center">
+                          <span className="font-extrabold text-sm font-mono text-slate-900 dark:text-white">
+                            {stu.percentage}%
+                          </span>
+                        </td>
+                        <td className="p-3.5 text-center">
+                          <span
+                            className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                              stu.isAtRisk
+                                ? "bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300"
+                                : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                            }`}
+                          >
+                            {stu.isAtRisk ? "Low Attendance" : "Good Standing"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}

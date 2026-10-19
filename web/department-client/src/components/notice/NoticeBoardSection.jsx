@@ -224,9 +224,9 @@ export default function NoticeBoardSection({
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filteredNotices.map((notice) => (
+          {filteredNotices.map((notice, idx) => (
             <NoticeCard
-              key={notice.id || notice._id}
+              key={notice._id || notice.id || `notice-${idx}`}
               notice={notice}
               isAdmin={isAdmin}
               onEdit={openEditModal}
