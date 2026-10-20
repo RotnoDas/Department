@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { authClient } from "@/lib/auth-client";
+import { authClient, safeSignOut } from "@/lib/auth-client";
+import { getCoursesBySemester } from "@/data/courses";
 import { ThemeToggle } from "@/components/common/ThemeToggle";
 import { 
   GraduationCap, 
@@ -47,6 +48,9 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
   const [assignedCourses, setAssignedCourses] = useState([]);
   const [routineSlotCount, setRoutineSlotCount] = useState(0);
   const [isLoadingCourses, setIsLoadingCourses] = useState(false);
+
+  // Dynamic state for student profile & courses
+  const [studentProfile, setStudentProfile] = useState(null);
 
   // Monitor URL hash changes
   useEffect(() => {
@@ -163,9 +167,154 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
     return () => { isMounted = false; };
   }, [role, user?.email, user?.teacherId, user?.name, profile?.email, profile?.teacherId, profile?.name]);
 
-  // Scroll spy on the root teacher dashboard (/dashboard/teacher)
+  // Fetch & sync student profile for quick-launcher and navigation badges
   useEffect(() => {
-    if (pathname !== "/dashboard/teacher") {
+    if (role !== "student") return;
+
+    const targetEmail = user?.email || profile?.email;
+    if (!targetEmail) return;
+
+    // Load from sessionStorage if available for instantaneous UI hydration
+    try {
+      const cached = sessionStorage.getItem(`dept_student_profile_${targetEmail}`) || sessionStorage.getItem("dept_student_profile");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed) setStudentProfile(parsed);
+      }
+    } catch (_) {}
+
+    let isMounted = true;
+    const fetchStudent = async () => {
+      try {
+        const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
+        const res = await fetch(`${serverUrl}/api/students/email/${encodeURIComponent(targetEmail)}`);
+        if (res.ok && isMounted) {
+          const data = await res.json();
+          if (data) {
+            setStudentProfile(data);
+            try {
+              sessionStorage.setItem(`dept_student_profile_${targetEmail}`, JSON.stringify(data));
+              sessionStorage.setItem("dept_student_profile", JSON.stringify(data));
+            } catch (_) {}
+          }
+        }
+      } catch (err) {
+        console.warn("Could not fetch sidebar student profile:", err);
+      }
+    };
+
+    fetchStudent();
+    return () => { isMounted = false; };
+  }, [role, user?.email, profile?.email]);
+
+  // Determine student enrolled semester
+  const studentSemester = useMemo(() => {
+    const raw = studentProfile?.semester || profile?.semester || user?.semester;
+    if (raw) {
+      const match = String(raw).match(/(\d+)/);
+      if (match) return match[1];
+    }
+    return "7";
+  }, [studentProfile?.semester, profile?.semester, user?.semester]);
+
+  // Resolved semester curriculum courses
+  const studentSemesterCourses = useMemo(() => {
+    return getCoursesBySemester(studentSemester) || [];
+  }, [studentSemester]);
+
+  // Student Navigation Items with section IDs and live badges
+  const studentNavItems = useMemo(() => [
+    { 
+      name: "Student Portal Overview", 
+      href: "/dashboard/student", 
+      hash: "", 
+      scrollTarget: "profile",
+      badge: "Portal",
+      icon: LayoutDashboard 
+    },
+    { 
+      name: "Smart Geofence Check-in", 
+      href: "/dashboard/student#attendance", 
+      hash: "#attendance", 
+      scrollTarget: "attendance",
+      badge: "10m GPS",
+      icon: UserCheck 
+    },
+    { 
+      name: "Academic Analytics", 
+      href: "/dashboard/student#analytics", 
+      hash: "#analytics", 
+      scrollTarget: "analytics",
+      badge: "Eligibility",
+      icon: BarChart3 
+    },
+    { 
+      name: "Class Routine & Timetable", 
+      href: "/dashboard/student#routine", 
+      hash: "#routine", 
+      scrollTarget: "routine",
+      badge: "Timetable",
+      icon: Calendar 
+    },
+    { 
+      name: "Department Notice Board", 
+      href: "/dashboard/student#notices", 
+      hash: "#notices", 
+      scrollTarget: "notices",
+      badge: "Official",
+      icon: Bell 
+    },
+    { 
+      name: "Course Study Materials", 
+      href: "/dashboard/student#materials", 
+      hash: "#materials", 
+      scrollTarget: "materials",
+      badge: "Slides & Files",
+      icon: BookOpen 
+    },
+    { 
+      name: "Continuous Tasks & Tests", 
+      href: "/dashboard/student#assignments", 
+      hash: "#assignments", 
+      scrollTarget: "assignments",
+      badge: "Assessments",
+      icon: FileText 
+    },
+    { 
+      name: "Profile & Face Biometrics", 
+      href: "/dashboard/student#profile-settings", 
+      hash: "#profile-settings", 
+      scrollTarget: "profile-settings",
+      badge: "Credentials",
+      icon: GraduationCap 
+    },
+  ], []);
+
+  // Jump handler for student curriculum course cards
+  const handleStudentCourseClick = (course) => {
+    setIsOpen(false);
+    if (pathname === "/dashboard/student") {
+      window.dispatchEvent(new CustomEvent("dashboard-expand-section", { detail: { id: "materials" } }));
+      window.dispatchEvent(new CustomEvent("dashboard-expand-section", { detail: { id: "assignments" } }));
+      window.dispatchEvent(new CustomEvent("dashboard-filter-course", { detail: { courseCode: course.code } }));
+      window.history.pushState(null, "", "/dashboard/student#materials");
+      setCurrentHash("#materials");
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+
+      setTimeout(() => {
+        const targetEl = document.getElementById("materials");
+        if (targetEl) {
+          targetEl.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 60);
+    } else {
+      router.push("/dashboard/student#materials");
+    }
+  };
+
+  // Scroll spy for both teacher and student dashboards
+  useEffect(() => {
+    if (pathname !== "/dashboard/teacher" && pathname !== "/dashboard/student") {
       setActiveScrollSection("");
       return;
     }
@@ -174,24 +323,48 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
       const scrollPos = window.scrollY + 220;
       let matched = "";
 
-      // Check if at the bottom of the page
-      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 60) {
-        matched = "notices";
-      } else {
-        const sections = [
-          { id: "notices", threshold: 0 },
-          { id: "analytics", threshold: 0 },
-          { id: "routine", threshold: 0 },
-          { id: "assigned-courses", threshold: 0 },
-          { id: "profile-settings", threshold: 0 },
-          { id: "profile", threshold: 0 }
-        ];
+      if (pathname === "/dashboard/student") {
+        if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 60) {
+          matched = "assignments";
+        } else {
+          const sections = [
+            { id: "assignments", target: "assignments" },
+            { id: "materials", target: "materials" },
+            { id: "notices", target: "notices" },
+            { id: "routine", target: "routine" },
+            { id: "attendance", target: "attendance" },
+            { id: "analytics", target: "analytics" },
+            { id: "profile-settings", target: "profile-settings" },
+            { id: "profile", target: "profile" }
+          ];
 
-        for (const sec of sections) {
-          const el = document.getElementById(sec.id);
-          if (el && scrollPos >= el.offsetTop) {
-            matched = sec.id;
-            break;
+          for (const sec of sections) {
+            const el = document.getElementById(sec.id);
+            if (el && scrollPos >= el.offsetTop) {
+              matched = sec.target;
+              break;
+            }
+          }
+        }
+      } else if (pathname === "/dashboard/teacher") {
+        if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 60) {
+          matched = "notices";
+        } else {
+          const sections = [
+            { id: "notices", threshold: 0 },
+            { id: "analytics", threshold: 0 },
+            { id: "routine", threshold: 0 },
+            { id: "assigned-courses", threshold: 0 },
+            { id: "profile-settings", threshold: 0 },
+            { id: "profile", threshold: 0 }
+          ];
+
+          for (const sec of sections) {
+            const el = document.getElementById(sec.id);
+            if (el && scrollPos >= el.offsetTop) {
+              matched = sec.id;
+              break;
+            }
           }
         }
       }
@@ -207,8 +380,7 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
   }, [pathname]);
 
   const handleLogout = async () => {
-    await authClient.signOut();
-    router.push("/login");
+    await safeSignOut("/login");
   };
 
   // Smooth scroll and uncollapse handler
@@ -232,6 +404,12 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
           }
         }, 60);
       }
+    } else if (pathname === item.href) {
+      e.preventDefault();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      window.history.pushState(null, "", item.href);
+      setCurrentHash("");
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
     }
   };
 
@@ -376,17 +554,31 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
                 </span>
               </div>
             </div>
-            <div className="mt-2.5 flex items-center justify-between pt-2 border-t border-slate-200/50 dark:border-slate-700/50">
-              <span className={`text-[9px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-md ring-1 ${badge.bg}`}>
-                {badge.label}
-              </span>
-              <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full ${
-                role === "admin" || role === "teacher" || role === "employee" || user?.status === "approved"
-                  ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400" 
-                  : "bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400"
-              }`}>
-                {role === "admin" || role === "teacher" || role === "employee" || user?.status === "approved" ? "Active" : "Pending"}
-              </span>
+            <div className="mt-2.5 flex items-center justify-between pt-2 border-t border-slate-200/50 dark:border-slate-700/50 flex-wrap gap-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className={`text-[9px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-md ring-1 ${badge.bg}`}>
+                  {badge.label}
+                </span>
+                {role === "student" && (studentProfile?.studentId || profile?.studentId || user?.studentId) && (
+                  <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-700/80 text-slate-700 dark:text-slate-300">
+                    #{studentProfile?.studentId || profile?.studentId || user?.studentId}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5">
+                {role === "student" && (
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-200 dark:ring-indigo-800">
+                    Sem {studentSemester}
+                  </span>
+                )}
+                <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full ${
+                  role === "admin" || role === "teacher" || role === "employee" || user?.status === "approved" || studentProfile?.status === "approved"
+                    ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400" 
+                    : "bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400"
+                }`}>
+                  {role === "admin" || role === "teacher" || role === "employee" || user?.status === "approved" || studentProfile?.status === "approved" ? "Active" : "Pending"}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -660,6 +852,125 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
                 </div>
               </div>
             )}
+          </div>
+        ) : role === "student" ? (
+          /* ── STUDENT NAVIGATION VIEW ───────────────────────────────── */
+          <div 
+            data-lenis-prevent
+            className="flex-1 overflow-y-auto overscroll-contain px-4 py-5 space-y-5 scrollbar-thin"
+          >
+            {/* Student Main Hub Sections */}
+            <div>
+              <div className="px-2 pb-2 flex items-center justify-between">
+                <span className="text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase">
+                  STUDENT WORKSPACE
+                </span>
+                <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-full">
+                  Semester {studentSemester}
+                </span>
+              </div>
+              <div className="space-y-1">
+                {studentNavItems.map((item) => {
+                  const Icon = item.icon;
+                  const hasHash = Boolean(item.hash);
+                  
+                  // Match either current URL hash or scroll spy position
+                  const isHashActive = hasHash ? currentHash === item.hash : (!currentHash || currentHash === "#");
+                  const isScrollActive = activeScrollSection === item.scrollTarget;
+                  const isActive = isHashActive || isScrollActive;
+
+                  return (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      onClick={(e) => handleNavClick(e, item)}
+                      className={`
+                        flex items-center justify-between px-3 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer
+                        ${isActive 
+                          ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30" 
+                          : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"}
+                      `}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-white" : "text-slate-400 dark:text-slate-400"}`} />
+                        <span className="truncate">{item.name}</span>
+                      </div>
+                      {item.badge && (
+                        <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full shrink-0 ${
+                          isActive 
+                            ? "bg-white/20 text-white" 
+                            : "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 ring-1 ring-indigo-200 dark:ring-indigo-800"
+                        }`}>
+                          {item.badge}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Semester Curriculum Direct Course List (Matching Teacher Course Workspaces) */}
+            <div>
+              <div className="px-2 pb-2 flex items-center justify-between">
+                <span className="text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase">
+                  SEMESTER CURRICULUM
+                </span>
+                <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/60 px-2 py-0.5 rounded-full">
+                  {studentSemesterCourses.length} Courses
+                </span>
+              </div>
+
+              <div className="space-y-1.5">
+                {studentSemesterCourses.length > 0 ? (
+                  studentSemesterCourses.map((c) => {
+                    const isLab = c.type === "Sessional" || c.type === "Laboratory" || c.title?.toLowerCase().includes("sessional") || c.title?.toLowerCase().includes("lab");
+                    return (
+                      <button
+                        key={c.code}
+                        type="button"
+                        onClick={() => handleStudentCourseClick(c)}
+                        className="w-full text-left flex items-center justify-between p-2.5 rounded-xl bg-slate-50/70 hover:bg-indigo-50/80 dark:bg-slate-800/50 dark:hover:bg-indigo-950/50 border border-slate-100 dark:border-white/5 hover:border-indigo-200 dark:hover:border-indigo-800/80 transition group cursor-pointer shadow-xs"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg font-mono font-black text-[10px] shadow-xs ${
+                            isLab
+                              ? "bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300"
+                              : "bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300"
+                          }`}>
+                            {c.code.split(" ")[1] || c.code.slice(0, 4)}
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-xs truncate text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-300">
+                                {c.code}
+                              </span>
+                              <span className={`text-[9px] font-semibold px-1 rounded ${
+                                isLab
+                                  ? "bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400"
+                                  : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
+                              }`}>
+                                {c.credits} Cr
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate font-medium">
+                              {c.title}
+                            </span>
+                          </div>
+                        </div>
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:translate-x-0.5 transition shrink-0" />
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-dashed border-slate-200 dark:border-slate-700 text-center">
+                    <span className="text-[11px] text-slate-400 font-medium">
+                      Curriculum courses loading...
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         ) : (
           /* ── NON-TEACHER NAVIGATION ITEMS ──────────────────────────── */

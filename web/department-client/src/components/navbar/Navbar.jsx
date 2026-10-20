@@ -27,7 +27,7 @@ import toast from "react-hot-toast";
 import gsap from "gsap";
 import { ScrollToPlugin } from "gsap/ScrollToPlugin";
 import { motion, AnimatePresence, useScroll, useSpring, useTransform } from "framer-motion";
-import { authClient } from "@/lib/auth-client";
+import { authClient, safeSignOut } from "@/lib/auth-client";
 import { ThemeToggle } from "@/components/common/ThemeToggle";
 
 // Register GSAP Plugins
@@ -156,14 +156,9 @@ export function Navbar() {
   };
 
   const handleSignOut = async () => {
-    try {
-      await authClient.signOut();
-      toast.success("Signed out successfully");
-      setIsDropdownOpen(false);
-      router.refresh();
-    } catch {
-      toast.error("Failed to sign out");
-    }
+    setIsDropdownOpen(false);
+    toast.success("Signing out...");
+    await safeSignOut("/login");
   };
 
   const getDashboardPath = () => {

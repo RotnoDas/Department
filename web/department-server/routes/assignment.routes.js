@@ -40,14 +40,18 @@ router.get('/', async (req, res) => {
     const { semester, courseCode, teacherEmail, studentEmail } = req.query;
 
     const query = {};
-    if (semester) {
-      // Support matching "7", "7th Semester", etc.
+    if (semester && semester !== 'all') {
+      // Support matching "7", 7, "7th Semester", etc.
       const semNum = String(semester).replace(/[^0-9]/g, '');
-      query.$or = [
+      const semConditions = [
         { semester: semester },
         { semester: semNum },
         { semester: `${semNum}th Semester` },
       ];
+      if (semNum && !isNaN(Number(semNum))) {
+        semConditions.push({ semester: Number(semNum) });
+      }
+      query.$or = semConditions;
     }
     if (courseCode) {
       const clean = String(courseCode).replace(/[\s-]/g, '');
@@ -60,8 +64,9 @@ router.get('/', async (req, res) => {
     // If studentEmail is supplied, attach their submission state
     let results = list;
     if (studentEmail) {
+      const cleanEmail = String(studentEmail).trim();
       const mySubmissions = await assignmentSubmissions
-        .find({ studentEmail: studentEmail })
+        .find({ studentEmail: { $regex: `^${cleanEmail.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')}$`, $options: 'i' } })
         .toArray();
       const submissionMap = new Map();
       mySubmissions.forEach((sub) => {
@@ -243,9 +248,10 @@ router.post('/:id/submit', upload.single('file'), async (req, res) => {
     const isLate = now > new Date(assignment.deadline);
 
     // Check if previous submission exists
+    const cleanStudentEmail = String(studentEmail).trim();
     const existing = await assignmentSubmissions.findOne({
       assignmentId: new ObjectId(id),
-      studentEmail: studentEmail,
+      studentEmail: { $regex: `^${cleanStudentEmail.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')}$`, $options: 'i' },
     });
 
     if (existing) {

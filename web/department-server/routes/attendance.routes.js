@@ -325,12 +325,14 @@ router.get('/teacher/roster-report', async (req, res) => {
     const { students, attendanceSessions, attendanceRecords } = getCollections();
     const { courseCode, semester } = req.query;
 
-    const sessionQuery = {};
+    const sessionQuery = {
+      status: { $ne: 'scheduled' },
+    };
     if (courseCode && courseCode !== 'all') {
       sessionQuery.courseCode = { $regex: `^${courseCode.trim()}$`, $options: 'i' };
     }
 
-    // Find all sessions held for this course
+    // Find all sessions held or announced for this course
     const sessions = await attendanceSessions
       .find(sessionQuery)
       .sort({ sessionDate: -1, timeSlot: 1 })
@@ -380,7 +382,7 @@ router.get('/teacher/roster-report', async (req, res) => {
     }
     const totalPlannedClasses = courseDoc?.totalClasses !== undefined && courseDoc?.totalClasses !== null
       ? Number(courseDoc.totalClasses)
-      : (courseDoc?.credits ? Math.round(Number(courseDoc.credits) * 12) : 36);
+      : null;
 
     const roster = studentList.map((stu) => {
       const email = (stu.email || '').toLowerCase();
@@ -393,16 +395,18 @@ router.get('/teacher/roster-report', async (req, res) => {
           sessionKey: s.sessionKey,
           date: s.sessionDate,
           timeSlot: s.timeSlot,
+          topic: s.topic || '',
           status: present ? 'present' : 'absent',
+          method: rec?.method || s.method || 'announced_session',
           markedAt: rec?.markedAt || null,
           distance: rec?.distanceMeters || null,
         };
       });
 
-      const percentage = totalSessions > 0 ? Math.round((attendedCount / totalSessions) * 100) : 100;
-      const remainingClasses = Math.max(0, totalPlannedClasses - totalSessions);
-      const minRequired75 = Math.ceil(0.75 * totalPlannedClasses);
-      const neededFromRemaining = Math.max(0, minRequired75 - attendedCount);
+      const percentage = totalSessions > 0 ? Math.round((attendedCount / totalSessions) * 100) : (totalSessions === 0 ? null : 0);
+      const remainingClasses = totalPlannedClasses !== null ? Math.max(0, totalPlannedClasses - totalSessions) : null;
+      const minRequired75 = totalPlannedClasses !== null ? Math.ceil(0.75 * totalPlannedClasses) : null;
+      const neededFromRemaining = minRequired75 !== null ? Math.max(0, minRequired75 - attendedCount) : null;
 
       return {
         id: stu._id,
@@ -414,8 +418,9 @@ router.get('/teacher/roster-report', async (req, res) => {
         attendedCount,
         totalSessions,
         totalPlannedClasses,
-        percentage,
-        isAtRisk: totalSessions > 0 && percentage < 75,
+        percentage: percentage ?? 0,
+        hasAttendance: totalSessions > 0,
+        isAtRisk: totalSessions > 0 && percentage !== null && percentage < 75,
         remainingClasses,
         neededFromRemaining,
         canReach75: neededFromRemaining <= remainingClasses,
@@ -429,17 +434,127 @@ router.get('/teacher/roster-report', async (req, res) => {
       totalSessions,
       totalPlannedClasses,
       studentCount: roster.length,
-      sessions: sessions.map((s) => ({
-        sessionKey: s.sessionKey,
-        courseCode: s.courseCode,
-        date: s.sessionDate,
-        timeSlot: s.timeSlot,
-      })),
+      sessions: sessions.map((s) => {
+        const attendees = records.filter((r) => r.sessionKey === s.sessionKey && r.status === 'present');
+        return {
+          sessionKey: s.sessionKey,
+          courseCode: s.courseCode,
+          date: s.sessionDate,
+          timeSlot: s.timeSlot,
+          topic: s.topic || '',
+          room: s.room || '',
+          method: s.method || 'announced_session',
+          status: s.status || 'completed',
+          teacherName: s.teacherName || '',
+          notes: s.notes || '',
+          attendedCount: attendees.length,
+          totalStudents: roster.length,
+          turnoutPct: roster.length > 0 ? Math.round((attendees.length / roster.length) * 100) : 0,
+          announcedAt: s.announcedAt || s.createdAt || null,
+        };
+      }),
       roster,
     });
   } catch (err) {
     console.error('Error fetching roster report:', err);
     res.status(500).json({ error: 'Failed to fetch attendance roster report' });
+  }
+});
+
+// ── POST /api/attendance/teacher/session/announce ───────────────────────
+// Teacher announces a class session for this course cohort
+router.post('/teacher/session/announce', async (req, res) => {
+  try {
+    const { attendanceSessions, notices } = getCollections();
+    const {
+      courseCode,
+      semester,
+      sessionDate,
+      timeSlot,
+      room,
+      topic,
+      notes,
+      actionType = 'announce_only', // 'announce_only' | 'start_live' | 'record_rollcall'
+      notifyCohort = true,
+      teacherName,
+      teacherEmail,
+    } = req.body || {};
+
+    if (!courseCode || !sessionDate) {
+      return res.status(400).json({ error: 'Course code and session date are required' });
+    }
+
+    const cleanCourse = courseCode.trim().toUpperCase();
+    const cleanSlot = timeSlot || '09:00 - 10:00';
+    const sessionKey = `${sessionDate}|${cleanCourse}|${cleanSlot}`;
+    const now = new Date();
+
+    const initialStatus = actionType === 'start_live' ? 'active' : (actionType === 'record_rollcall' ? 'active' : 'announced');
+    const initialMethod = actionType === 'start_live' ? 'live_geofence' : (actionType === 'record_rollcall' ? 'manual_rollcall' : 'announced_session');
+
+    await attendanceSessions.updateOne(
+      { sessionKey },
+      {
+        $set: {
+          sessionKey,
+          courseCode: cleanCourse,
+          semester: Number(semester) || 1,
+          sessionDate,
+          timeSlot: cleanSlot,
+          room: room || 'Classroom',
+          topic: topic ? topic.trim() : 'Scheduled Lecture Session',
+          notes: notes ? notes.trim() : '',
+          teacherName: teacherName || 'Course Instructor',
+          teacherEmail: teacherEmail || '',
+          method: initialMethod,
+          status: initialStatus,
+          announcedAt: now,
+          updatedAt: now,
+          ...(actionType === 'start_live' ? { startedAt: now } : {}),
+        },
+        $setOnInsert: {
+          createdAt: now,
+        }
+      },
+      { upsert: true }
+    );
+
+    let noticeDoc = null;
+    if (notifyCohort) {
+      const cleanTopic = topic ? topic.trim() : 'Class Lecture';
+      const semLabel = semester ? `Semester ${semester}` : 'All Students';
+      noticeDoc = {
+        title: `Class Announcement: ${cleanCourse} - ${cleanTopic}`,
+        category: 'Academic',
+        audience: semLabel,
+        courseCode: cleanCourse,
+        content: `A class session for ${cleanCourse} (${cleanTopic}) has been announced by ${teacherName || 'Course Instructor'}.\n\n📅 Date: ${sessionDate}\n⏰ Time: ${cleanSlot}\n📍 Room: ${room || 'Assigned Room'}${notes ? `\n\n📝 Notes: ${notes.trim()}` : ''}`,
+        priority: 'High',
+        date: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
+        createdAt: now,
+      };
+      await notices.insertOne(noticeDoc);
+    }
+
+    res.json({
+      success: true,
+      message: `Class session announced for ${cleanCourse} on ${sessionDate}!`,
+      sessionKey,
+      session: {
+        sessionKey,
+        courseCode: cleanCourse,
+        sessionDate,
+        timeSlot: cleanSlot,
+        room,
+        topic,
+        status: initialStatus,
+        method: initialMethod,
+      },
+      noticeCreated: Boolean(noticeDoc),
+    });
+  } catch (err) {
+    console.error('Error announcing class session:', err);
+    res.status(500).json({ error: 'Failed to announce class session' });
   }
 });
 

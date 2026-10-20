@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { authClient } from "@/lib/auth-client";
+import { authClient, safeSignOut } from "@/lib/auth-client";
 import { 
   GraduationCap, 
   Clock, 
@@ -60,6 +60,7 @@ import { apiFetch } from "@/lib/api";
 import FaceVerificationModal from "@/components/dashboard/FaceVerificationModal";
 import StudentAssignmentsSection from "@/components/assignment/StudentAssignmentsSection";
 import StudentMaterialsSection from "@/components/materials/StudentMaterialsSection";
+import NoticeBoardSection from "@/components/notice/NoticeBoardSection";
 import { 
   SectionCollapseToggle, 
   CollapsibleBody, 
@@ -130,12 +131,18 @@ const getServerUrl = () => {
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 
 export default function StudentDashboardPage() {
-  const { data: sessionData } = authClient.useSession();
+  const { data: sessionData, isPending: isSessionPending } = authClient.useSession();
   const user = sessionData?.user;
   const [profile, setProfile] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isMarking, setIsMarking] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  useEffect(() => {
+    if (!isSessionPending && !user?.email) {
+      setIsLoading(false);
+    }
+  }, [isSessionPending, user?.email]);
 
   // Collapsible sections state
   const [collapsedSections, setCollapsedSections] = useState({
@@ -146,19 +153,18 @@ export default function StudentDashboardPage() {
     materials: false,
     assignments: false,
     notices: false,
-    credentials: false,
   });
 
   const toggleSection = (key) => setCollapsedSections((p) => ({ ...p, [key]: !p[key] }));
-  const collapseAllSections = () => setCollapsedSections({ profile: true, analytics: true, attendance: true, routine: true, materials: true, assignments: true, notices: true, credentials: true });
-  const expandAllSections = () => setCollapsedSections({ profile: false, analytics: false, attendance: false, routine: false, materials: false, assignments: false, notices: false, credentials: false });
+  const collapseAllSections = () => setCollapsedSections({ profile: true, analytics: true, attendance: true, routine: true, materials: true, assignments: true, notices: true });
+  const expandAllSections = () => setCollapsedSections({ profile: false, analytics: false, attendance: false, routine: false, materials: false, assignments: false, notices: false });
   const allCollapsed = Object.values(collapsedSections).every(Boolean);
 
   useEffect(() => {
     const handleHash = () => {
       const hash = window.location.hash.replace("#", "");
       if (!hash) return;
-      if (hash === "profile-settings" || hash === "profile") setCollapsedSections((p) => ({ ...p, profile: false, credentials: false }));
+      if (hash === "profile-settings" || hash === "profile") setCollapsedSections((p) => ({ ...p, profile: false }));
       if (hash === "analytics") setCollapsedSections((p) => ({ ...p, analytics: false }));
       if (hash === "attendance") setCollapsedSections((p) => ({ ...p, attendance: false }));
       if (hash === "routine" || hash === "courses") setCollapsedSections((p) => ({ ...p, routine: false }));
@@ -358,6 +364,12 @@ export default function StudentDashboardPage() {
         const data = await res.json();
         setProfile(data);
         syncFormData(data);
+        try {
+          sessionStorage.setItem("dept_student_profile", JSON.stringify(data));
+          if (user?.email) {
+            sessionStorage.setItem(`dept_student_profile_${user.email}`, JSON.stringify(data));
+          }
+        } catch (_) {}
 
         // If student is not yet approved by admin, route to dedicated status page
         if (data.status === "pending") {
@@ -673,8 +685,7 @@ export default function StudentDashboardPage() {
   };
 
   const handleSignOut = async () => {
-    await authClient.signOut();
-    window.location.href = "/login";
+    await safeSignOut("/login");
   };
 
   if (isLoading && !profile) {
@@ -869,7 +880,7 @@ export default function StudentDashboardPage() {
             ) : (
               <button
                 onClick={handleCancelEdit}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-300 border border-slate-200/80 dark:border-slate-700/80 hover:border-indigo-200 dark:hover:border-indigo-800/60 text-xs font-bold transition-all cursor-pointer shadow-2xs active:scale-95"
               >
                 <X className="w-4 h-4" />
                 <span>Cancel</span>
@@ -1246,7 +1257,7 @@ export default function StudentDashboardPage() {
                 type="button"
                 onClick={handleCancelEdit}
                 disabled={isSaving}
-                className="px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-colors cursor-pointer"
+                className="px-5 py-2.5 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300 border border-slate-200/80 dark:border-slate-700/80 hover:border-indigo-200 dark:hover:border-indigo-800/60 font-bold text-xs transition-all cursor-pointer shadow-2xs active:scale-95"
               >
                 Cancel
               </button>
@@ -2380,165 +2391,6 @@ export default function StudentDashboardPage() {
             student={profile || user}
             semester={enrolledSemester}
           />
-        </CollapsibleBody>
-      </div>
-
-      {/* ── Student Profile & Academic Information Hub ────────────── */}
-      <div id="profile-settings" className="p-7 sm:p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-white/10">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5">
-              <GraduationCap className="w-3.5 h-3.5 text-indigo-500" />
-              <span>Student Academic Profile</span>
-            </div>
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <User className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-              <span>Personal & Contact Credentials</span>
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
-              Keep your contact phone, blood group, and residential address up to date for university records.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <SectionCollapseToggle
-              isCollapsed={collapsedSections.credentials}
-              onToggle={() => toggleSection("credentials")}
-              label="Contact Info"
-            />
-            {!isEditing ? (
-              <button
-                type="button"
-                onClick={() => {
-                  if (collapsedSections.credentials) {
-                    setCollapsedSections((p) => ({ ...p, credentials: false }));
-                  }
-                  setIsEditing(true);
-                }}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-200 dark:shadow-none transition-all cursor-pointer"
-              >
-                <Edit3 className="w-4 h-4" />
-                <span>Update Contact Info</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleCancelEdit}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 text-xs font-bold transition cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-                <span>Cancel</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        <CollapsibleBody
-          isCollapsed={collapsedSections.credentials}
-          onExpand={() => toggleSection("credentials")}
-          sectionName="Personal & Contact Credentials"
-        >
-        {isEditing ? (
-          <form onSubmit={handleUpdateProfile} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Contact Phone Number
-                </label>
-                <input
-                  type="tel"
-                  name="phone"
-                  placeholder="+8801700000000"
-                  value={formData.phone}
-                  onChange={handleInputChange}
-                  className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Blood Group
-                </label>
-                <select
-                  name="bloodGroup"
-                  value={formData.bloodGroup}
-                  onChange={handleInputChange}
-                  className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500"
-                >
-                  <option value="">-- Select Blood Group --</option>
-                  {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map((bg) => (
-                    <option key={bg} value={bg}>{bg}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                Residential / Present Address
-              </label>
-              <textarea
-                name="address"
-                rows={2}
-                placeholder="Hall, Hostel, or Residential address..."
-                value={formData.address}
-                onChange={handleInputChange}
-                className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500 leading-relaxed"
-              />
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={handleCancelEdit}
-                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-200 dark:shadow-none cursor-pointer disabled:opacity-50"
-              >
-                <Save className="w-3.5 h-3.5" />
-                <span>{isSaving ? "Saving..." : "Save Profile Changes"}</span>
-              </button>
-            </div>
-          </form>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Student ID</span>
-              <span className="text-sm font-mono font-bold text-indigo-600 dark:text-indigo-400">{profile?.studentId || "Not Registered"}</span>
-            </div>
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Contact Phone</span>
-              <span className="text-sm font-bold text-slate-800 dark:text-white">{profile?.phone || "Not Set"}</span>
-            </div>
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Blood Group</span>
-              <span className="text-sm font-bold text-rose-600 dark:text-rose-400">{profile?.bloodGroup || "Not Set"}</span>
-            </div>
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Present Address</span>
-              <span className="text-xs font-medium text-slate-700 dark:text-slate-300 truncate block">{profile?.address || "University Campus"}</span>
-            </div>
-          </div>
-        )}
         </CollapsibleBody>
       </div>
 

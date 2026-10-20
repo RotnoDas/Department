@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { authClient } from "@/lib/auth-client";
+import { authClient, safeSignOut } from "@/lib/auth-client";
 import { motion } from "framer-motion";
 import {
   XCircle,
@@ -21,8 +21,7 @@ export default function RejectedPage() {
   const user = sessionData?.user;
 
   const handleSignOut = async () => {
-    await authClient.signOut();
-    window.location.href = "/login";
+    await safeSignOut("/login");
   };
 
   const containerVariants = {

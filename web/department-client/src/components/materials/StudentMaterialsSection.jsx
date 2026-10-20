@@ -10,13 +10,14 @@ import {
   FileSpreadsheet,
   FileCode,
   FileArchive,
-  FileCheck,
   Calendar,
   User,
   RefreshCw,
   FolderOpen,
+  GraduationCap,
+  Filter,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import { SEMESTER_COURSES, SEMESTER_LABELS } from "@/data/courses";
 
 export default function StudentMaterialsSection({
   student,
@@ -25,32 +26,68 @@ export default function StudentMaterialsSection({
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedSemester, setSelectedSemester] = useState(
-    semester ? String(semester).replace(/[^0-9]/g, "") : "7"
-  );
+  const [selectedCourse, setSelectedCourse] = useState("all");
   const [selectedType, setSelectedType] = useState("all");
 
+  // Listen for custom course filter event from sidebar
+  useEffect(() => {
+    const handleCourseFilter = (e) => {
+      if (e.detail?.courseCode) {
+        setSelectedCourse(e.detail.courseCode);
+      }
+    };
+    window.addEventListener("dashboard-filter-course", handleCourseFilter);
+    return () => window.removeEventListener("dashboard-filter-course", handleCourseFilter);
+  }, []);
+
+  // Determine student's enrolled semester strictly from their registration data
+  const studentSemester = useMemo(() => {
+    const raw = semester ?? student?.semester;
+    if (!raw) return "";
+    const match = String(raw).match(/(\d+)/);
+    return match ? match[1] : String(raw);
+  }, [semester, student?.semester]);
+
+  // List of courses belonging specifically to the student's semester
+  const semesterCourses = useMemo(() => {
+    if (!studentSemester) return [];
+    return SEMESTER_COURSES[studentSemester] || [];
+  }, [studentSemester]);
+
   const fetchMaterials = useCallback(async () => {
+    if (!studentSemester) {
+      setMaterials([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      const sem = selectedSemester || "7";
-      const res = await fetch(`/backend/api/materials?semester=${encodeURIComponent(sem)}`, {
+      const res = await fetch(`/backend/api/materials?semester=${encodeURIComponent(studentSemester)}`, {
         cache: "no-store",
       });
       const data = await res.json();
       if (res.ok && data.materials) {
         setMaterials(data.materials);
+      } else {
+        setMaterials([]);
       }
     } catch (err) {
       console.warn("Error fetching study materials:", err);
+      setMaterials([]);
     } finally {
       setLoading(false);
     }
-  }, [selectedSemester]);
+  }, [studentSemester]);
 
   useEffect(() => {
     fetchMaterials();
   }, [fetchMaterials]);
+
+  // Reset selected course if semester changes
+  useEffect(() => {
+    setSelectedCourse("all");
+  }, [studentSemester]);
 
   // Helper file size
   const formatFileSize = (bytes) => {
@@ -90,9 +127,13 @@ export default function StudentMaterialsSection({
         selectedType === "all" ||
         m.type?.toLowerCase().includes(selectedType.toLowerCase());
 
-      return matchesSearch && matchesType;
+      const matchesCourse =
+        selectedCourse === "all" ||
+        m.course?.toLowerCase().replace(/[\s-]/g, "") === selectedCourse.toLowerCase().replace(/[\s-]/g, "");
+
+      return matchesSearch && matchesType && matchesCourse;
     });
-  }, [materials, searchQuery, selectedType]);
+  }, [materials, searchQuery, selectedType, selectedCourse]);
 
   return (
     <div
@@ -115,7 +156,7 @@ export default function StudentMaterialsSection({
             )}
           </h2>
           <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5">
-            Download official slides, lab exercise sheets, reading materials, and handouts published by department instructors.
+            Official slides, lab manuals, and handouts published by your course instructors for Semester {studentSemester || "your semester"}.
           </p>
         </div>
 
@@ -130,32 +171,61 @@ export default function StudentMaterialsSection({
         </button>
       </div>
 
-      {/* Filter Tabs & Search Bar */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-2">
-        <div className="flex items-center gap-1 p-1 bg-slate-100/80 dark:bg-slate-800/80 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 overflow-x-auto">
-          {["1", "2", "3", "4", "5", "6", "7", "8"].map((s) => (
-            <button
-              key={s}
-              onClick={() => setSelectedSemester(s)}
-              className={`px-3 py-1.5 rounded-lg transition cursor-pointer whitespace-nowrap ${
-                selectedSemester === s
-                  ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs font-bold"
-                  : "hover:text-slate-900 dark:hover:text-white"
-              }`}
+      {/* Filter Bar: Semester Badge + Course Filter + Type Filter + Search */}
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 pt-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Locked Semester Badge */}
+          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/60 dark:border-indigo-800/40 text-xs font-bold text-indigo-700 dark:text-indigo-300">
+            <GraduationCap className="w-3.5 h-3.5 text-indigo-500" />
+            <span>Semester {studentSemester || "Enrolled"}</span>
+            {SEMESTER_LABELS[studentSemester] && (
+              <span className="text-[11px] font-normal text-indigo-600/80 dark:text-indigo-400/80">
+                • {SEMESTER_LABELS[studentSemester]}
+              </span>
+            )}
+          </div>
+
+          {/* Filter by Course in This Semester */}
+          {semesterCourses.length > 0 && (
+            <select
+              value={selectedCourse}
+              onChange={(e) => setSelectedCourse(e.target.value)}
+              aria-label="Filter by course"
+              className="px-3 py-1.5 rounded-xl bg-slate-100/90 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 outline-none focus:border-indigo-500 cursor-pointer"
             >
-              Semester {s}
-            </button>
-          ))}
+              <option value="all">All Semester {studentSemester} Courses</option>
+              {semesterCourses.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.code} - {c.title}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {/* Filter by Type */}
+          <select
+            value={selectedType}
+            onChange={(e) => setSelectedType(e.target.value)}
+            aria-label="Filter by material type"
+            className="px-3 py-1.5 rounded-xl bg-slate-100/90 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 outline-none focus:border-indigo-500 cursor-pointer"
+          >
+            <option value="all">All Material Types</option>
+            <option value="slide">Slides & Lectures</option>
+            <option value="lab">Lab Manuals & Code</option>
+            <option value="sheet">Spreadsheets & Data</option>
+            <option value="notes">Notes & Handouts</option>
+          </select>
         </div>
 
-        <div className="relative w-full md:w-64">
+        {/* Search Bar */}
+        <div className="relative w-full lg:w-72">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             type="text"
-            placeholder="Search slides, courses, notes..."
+            placeholder="Search slides, notes, instructors..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full h-10 pl-9 pr-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+            className="w-full h-9 pl-9 pr-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
           />
         </div>
       </div>
@@ -176,10 +246,12 @@ export default function StudentMaterialsSection({
           <FolderOpen className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto" />
           <div className="space-y-1">
             <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">
-              {searchQuery ? "No study materials match your search" : `No study materials uploaded for Semester ${selectedSemester}`}
+              {searchQuery || selectedCourse !== "all" || selectedType !== "all"
+                ? "No study materials match your active filters"
+                : `No study materials uploaded for Semester ${studentSemester || "your semester"} yet`}
             </h4>
             <p className="text-xs text-slate-400 dark:text-slate-500 max-w-sm mx-auto">
-              When instructors upload slides, lab manuals, or reference materials for this semester, they will be downloadable here.
+              When course instructors publish lecture slides, lab manuals, or reference materials for your semester, they will appear here.
             </p>
           </div>
         </div>

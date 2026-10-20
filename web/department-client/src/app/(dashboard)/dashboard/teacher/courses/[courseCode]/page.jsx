@@ -48,7 +48,11 @@ import {
   Square,
   Bell,
   Edit3,
-  Save
+  Save,
+  Megaphone,
+  Radio,
+  CalendarCheck,
+  History
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { authClient } from "@/lib/auth-client";
@@ -68,10 +72,10 @@ export default function TeacherCourseWorkspacePage() {
 
   const searchParams = useSearchParams();
   const urlTab = searchParams?.get("tab");
-  const validTabs = useMemo(() => ["attendance", "materials", "assignments", "syllabus", "schedule"], []);
+  const validTabs = useMemo(() => ["attendance", "materials", "assignments", "schedule"], []);
 
-  // Active Tab: "attendance" | "materials" | "assignments" | "syllabus" | "schedule"
-  const [activeTab, setActiveTab] = useState(() => (urlTab && ["attendance", "materials", "assignments", "syllabus", "schedule"].includes(urlTab) ? urlTab : "attendance"));
+  // Active Tab: "attendance" | "materials" | "assignments" | "schedule"
+  const [activeTab, setActiveTab] = useState(() => (urlTab && ["attendance", "materials", "assignments", "schedule"].includes(urlTab) ? urlTab : "attendance"));
 
   useEffect(() => {
     if (urlTab && validTabs.includes(urlTab) && urlTab !== activeTab) {
@@ -168,8 +172,25 @@ export default function TeacherCourseWorkspacePage() {
 
   // Planned Classes Target Modal State
   const [showEditClassesModal, setShowEditClassesModal] = useState(false);
-  const [plannedClassesInput, setPlannedClassesInput] = useState(36);
+  const [plannedClassesInput, setPlannedClassesInput] = useState("");
   const [isSavingPlannedClasses, setIsSavingPlannedClasses] = useState(false);
+
+  // Announce Class Session Modal State
+  const [showAnnounceClassModal, setShowAnnounceClassModal] = useState(false);
+  const [announceForm, setAnnounceForm] = useState({
+    sessionDate: new Date().toISOString().split("T")[0],
+    timeSlot: "09:00 - 10:00",
+    room: "",
+    topic: "",
+    notes: "",
+    actionType: "announce_only", // "announce_only" | "start_live" | "record_rollcall"
+    notifyCohort: true,
+  });
+  const [isAnnouncingClass, setIsAnnouncingClass] = useState(false);
+
+  // Course Sessions History Inspector Modal
+  const [showSessionsModal, setShowSessionsModal] = useState(false);
+  const [sessionHistoryFilter, setSessionHistoryFilter] = useState("all");
 
   // ── 1. FETCH COURSE INFO & SCHEDULE ──────────────────────────
   const fetchCourseDetails = useCallback(async () => {
@@ -185,6 +206,11 @@ export default function TeacherCourseWorkspacePage() {
           setRoutineSlots(data.routineSlots);
           if (data.routineSlots.length > 0 && data.routineSlots[0].timeSlot) {
             setManualTimeSlot(data.routineSlots[0].timeSlot);
+            setAnnounceForm((prev) => ({
+              ...prev,
+              timeSlot: prev.timeSlot || data.routineSlots[0].timeSlot,
+              room: prev.room || data.routineSlots[0].room || "",
+            }));
           }
         }
       } else {
@@ -312,6 +338,8 @@ export default function TeacherCourseWorkspacePage() {
       setPlannedClassesInput(Number(course.totalClasses));
     } else if (rosterData?.totalPlannedClasses !== undefined && rosterData?.totalPlannedClasses !== null) {
       setPlannedClassesInput(Number(rosterData.totalPlannedClasses));
+    } else {
+      setPlannedClassesInput("");
     }
   }, [course?.totalClasses, rosterData?.totalPlannedClasses]);
 
@@ -833,6 +861,63 @@ export default function TeacherCourseWorkspacePage() {
     }
   };
 
+  // ── ANNOUNCE CLASS SESSION HANDLER ───────────────────────────
+  const handleAnnounceClassSubmit = async (e) => {
+    e.preventDefault();
+    if (!announceForm.sessionDate) {
+      toast.error("Please pick a class session date.");
+      return;
+    }
+    setIsAnnouncingClass(true);
+    try {
+      const selectedSlot = announceForm.timeSlot || routineSlots[0]?.timeSlot || "09:00 - 10:00";
+      const selectedRoom = announceForm.room || routineSlots[0]?.room || "Assigned Classroom";
+      const payload = {
+        courseCode,
+        semester: course?.semesterNum || 7,
+        sessionDate: announceForm.sessionDate,
+        timeSlot: selectedSlot,
+        room: selectedRoom,
+        topic: announceForm.topic.trim(),
+        notes: announceForm.notes.trim(),
+        actionType: announceForm.actionType,
+        notifyCohort: announceForm.notifyCohort,
+        teacherName: user?.name || course?.faculty || "Course Instructor",
+        teacherEmail: user?.email || "",
+      };
+
+      const res = await fetch("/backend/api/attendance/teacher/session/announce", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success(data.message || `Class session announced for ${courseCode}!`);
+        setShowAnnounceClassModal(false);
+        setAnnounceForm((prev) => ({ ...prev, topic: "", notes: "" }));
+        await fetchCourseRoster(false);
+
+        if (announceForm.actionType === "record_rollcall") {
+          setManualDate(payload.sessionDate);
+          setManualTimeSlot(payload.timeSlot);
+          setManualTopic(payload.topic);
+          handleOpenManualModal();
+        } else if (announceForm.actionType === "start_live") {
+          handleStartLiveSession(routineSlots[0]?._id);
+        }
+      } else {
+        toast.error(data.error || "Failed to announce class session");
+      }
+    } catch (err) {
+      console.error("Error announcing class session:", err);
+      toast.error("Network error announcing class session");
+    } finally {
+      setIsAnnouncingClass(false);
+    }
+  };
+
   // ── FILTERED DATA HOOKS ──────────────────────────────────────
   const rosterStudents = useMemo(() => {
     const list = rosterData?.roster || [];
@@ -899,16 +984,23 @@ export default function TeacherCourseWorkspacePage() {
 
   const courseStats = useMemo(() => {
     const totalHeld = rosterData?.totalSessions || 0;
-    const targetClasses = course?.totalClasses || rosterData?.totalPlannedClasses || 36;
-    const remainingClasses = Math.max(0, targetClasses - totalHeld);
-    const progressPct = targetClasses > 0 ? Math.min(100, Math.round((totalHeld / targetClasses) * 100)) : 0;
+    const rawTarget = (course?.totalClasses !== undefined && course?.totalClasses !== null)
+      ? Number(course.totalClasses)
+      : ((rosterData?.totalPlannedClasses !== undefined && rosterData?.totalPlannedClasses !== null)
+        ? Number(rosterData.totalPlannedClasses)
+        : null);
+
+    const hasTarget = rawTarget !== null && !isNaN(rawTarget) && rawTarget > 0;
+    const targetClasses = hasTarget ? rawTarget : null;
+    const remainingClasses = hasTarget ? Math.max(0, targetClasses - totalHeld) : null;
+    const progressPct = hasTarget ? Math.min(100, Math.round((totalHeld / targetClasses) * 100)) : null;
 
     const studentsList = rosterData?.roster || [];
     const totalStudents = studentsList.length;
     const avgPercentage =
-      totalStudents > 0
+      totalStudents > 0 && totalHeld > 0
         ? Math.round(studentsList.reduce((acc, curr) => acc + (curr.percentage || 0), 0) / totalStudents)
-        : 100;
+        : (totalHeld === 0 ? null : 0);
 
     const eligibleCount = studentsList.filter((s) => s.percentage >= 75).length;
     const warningCount = studentsList.filter((s) => s.percentage >= 60 && s.percentage < 75).length;
@@ -919,6 +1011,7 @@ export default function TeacherCourseWorkspacePage() {
     return {
       totalHeld,
       targetClasses,
+      hasTarget,
       remainingClasses,
       progressPct,
       totalStudents,
@@ -1045,57 +1138,114 @@ export default function TeacherCourseWorkspacePage() {
             </h1>
 
             {/* Details Meta */}
-            <div className="flex items-center gap-4 text-xs font-medium text-slate-300 flex-wrap pt-1">
+            <div className="flex items-center gap-3 text-xs font-medium text-slate-300 flex-wrap pt-1">
               <span className="flex items-center gap-1.5 bg-white/5 px-3 py-1.5 rounded-xl border border-white/10">
                 <GraduationCap className="w-4 h-4 text-indigo-400" />
-                Instructor: <strong>Teacher {user?.name || "Assigned Faculty"}</strong>
+                <span>Instructor: <strong>{course?.faculty || user?.name || "Assigned Faculty"}</strong></span>
               </span>
 
-              {routineSlots.length > 0 && (
-                <span className="flex items-center gap-1.5 bg-white/5 px-3 py-1.5 rounded-xl border border-white/10">
+              {routineSlots.length > 0 && routineSlots.map((s) => s.room).filter(Boolean)[0] ? (
+                <button
+                  type="button"
+                  onClick={() => handleTabChange("schedule")}
+                  className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-xl border border-white/10 hover:border-emerald-400/50 transition cursor-pointer text-left"
+                  title="Click to view routine schedule"
+                >
                   <MapPin className="w-4 h-4 text-emerald-400" />
-                  Room: <strong>{routineSlots.map((s) => s.room).filter(Boolean)[0] || "Academic Hall"}</strong>
-                </span>
+                  <span>Room: <strong>{routineSlots.map((s) => s.room).filter(Boolean)[0]}</strong></span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleTabChange("schedule")}
+                  className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-xl border border-white/10 text-slate-400 hover:text-slate-200 transition cursor-pointer text-left"
+                  title="Click to view routine schedule"
+                >
+                  <MapPin className="w-4 h-4 text-slate-400" />
+                  <span>Room: <em>Not assigned</em></span>
+                </button>
               )}
 
-              {routineSlots.length > 0 && (
-                <span className="flex items-center gap-1.5 bg-white/5 px-3 py-1.5 rounded-xl border border-white/10">
+              {routineSlots.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => handleTabChange("schedule")}
+                  className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-xl border border-white/10 hover:border-amber-400/50 transition cursor-pointer text-left"
+                  title="Click to view routine schedule"
+                >
                   <Clock className="w-4 h-4 text-amber-400" />
-                  Lectures: <strong>{routineSlots.length} sessions/week ({routineSlots.map((s) => s.day.slice(0, 3)).join(", ")})</strong>
-                </span>
+                  <span>
+                    Lectures: <strong>{routineSlots.length} sessions/week ({routineSlots.map((s) => s.day.slice(0, 3)).join(", ")})</strong>
+                  </span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleTabChange("schedule")}
+                  className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-xl border border-white/10 text-slate-400 hover:text-slate-200 transition cursor-pointer text-left"
+                  title="Click to view routine schedule"
+                >
+                  <Clock className="w-4 h-4 text-slate-400" />
+                  <span>Lectures: <em>No timetable</em></span>
+                </button>
               )}
             </div>
           </div>
 
           {/* Quick Action Hub in Banner */}
-          <div className="flex flex-col sm:flex-row lg:flex-col gap-3 w-full lg:w-auto shrink-0">
-            <button
-              type="button"
-              onClick={handleOpenManualModal}
-              className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs shadow-xl shadow-indigo-600/40 transition-all hover:scale-105 active:scale-95 cursor-pointer"
-            >
-              <UserCheck className="w-4 h-4" />
-              <span>Record Attendance (Roll Call)</span>
-            </button>
+          <div className="flex flex-col sm:flex-row lg:flex-col gap-2.5 w-full lg:w-auto shrink-0">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setAnnounceForm((prev) => ({
+                    ...prev,
+                    sessionDate: new Date().toISOString().split("T")[0],
+                    timeSlot: routineSlots[0]?.timeSlot || "09:00 - 10:00",
+                    room: routineSlots[0]?.room || "",
+                    topic: "",
+                    notes: "",
+                  }));
+                  setShowAnnounceClassModal(true);
+                }}
+                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-black text-xs shadow-xl shadow-indigo-600/30 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+              >
+                <Megaphone className="w-4 h-4" />
+                <span>Announce Class Session</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleOpenManualModal}
+                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-indigo-600/90 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-600/30 transition-all hover:scale-105 active:scale-95 cursor-pointer border border-indigo-400/30"
+              >
+                <UserCheck className="w-4 h-4 text-indigo-200" />
+                <span>Record Attendance (Roll Call)</span>
+              </button>
+            </div>
 
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => {
-                  setPlannedClassesInput(courseStats.targetClasses);
+                  setPlannedClassesInput(courseStats.targetClasses || "");
                   setShowEditClassesModal(true);
                 }}
-                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-indigo-500/30 hover:bg-indigo-500/50 text-indigo-200 font-bold text-xs border border-indigo-400/40 backdrop-blur-md transition cursor-pointer"
+                className={`inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl font-bold text-xs border backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer ${
+                  courseStats.hasTarget
+                    ? "bg-indigo-500/30 hover:bg-indigo-500/50 text-indigo-200 border-indigo-400/40"
+                    : "bg-amber-500/20 hover:bg-amber-500/40 text-amber-200 border-amber-400/50 animate-pulse"
+                }`}
                 title="Edit how many classes will be held for this course"
               >
                 <Calendar className="w-3.5 h-3.5 text-indigo-300" />
-                <span>Target: {courseStats.targetClasses}</span>
+                <span>{courseStats.hasTarget ? `Target: ${courseStats.targetClasses}` : "Set Target"}</span>
               </button>
 
               <button
                 type="button"
                 onClick={handleExportAttendanceCSV}
-                className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 font-bold text-xs border border-emerald-400/30 backdrop-blur-md transition cursor-pointer"
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 font-bold text-xs border border-emerald-400/30 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5" />
                 <span>Export CSV</span>
@@ -1109,7 +1259,7 @@ export default function TeacherCourseWorkspacePage() {
                   handleTabChange("materials");
                   setShowMaterialModal(true);
                 }}
-                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/15 backdrop-blur-md transition cursor-pointer"
+                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/15 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
               >
                 <UploadCloud className="w-3.5 h-3.5 text-indigo-300" />
                 <span>Upload Slide</span>
@@ -1121,7 +1271,7 @@ export default function TeacherCourseWorkspacePage() {
                   handleTabChange("assignments");
                   setShowAssignmentModal(true);
                 }}
-                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/15 backdrop-blur-md transition cursor-pointer"
+                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/15 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5 text-sky-300" />
                 <span>New Task</span>
@@ -1130,77 +1280,221 @@ export default function TeacherCourseWorkspacePage() {
           </div>
         </div>
 
-        {/* ── COURSE KEY PERFORMANCE METRICS ───────────────────────── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-8 pt-6 border-t border-white/10">
-          <div className="p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md space-y-2 relative group/card">
+        {/* ── COURSE KEY PERFORMANCE METRICS (INTERACTIVE STAT CARDS) ───────────────────────── */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-8 pt-6 border-t border-white/10">
+          {/* Card 1: Classes Held & Progression */}
+          <div
+            onClick={() => setShowSessionsModal(true)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") setShowSessionsModal(true);
+            }}
+            className="p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-indigo-400/60 backdrop-blur-md space-y-2 relative group/card cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.99] shadow-sm hover:shadow-indigo-500/10 text-left"
+            title="Click to view full class session history, attendance logs & announced classes"
+          >
             <div className="flex items-center justify-between gap-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Classes Progression</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setPlannedClassesInput(courseStats.targetClasses);
-                  setShowEditClassesModal(true);
-                }}
-                className="text-[10px] font-bold text-indigo-300 hover:text-white bg-indigo-500/20 hover:bg-indigo-500/40 px-2 py-0.5 rounded-md border border-indigo-400/30 transition-all flex items-center gap-1 cursor-pointer"
-                title="Edit how many classes will be held for this course"
-              >
-                <Edit3 className="w-2.5 h-2.5" />
-                <span>Edit Target</span>
-              </button>
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-black text-white">{courseStats.totalHeld}</span>
-              <span className="text-sm font-bold text-slate-400">/ {courseStats.targetClasses}</span>
-              <span className="text-xs text-indigo-300 font-extrabold ml-auto">
-                {courseStats.progressPct}% Held
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block group-hover/card:text-indigo-300 transition-colors">
+                Classes Held & Progress
               </span>
+              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAnnounceForm((prev) => ({
+                      ...prev,
+                      sessionDate: new Date().toISOString().split("T")[0],
+                      timeSlot: routineSlots[0]?.timeSlot || "09:00 - 10:00",
+                      room: routineSlots[0]?.room || "",
+                      topic: "",
+                    }));
+                    setShowAnnounceClassModal(true);
+                  }}
+                  className="text-[10px] font-bold text-sky-300 hover:text-white bg-sky-500/20 hover:bg-sky-500/40 px-2 py-0.5 rounded-md border border-sky-400/30 transition-all flex items-center gap-1 cursor-pointer"
+                  title="Announce a new class session"
+                >
+                  <Megaphone className="w-2.5 h-2.5" />
+                  <span>Announce</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPlannedClassesInput(courseStats.targetClasses || "");
+                    setShowEditClassesModal(true);
+                  }}
+                  className="text-[10px] font-bold text-indigo-300 hover:text-white bg-indigo-500/20 hover:bg-indigo-500/40 px-2 py-0.5 rounded-md border border-indigo-400/30 transition-all flex items-center gap-1 cursor-pointer"
+                  title="Set or edit planned classes target"
+                >
+                  <Edit3 className="w-2.5 h-2.5" />
+                  <span>{courseStats.hasTarget ? "Target" : "Set Target"}</span>
+                </button>
+              </div>
             </div>
-            <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-indigo-500 to-sky-400 rounded-full transition-all duration-500"
-                style={{ width: `${courseStats.progressPct}%` }}
-              />
-            </div>
-            <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium pt-0.5">
-              <span>{courseStats.remainingClasses} classes left</span>
-              <span>{routineSlots.length} weekly slots</span>
-            </div>
+
+            {courseStats.totalHeld === 0 ? (
+              <div className="space-y-2 pt-1">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-black text-slate-300">0</span>
+                  <span className="text-xs font-semibold text-slate-400">Classes Held</span>
+                  <span className="text-[10px] text-amber-300 font-bold ml-auto bg-amber-500/20 px-2 py-0.5 rounded-md border border-amber-400/30">
+                    No Sessions Yet
+                  </span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
+                  <div className="h-full bg-slate-700/50 rounded-full w-full" />
+                </div>
+                <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium">
+                  <span className="text-sky-300 font-semibold flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-sky-400" />
+                    <span>Click to announce</span>
+                  </span>
+                  <span>{routineSlots.length > 0 ? `${routineSlots.length} weekly slots` : "No timetable"}</span>
+                </div>
+              </div>
+            ) : courseStats.hasTarget ? (
+              <>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-black text-white">{courseStats.totalHeld}</span>
+                  <span className="text-sm font-bold text-slate-400">/ {courseStats.targetClasses}</span>
+                  <span className="text-xs text-indigo-300 font-extrabold ml-auto">
+                    {courseStats.progressPct}% Held
+                  </span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-indigo-500 via-sky-400 to-emerald-400 rounded-full transition-all duration-500"
+                    style={{ width: `${courseStats.progressPct}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium pt-0.5">
+                  <span>{courseStats.remainingClasses} classes left</span>
+                  <span className="text-indigo-300 font-bold group-hover/card:underline flex items-center gap-0.5">
+                    <span>Inspect Sessions</span>
+                    <ChevronRight className="w-2.5 h-2.5" />
+                  </span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-black text-white">{courseStats.totalHeld}</span>
+                  <span className="text-xs font-semibold text-slate-400">Classes Held</span>
+                  <span className="text-[10px] text-amber-300 font-bold ml-auto bg-amber-500/20 px-2 py-0.5 rounded-md border border-amber-400/30">
+                    Target: Not Set
+                  </span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
+                  <div className="h-full bg-indigo-500/50 rounded-full w-full" />
+                </div>
+                <div className="flex items-center justify-between text-[10px] text-amber-200/80 font-medium pt-0.5">
+                  <span className="underline underline-offset-2">Click to set target</span>
+                  <span className="text-indigo-300 font-bold group-hover/card:underline flex items-center gap-0.5">
+                    <span>Inspect Sessions</span>
+                    <ChevronRight className="w-2.5 h-2.5" />
+                  </span>
+                </div>
+              </>
+            )}
           </div>
 
-          <div className="p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md space-y-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Class Avg Attendance</span>
+          {/* Card 2: Class Avg Attendance */}
+          <div
+            onClick={() => handleTabChange("attendance")}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") handleTabChange("attendance");
+            }}
+            className="p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-400/60 backdrop-blur-md space-y-1 relative group/card cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.99] shadow-sm hover:shadow-emerald-500/10 text-left"
+            title="Click to view full attendance roster & roll call"
+          >
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block group-hover/card:text-emerald-300 transition-colors">
+                Class Avg Attendance
+              </span>
+              <span className="text-[10px] font-bold text-emerald-300 opacity-0 group-hover/card:opacity-100 transition-opacity flex items-center gap-0.5">
+                <span>Roster</span>
+                <ChevronRight className="w-2.5 h-2.5" />
+              </span>
+            </div>
             <div className="flex items-baseline gap-2">
               <span className={`text-3xl font-black ${
-                courseStats.avgPercentage >= 75 ? "text-emerald-400" : courseStats.avgPercentage >= 60 ? "text-amber-400" : "text-rose-400"
+                courseStats.avgPercentage === null
+                  ? "text-slate-400"
+                  : courseStats.avgPercentage >= 75
+                  ? "text-emerald-400"
+                  : courseStats.avgPercentage >= 60
+                  ? "text-amber-400"
+                  : "text-rose-400"
               }`}>
-                {courseStats.avgPercentage}%
+                {courseStats.avgPercentage === null ? "—" : `${courseStats.avgPercentage}%`}
               </span>
               <span className="text-xs text-slate-400 font-medium">Cohort Rate</span>
             </div>
-            <span className="text-[10px] text-emerald-300 font-semibold block pt-0.5">
-              {courseStats.eligibleCount} of {courseStats.totalStudents} students eligible (≥75%)
+            <span className="text-[10px] text-emerald-300 font-semibold block pt-0.5 truncate">
+              {courseStats.totalHeld === 0
+                ? "No classes held yet"
+                : `${courseStats.eligibleCount} of ${courseStats.totalStudents} students eligible (≥75%)`}
             </span>
           </div>
 
-          <div className="p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md space-y-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Study Materials</span>
+          {/* Card 3: Study Materials */}
+          <div
+            onClick={() => handleTabChange("materials")}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") handleTabChange("materials");
+            }}
+            className="p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-sky-400/60 backdrop-blur-md space-y-1 relative group/card cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.99] shadow-sm hover:shadow-sky-500/10 text-left"
+            title="Click to view or upload course study materials"
+          >
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block group-hover/card:text-sky-300 transition-colors">
+                Study Materials
+              </span>
+              <span className="text-[10px] font-bold text-sky-300 opacity-0 group-hover/card:opacity-100 transition-opacity flex items-center gap-0.5">
+                <span>Files</span>
+                <ChevronRight className="w-2.5 h-2.5" />
+              </span>
+            </div>
             <div className="flex items-baseline gap-2">
               <span className="text-3xl font-black text-white">{courseStats.totalMaterials}</span>
               <span className="text-xs text-slate-400 font-medium">Files & Notes</span>
             </div>
-            <span className="text-[10px] text-sky-300 font-semibold block pt-0.5">
-              Instant student downloads
+            <span className="text-[10px] text-sky-300 font-semibold block pt-0.5 truncate">
+              {courseStats.totalMaterials > 0 ? "Instant student downloads" : "Click to upload slide / notes"}
             </span>
           </div>
 
-          <div className="p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md space-y-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Assignments & Tasks</span>
+          {/* Card 4: Assignments & Tasks */}
+          <div
+            onClick={() => handleTabChange("assignments")}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") handleTabChange("assignments");
+            }}
+            className="p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-amber-400/60 backdrop-blur-md space-y-1 relative group/card cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.99] shadow-sm hover:shadow-amber-500/10 text-left"
+            title="Click to view or create coursework assignments"
+          >
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block group-hover/card:text-amber-300 transition-colors">
+                Assignments & Tasks
+              </span>
+              <span className="text-[10px] font-bold text-amber-300 opacity-0 group-hover/card:opacity-100 transition-opacity flex items-center gap-0.5">
+                <span>Tasks</span>
+                <ChevronRight className="w-2.5 h-2.5" />
+              </span>
+            </div>
             <div className="flex items-baseline gap-2">
               <span className="text-3xl font-black text-white">{courseStats.totalAssignments}</span>
               <span className="text-xs text-slate-400 font-medium">Tasks Given</span>
             </div>
-            <span className="text-[10px] text-amber-300 font-semibold block pt-0.5">
-              {courseStats.totalSubmissions} submissions received
+            <span className="text-[10px] text-amber-300 font-semibold block pt-0.5 truncate">
+              {courseStats.totalAssignments > 0
+                ? `${courseStats.totalSubmissions} submissions received`
+                : "Click to create assignment task"}
             </span>
           </div>
         </div>
@@ -1212,7 +1506,6 @@ export default function TeacherCourseWorkspacePage() {
           { id: "attendance", label: "Attendance Hub", icon: UserCheck, count: `${courseStats.totalHeld} Sessions` },
           { id: "materials", label: "Study Materials", icon: BookOpen, count: courseStats.totalMaterials },
           { id: "assignments", label: "Continuous Tasks", icon: FileText, count: courseStats.totalAssignments },
-          { id: "syllabus", label: "Syllabus & Policy", icon: BookMarked, count: `${course?.credits || 3.0} Cr` },
           { id: "schedule", label: "Routine Schedule", icon: Calendar, count: `${routineSlots.length} Classes` },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -1610,7 +1903,7 @@ export default function TeacherCourseWorkspacePage() {
                 <span>Published Study Materials, Slides & Code Decks</span>
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
-                Upload lecture slides, syllabus, code demos, and lab manuals specifically accessible to <strong>{courseCode}</strong> students.
+                Upload lecture slides, code demos, and lab manuals specifically accessible to <strong>{courseCode}</strong> students.
               </p>
             </div>
 
@@ -1935,133 +2228,7 @@ export default function TeacherCourseWorkspacePage() {
         </div>
       )}
 
-      {/* ════════════════════════════════════════════════════════════════
-          TAB 4: SYLLABUS & ACADEMIC POLICY
-          ════════════════════════════════════════════════════════════════ */}
-      {activeTab === "syllabus" && (
-        <div className="p-7 sm:p-8 rounded-[2rem] bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/80 dark:border-white/10 shadow-sm space-y-6 transition-colors">
-          <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-violet-50 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300 text-xs font-semibold mb-1">
-              <BookMarked className="w-3.5 h-3.5 text-violet-500" />
-              <span>Departmental Course Syllabus & Policy</span>
-            </div>
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <span>Academic Curriculum, Objectives & Evaluation Scheme</span>
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
-              Official curriculum outline, evaluation weightages, and grading standards for <strong>{courseCode}</strong>.
-            </p>
-          </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left 2 Cols: Course Overview & Topic Breakdown */}
-            <div className="lg:col-span-2 space-y-6">
-              <div className="p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 space-y-4">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Info className="w-4 h-4 text-indigo-600" />
-                  <span>Course Objectives & Learning Outcomes</span>
-                </h3>
-                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                  The primary objective of <strong>{course?.title || courseCode}</strong> is to provide students with comprehensive theoretical foundations and practical competencies in contemporary computer science concepts, analytical problem solving, and system architecture.
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                  <div className="p-3.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 space-y-1">
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Target Semester</span>
-                    <p className="text-xs font-bold text-slate-800 dark:text-white">{course?.semester || "7th Semester"}</p>
-                  </div>
-                  <div className="p-3.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 space-y-1">
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Credit Load</span>
-                    <p className="text-xs font-bold text-slate-800 dark:text-white">{course?.credits || 3.0} Credit Hours (3 hrs/week)</p>
-                  </div>
-                  <div className="p-3.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 space-y-1">
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Program Degree</span>
-                    <p className="text-xs font-bold text-slate-800 dark:text-white">B.Sc. in Computer Science & Engineering</p>
-                  </div>
-                  <div className="p-3.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 space-y-1">
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Assigned Faculty</span>
-                    <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400">Teacher {user?.name || "B"}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Syllabus Outline Modules */}
-              <div className="p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 space-y-4">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <BookOpen className="w-4 h-4 text-indigo-600" />
-                  <span>Syllabus Modules & Instructional Units</span>
-                </h3>
-                <div className="space-y-3">
-                  {[
-                    { unit: "Unit 1", title: "Foundations & Problem Formulation", desc: "Introduction to core paradigms, domain modeling, state space search, and mathematical formulation." },
-                    { unit: "Unit 2", title: "Core Algorithms & Optimization", desc: "In-depth study of algorithmic complexity, heuristic traversal, constraint satisfaction, and dynamic programming." },
-                    { unit: "Unit 3", title: "System Architecture & Applied Modeling", desc: "Design patterns, real-world data pipelines, fault tolerance, and empirical evaluation metrics." },
-                    { unit: "Unit 4", title: "Advanced Topics & Emerging Paradigms", desc: "Contemporary industry trends, scalable infrastructure, neural representations, and final project deliverables." },
-                  ].map((m) => (
-                    <div key={m.unit} className="p-4 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold font-mono text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded">
-                          {m.unit}
-                        </span>
-                        <span className="text-xs font-bold text-slate-800 dark:text-white">{m.title}</span>
-                      </div>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 pt-0.5">{m.desc}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Right 1 Col: Evaluation & Grading Scheme */}
-            <div className="space-y-6">
-              <div className="p-6 rounded-2xl bg-gradient-to-br from-indigo-50 to-sky-50 dark:from-slate-800 dark:to-indigo-950/40 border border-indigo-200/60 dark:border-indigo-900/60 space-y-4">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Award className="w-4 h-4 text-indigo-600" />
-                  <span>Grading Policy Breakdown</span>
-                </h3>
-
-                <div className="space-y-3">
-                  {[
-                    { item: "Semester Final Exam", pct: 50, color: "bg-indigo-600" },
-                    { item: "Mid-Term Examination", pct: 20, color: "bg-sky-500" },
-                    { item: "Continuous Assessments / Quizzes", pct: 20, color: "bg-emerald-500" },
-                    { item: "Class Attendance & Discipline", pct: 10, color: "bg-amber-500" },
-                  ].map((g) => (
-                    <div key={g.item} className="space-y-1">
-                      <div className="flex items-center justify-between text-xs font-bold text-slate-800 dark:text-slate-200">
-                        <span>{g.item}</span>
-                        <span className="font-mono">{g.pct}%</span>
-                      </div>
-                      <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
-                        <div className={`h-full ${g.color} rounded-full`} style={{ width: `${g.pct}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="p-3 rounded-xl bg-white/80 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60 space-y-1 text-xs">
-                  <span className="font-bold text-slate-800 dark:text-white block">Attendance Threshold:</span>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                    ≥75% Attendance earns full eligibility. 60-74% incurs collegiate examination penalty. Below 60% is strictly discollegiate.
-                  </p>
-                </div>
-              </div>
-
-              {/* Reference Books Card */}
-              <div className="p-6 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 space-y-3">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <BookOpen className="w-4 h-4 text-indigo-600" />
-                  <span>Recommended Textbooks</span>
-                </h3>
-                <ul className="text-xs text-slate-600 dark:text-slate-300 space-y-2 list-disc list-inside leading-relaxed">
-                  <li>Standard University Academic Reference Text (Latest Edition)</li>
-                  <li>ACM / IEEE Curriculum Benchmark for CSE</li>
-                  <li>Departmental Laboratory Manual and Supplementary Reading</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ════════════════════════════════════════════════════════════════
           TAB 5: CLASS TIMETABLE & ROUTINE SLOTS
@@ -2315,7 +2482,7 @@ export default function TeacherCourseWorkspacePage() {
                 <button
                   type="button"
                   onClick={() => setShowManualModal(false)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold text-xs hover:bg-slate-200 cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300 bg-slate-100/90 dark:bg-slate-800/80 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 border border-slate-200/80 dark:border-slate-700/80 hover:border-indigo-200 dark:hover:border-indigo-800/60 transition-all cursor-pointer shadow-2xs active:scale-95"
                 >
                   Cancel
                 </button>
@@ -2527,7 +2694,7 @@ export default function TeacherCourseWorkspacePage() {
                 <button
                   type="button"
                   onClick={() => setShowMaterialModal(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold text-xs"
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300 bg-slate-100/90 dark:bg-slate-800/80 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 border border-slate-200/80 dark:border-slate-700/80 hover:border-indigo-200 dark:hover:border-indigo-800/60 transition-all cursor-pointer shadow-2xs active:scale-95"
                 >
                   Cancel
                 </button>
@@ -2638,7 +2805,7 @@ export default function TeacherCourseWorkspacePage() {
                 <button
                   type="button"
                   onClick={() => setShowAssignmentModal(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold text-xs"
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300 bg-slate-100/90 dark:bg-slate-800/80 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 border border-slate-200/80 dark:border-slate-700/80 hover:border-indigo-200 dark:hover:border-indigo-800/60 transition-all cursor-pointer shadow-2xs active:scale-95"
                 >
                   Cancel
                 </button>
@@ -2947,7 +3114,7 @@ export default function TeacherCourseWorkspacePage() {
                 <button
                   type="button"
                   onClick={() => setShowNoticeModal(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold text-xs"
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300 bg-slate-100/90 dark:bg-slate-800/80 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 border border-slate-200/80 dark:border-slate-700/80 hover:border-indigo-200 dark:hover:border-indigo-800/60 transition-all cursor-pointer shadow-2xs active:scale-95"
                 >
                   Cancel
                 </button>
@@ -3044,6 +3211,7 @@ export default function TeacherCourseWorkspacePage() {
                     min="1"
                     max="300"
                     required
+                    placeholder="e.g. 30"
                     value={plannedClassesInput}
                     onChange={(e) => setPlannedClassesInput(e.target.value)}
                     className="w-full h-11 px-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-extrabold text-slate-900 dark:text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
@@ -3060,29 +3228,37 @@ export default function TeacherCourseWorkspacePage() {
                   <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                   <span>Semester Projection Preview</span>
                 </h4>
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/60 border border-indigo-100/80 dark:border-indigo-900/40">
-                    <span className="text-[10px] font-bold text-slate-400 block uppercase">Conducted</span>
-                    <span className="text-base font-black text-indigo-600 dark:text-indigo-400">
-                      {courseStats.totalHeld}
-                    </span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/60 border border-indigo-100/80 dark:border-indigo-900/40">
-                    <span className="text-[10px] font-bold text-slate-400 block uppercase">Remaining</span>
-                    <span className="text-base font-black text-slate-700 dark:text-slate-200">
-                      {Math.max(0, (parseInt(plannedClassesInput, 10) || 0) - courseStats.totalHeld)}
-                    </span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/60 border border-indigo-100/80 dark:border-indigo-900/40">
-                    <span className="text-[10px] font-bold text-slate-400 block uppercase">75% Min Req</span>
-                    <span className="text-base font-black text-emerald-600 dark:text-emerald-400">
-                      {Math.ceil(0.75 * (parseInt(plannedClassesInput, 10) || 0))} Classes
-                    </span>
-                  </div>
-                </div>
-                <p className="text-[11px] text-indigo-700 dark:text-indigo-300 leading-relaxed">
-                  Students must attend at least <strong>{Math.ceil(0.75 * (parseInt(plannedClassesInput, 10) || 0))} classes</strong> across the whole semester to maintain collegiate exam eligibility.
-                </p>
+                {parseInt(plannedClassesInput, 10) > 0 ? (
+                  <>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/60 border border-indigo-100/80 dark:border-indigo-900/40">
+                        <span className="text-[10px] font-bold text-slate-400 block uppercase">Conducted</span>
+                        <span className="text-base font-black text-indigo-600 dark:text-indigo-400">
+                          {courseStats.totalHeld}
+                        </span>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/60 border border-indigo-100/80 dark:border-indigo-900/40">
+                        <span className="text-[10px] font-bold text-slate-400 block uppercase">Remaining</span>
+                        <span className="text-base font-black text-slate-700 dark:text-slate-200">
+                          {Math.max(0, (parseInt(plannedClassesInput, 10) || 0) - courseStats.totalHeld)}
+                        </span>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/60 border border-indigo-100/80 dark:border-indigo-900/40">
+                        <span className="text-[10px] font-bold text-slate-400 block uppercase">75% Min Req</span>
+                        <span className="text-base font-black text-emerald-600 dark:text-emerald-400">
+                          {Math.ceil(0.75 * (parseInt(plannedClassesInput, 10) || 0))} Classes
+                        </span>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-indigo-700 dark:text-indigo-300 leading-relaxed">
+                      Students must attend at least <strong>{Math.ceil(0.75 * (parseInt(plannedClassesInput, 10) || 0))} classes</strong> across the whole semester to maintain regular collegiate exam eligibility.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-xs text-indigo-700 dark:text-indigo-300 leading-relaxed">
+                    Enter the total number of planned class sessions above. The system will project remaining classes and the required minimum 75% attendance threshold.
+                  </p>
+                )}
               </div>
 
               {/* Actions */}
@@ -3090,7 +3266,7 @@ export default function TeacherCourseWorkspacePage() {
                 <button
                   type="button"
                   onClick={() => setShowEditClassesModal(false)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-600 dark:text-slate-300 font-bold text-xs transition cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300 bg-slate-100/90 dark:bg-slate-800/80 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 border border-slate-200/80 dark:border-slate-700/80 hover:border-indigo-200 dark:hover:border-indigo-800/60 transition-all cursor-pointer shadow-2xs active:scale-95"
                 >
                   Cancel
                 </button>
@@ -3104,6 +3280,412 @@ export default function TeacherCourseWorkspacePage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════
+          MODAL 8: ANNOUNCE CLASS SESSION
+          ════════════════════════════════════════════════════════════════ */}
+      {showAnnounceClassModal && (
+        <div
+          data-lenis-prevent
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in overscroll-contain"
+        >
+          <div className="relative w-full max-w-xl bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-6 max-h-[92vh] overflow-y-auto overscroll-contain scrollbar-thin">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-sky-500 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/20">
+                  <Megaphone className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white">
+                    Announce Class Session • {courseCode}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Broadcast lecture details to students & record in course progression
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAnnounceClassModal(false)}
+                className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAnnounceClassSubmit} className="space-y-4">
+              {/* Date & Time Slot Row */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>Session Date *</span>
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={announceForm.sessionDate}
+                    onChange={(e) => setAnnounceForm((prev) => ({ ...prev, sessionDate: e.target.value }))}
+                    className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Time Slot *</span>
+                  </label>
+                  <select
+                    value={announceForm.timeSlot}
+                    onChange={(e) => setAnnounceForm((prev) => ({ ...prev, timeSlot: e.target.value }))}
+                    className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500 cursor-pointer"
+                  >
+                    {routineSlots.map((slot, idx) => (
+                      <option key={idx} value={slot.timeSlot}>
+                        {slot.day}: {slot.timeSlot} ({slot.room || "Lab"})
+                      </option>
+                    ))}
+                    <option value="09:00 - 10:00">09:00 - 10:00 AM</option>
+                    <option value="10:00 - 11:00">10:00 - 11:00 AM</option>
+                    <option value="11:00 - 12:00">11:00 - 12:00 PM</option>
+                    <option value="12:00 - 01:00">12:00 - 01:00 PM</option>
+                    <option value="02:00 - 03:00">02:00 - 03:00 PM</option>
+                    <option value="03:00 - 04:00">03:00 - 04:00 PM</option>
+                    <option value="04:00 - 05:00">04:00 - 05:00 PM</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Classroom / Location */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>Classroom / Lab Location</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. AI & Data Science Lab / Room 407"
+                  value={announceForm.room}
+                  onChange={(e) => setAnnounceForm((prev) => ({ ...prev, room: e.target.value }))}
+                  className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              {/* Lecture Topic */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>Class Lecture Topic / Agenda</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Chapter 4: Adversarial Search & Alpha-Beta Pruning"
+                  value={announceForm.topic}
+                  onChange={(e) => setAnnounceForm((prev) => ({ ...prev, topic: e.target.value }))}
+                  className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              {/* Action Mode Radio Cards */}
+              <div className="space-y-2 pt-1">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Select Action Mode
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div
+                    onClick={() => setAnnounceForm((prev) => ({ ...prev, actionType: "announce_only" }))}
+                    className={`p-3 rounded-2xl border text-left cursor-pointer transition-all ${
+                      announceForm.actionType === "announce_only"
+                        ? "bg-indigo-50 dark:bg-indigo-950/50 border-indigo-500 ring-2 ring-indigo-500/30"
+                        : "bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:border-slate-300"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <Megaphone className={`w-4 h-4 ${announceForm.actionType === "announce_only" ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400"}`} />
+                      <span className="text-xs font-extrabold text-slate-900 dark:text-white">Announce Only</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
+                      Logs held session & notifies enrolled students.
+                    </p>
+                  </div>
+
+                  <div
+                    onClick={() => setAnnounceForm((prev) => ({ ...prev, actionType: "start_live" }))}
+                    className={`p-3 rounded-2xl border text-left cursor-pointer transition-all ${
+                      announceForm.actionType === "start_live"
+                        ? "bg-sky-50 dark:bg-sky-950/50 border-sky-500 ring-2 ring-sky-500/30"
+                        : "bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:border-slate-300"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <Radio className={`w-4 h-4 ${announceForm.actionType === "start_live" ? "text-sky-600 dark:text-sky-400" : "text-slate-400"}`} />
+                      <span className="text-xs font-extrabold text-slate-900 dark:text-white">Start Live Session</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
+                      Opens 10-min live window for GPS & face check-in.
+                    </p>
+                  </div>
+
+                  <div
+                    onClick={() => setAnnounceForm((prev) => ({ ...prev, actionType: "record_rollcall" }))}
+                    className={`p-3 rounded-2xl border text-left cursor-pointer transition-all ${
+                      announceForm.actionType === "record_rollcall"
+                        ? "bg-emerald-50 dark:bg-emerald-950/50 border-emerald-500 ring-2 ring-emerald-500/30"
+                        : "bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:border-slate-300"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <UserCheck className={`w-4 h-4 ${announceForm.actionType === "record_rollcall" ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400"}`} />
+                      <span className="text-xs font-extrabold text-slate-900 dark:text-white">Take Roll Call</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
+                      Opens roster to record attendance right now.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Special Instructions / Notes */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Instructions / Notes for Students (Optional)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Please bring laptops with lab environment configured. Quick quiz at start of class."
+                  value={announceForm.notes}
+                  onChange={(e) => setAnnounceForm((prev) => ({ ...prev, notes: e.target.value }))}
+                  className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-indigo-500 resize-none"
+                />
+              </div>
+
+              {/* Broadcast Notice Checkbox */}
+              <label className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={announceForm.notifyCohort}
+                  onChange={(e) => setAnnounceForm((prev) => ({ ...prev, notifyCohort: e.target.checked }))}
+                  className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                />
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Broadcast notice to course student Notice Board & cohort alert feed
+                </span>
+              </label>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowAnnounceClassModal(false)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300 bg-slate-100/90 dark:bg-slate-800/80 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 border border-slate-200/80 dark:border-slate-700/80 hover:border-indigo-200 dark:hover:border-indigo-800/60 transition-all cursor-pointer shadow-2xs active:scale-95"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isAnnouncingClass}
+                  className="inline-flex items-center gap-1.5 px-6 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-black text-xs transition cursor-pointer shadow-md shadow-indigo-600/30 disabled:opacity-50"
+                >
+                  <Megaphone className="w-3.5 h-3.5" />
+                  <span>{isAnnouncingClass ? "Announcing Class..." : "Broadcast & Announce Class"}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════
+          MODAL 9: COURSE SESSIONS & HELD HISTORY INSPECTOR
+          ════════════════════════════════════════════════════════════════ */}
+      {showSessionsModal && (
+        <div
+          data-lenis-prevent
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in overscroll-contain"
+        >
+          <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-6 max-h-[90vh] overflow-y-auto overscroll-contain scrollbar-thin">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                  <CalendarCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white">
+                    Class Sessions Hub • {courseCode}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    {rosterData?.sessions?.length || 0} class session(s) announced / conducted
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSessionsModal(false);
+                    setAnnounceForm((prev) => ({
+                      ...prev,
+                      sessionDate: new Date().toISOString().split("T")[0],
+                      timeSlot: routineSlots[0]?.timeSlot || "09:00 - 10:00",
+                      room: routineSlots[0]?.room || "",
+                      topic: "",
+                    }));
+                    setShowAnnounceClassModal(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition shadow-xs cursor-pointer"
+                >
+                  <Megaphone className="w-3.5 h-3.5" />
+                  <span>+ Announce Class</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowSessionsModal(false)}
+                  className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Sessions List */}
+            {(!rosterData?.sessions || rosterData.sessions.length === 0) ? (
+              <div className="py-12 text-center space-y-4">
+                <div className="w-16 h-16 rounded-3xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-500 flex items-center justify-center mx-auto">
+                  <CalendarCheck className="w-8 h-8 opacity-60" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                    No Class Sessions Held Yet
+                  </h4>
+                  <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                    This course has no announced or conducted class sessions yet. When you announce a lecture session or take roll call, it will appear here.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSessionsModal(false);
+                    setAnnounceForm((prev) => ({
+                      ...prev,
+                      sessionDate: new Date().toISOString().split("T")[0],
+                      timeSlot: routineSlots[0]?.timeSlot || "09:00 - 10:00",
+                      room: routineSlots[0]?.room || "",
+                      topic: "",
+                    }));
+                    setShowAnnounceClassModal(true);
+                  }}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-600/30 transition-all cursor-pointer"
+                >
+                  <Megaphone className="w-4 h-4" />
+                  <span>Announce First Class Session</span>
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {rosterData.sessions.map((sess, idx) => {
+                  const isLive = sess.status === "active";
+                  const isAnnounced = sess.status === "announced";
+                  return (
+                    <div
+                      key={sess.sessionKey || idx}
+                      className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition hover:border-indigo-400/50"
+                    >
+                      <div className="space-y-1.5 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-xs font-black text-slate-900 dark:text-white">
+                            {sess.date}
+                          </span>
+                          <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-800">
+                            {sess.timeSlot}
+                          </span>
+                          {sess.room && (
+                            <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
+                              {sess.room}
+                            </span>
+                          )}
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                              isLive
+                                ? "bg-emerald-500/20 text-emerald-300 border-emerald-400/40 animate-pulse"
+                                : isAnnounced
+                                ? "bg-sky-500/20 text-sky-300 border-sky-400/40"
+                                : "bg-indigo-500/20 text-indigo-300 border-indigo-400/40"
+                            }`}
+                          >
+                            {isLive ? "Live Check-In Active" : isAnnounced ? "Announced" : "Roll Call Saved"}
+                          </span>
+                        </div>
+
+                        <p className="text-xs font-extrabold text-slate-800 dark:text-slate-200 truncate">
+                          {sess.topic || "Class Lecture Session"}
+                        </p>
+
+                        {sess.notes && (
+                          <p className="text-[11px] text-slate-400 italic">
+                            Notes: {sess.notes}
+                          </p>
+                        )}
+
+                        <div className="flex items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
+                          <span>
+                            Turnout: <strong>{sess.attendedCount || 0} / {sess.totalStudents || rosterData?.studentCount || 0}</strong> ({sess.turnoutPct || 0}%)
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setManualDate(sess.date);
+                            setManualTimeSlot(sess.timeSlot);
+                            setManualTopic(sess.topic || "");
+                            setShowSessionsModal(false);
+                            handleOpenManualModal();
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-xs font-bold transition cursor-pointer"
+                          title="Review or edit student attendance roll call for this session"
+                        >
+                          <UserCheck className="w-3.5 h-3.5" />
+                          <span>Roll Call</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSession(sess.sessionKey)}
+                          className="p-2 rounded-xl text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
+                          title="Delete this session"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500">
+              <span>
+                Total Sessions: <strong>{courseStats.totalHeld}</strong> {courseStats.hasTarget ? `of ${courseStats.targetClasses} planned` : ""}
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowSessionsModal(false)}
+                className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-600 dark:text-slate-300 font-bold transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

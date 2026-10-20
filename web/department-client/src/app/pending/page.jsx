@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { authClient } from "@/lib/auth-client";
+import { authClient, safeSignOut } from "@/lib/auth-client";
 import { motion } from "framer-motion";
 import {
   Clock,
@@ -96,8 +96,7 @@ export default function PendingApprovalPage() {
   }, [user?.email, isSessionLoading]);
 
   const handleSignOut = async () => {
-    await authClient.signOut();
-    window.location.href = "/login";
+    await safeSignOut("/login");
   };
 
   if (isSessionLoading && isLoadingProfile && !student) {

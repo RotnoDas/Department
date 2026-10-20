@@ -46,7 +46,7 @@ router.get('/', async (req, res) => {
       ...c,
       totalClasses: c.totalClasses !== undefined && c.totalClasses !== null
         ? Number(c.totalClasses)
-        : (c.credits ? Math.round(Number(c.credits) * 12) : 36)
+        : null
     }));
     res.json({ success: true, count: formattedList.length, courses: formattedList });
   } catch (err) {
@@ -83,7 +83,7 @@ router.get('/code/:code', async (req, res) => {
             semester: SEMESTER_LABELS[semNum] || `${semNum}th Semester`,
             semesterNum: Number(semNum),
             faculty: "Department Faculty Member",
-            totalClasses: 36
+            totalClasses: null
           };
           break;
         }
@@ -104,12 +104,11 @@ router.get('/code/:code', async (req, res) => {
       return res.status(404).json({ error: "Course not found" });
     }
 
-    const defaultTotalClasses = course?.credits ? Math.round(Number(course.credits) * 12) : 36;
     const resultCourse = course ? {
       ...course,
       totalClasses: course.totalClasses !== undefined && course.totalClasses !== null
         ? Number(course.totalClasses)
-        : defaultTotalClasses
+        : null
     } : {
       code: rawCode.toUpperCase(),
       title: routineSlots[0]?.courseTitle || rawCode,
@@ -117,7 +116,7 @@ router.get('/code/:code', async (req, res) => {
       semester: `Semester ${routineSlots[0]?.semester || 1}`,
       semesterNum: routineSlots[0]?.semester || 1,
       faculty: routineSlots[0]?.teacherName || "Assigned Faculty",
-      totalClasses: 36
+      totalClasses: null
     };
 
     res.json({

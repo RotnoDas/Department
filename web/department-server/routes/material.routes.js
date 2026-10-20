@@ -39,27 +39,35 @@ router.get('/', async (req, res) => {
     const { materials } = getCollections();
     const { semester, course, search } = req.query;
 
-    const query = {};
+    const conditions = [];
     if (semester && semester !== 'all') {
       const semNum = String(semester).replace(/[^0-9]/g, '');
-      query.$or = [
+      const semConditions = [
         { semester: semester },
         { semester: semNum },
         { semester: `${semNum}th Semester` },
       ];
+      if (semNum && !isNaN(Number(semNum))) {
+        semConditions.push({ semester: Number(semNum) });
+      }
+      conditions.push({ $or: semConditions });
     }
     if (course && course !== 'all') {
       const clean = String(course).replace(/[\s-]/g, '');
-      query.course = { $regex: clean.split('').join('\\s*[-]?\\s*'), $options: 'i' };
+      conditions.push({ course: { $regex: clean.split('').join('\\s*[-]?\\s*'), $options: 'i' } });
     }
     if (search) {
-      query.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { course: { $regex: search, $options: 'i' } },
-        { teacherName: { $regex: search, $options: 'i' } },
-        { type: { $regex: search, $options: 'i' } },
-      ];
+      conditions.push({
+        $or: [
+          { title: { $regex: search, $options: 'i' } },
+          { course: { $regex: search, $options: 'i' } },
+          { teacherName: { $regex: search, $options: 'i' } },
+          { type: { $regex: search, $options: 'i' } },
+        ],
+      });
     }
+
+    const query = conditions.length > 0 ? { $and: conditions } : {};
 
     const list = await materials.find(query).sort({ createdAt: -1 }).toArray();
     res.json({ success: true, count: list.length, materials: list });

@@ -14,15 +14,15 @@ export default function DashboardLayout({ children }) {
   const user = sessionData?.user;
 
   React.useEffect(() => {
-    if (user?.email && !user?.role) {
-      fetch(`${process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000"}/api/users/${user.email}`)
+    if (user?.email) {
+      fetch(`${process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000"}/api/users/${encodeURIComponent(user.email)}`)
         .then((res) => res.ok ? res.json() : null)
         .then((data) => {
           if (data?.user) setDbUser(data.user);
         })
         .catch(() => {});
     }
-  }, [user?.email, user?.role]);
+  }, [user?.email]);
 
   const activeUser = dbUser ? { ...user, ...dbUser } : user;
 
@@ -62,6 +62,7 @@ export default function DashboardLayout({ children }) {
         isOpen={isSidebarOpen} 
         setIsOpen={setIsSidebarOpen} 
         user={activeUser} 
+        profile={dbUser || activeUser}
       />
 
       {/* Main Content Area */}
