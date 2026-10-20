@@ -13,6 +13,8 @@ import {
   Lock,
   ExternalLink,
   ArrowRight,
+  BookOpen,
+  GraduationCap,
 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import NoticeAudioPlayer from "./NoticeAudioPlayer";
@@ -47,11 +49,23 @@ export default function NoticeCard({
   const authorName =
     notice.authorName ||
     (typeof notice.author === "string" ? notice.author : notice.author?.name) ||
-    "Department Administration";
+    (notice.noticeType === "course" || notice.courseCode ? "Course Teacher" : "Department Administration");
 
+  const isCourseNotice = notice.noticeType === "course" || Boolean(notice.courseCode);
   const isPublicNotice = Boolean(notice.isPublic);
   const isLockedForGuest = !isPublicNotice && !user;
   const noticeId = notice.id || notice._id;
+
+  const canEdit =
+    isAdmin ||
+    Boolean(
+      user &&
+        ((notice.authorEmail && user.email?.toLowerCase() === notice.authorEmail.toLowerCase()) ||
+          (notice.teacherEmail && user.email?.toLowerCase() === notice.teacherEmail.toLowerCase()) ||
+          (user.role === "teacher" &&
+            notice.authorRole === "teacher" &&
+            user.name === notice.authorName))
+    );
 
   const hasAudio = Boolean(notice.audio?.filePath);
   const hasAttachment = Boolean(
@@ -63,12 +77,22 @@ export default function NoticeCard({
   const displayText = isLong && !isExpanded ? textContent.slice(0, 260) + "..." : textContent;
 
   return (
-    <div className="p-5 sm:p-6 rounded-2xl bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 hover:border-indigo-400 dark:hover:border-indigo-500/60 transition-all shadow-sm hover:shadow-md flex flex-col justify-between space-y-4">
+    <div className={`p-5 sm:p-6 rounded-2xl bg-white dark:bg-slate-800/90 border transition-all shadow-sm hover:shadow-md flex flex-col justify-between space-y-4 ${
+      isCourseNotice 
+        ? "border-indigo-200/90 dark:border-indigo-900/60 hover:border-indigo-400 dark:hover:border-indigo-500 ring-1 ring-indigo-500/10" 
+        : "border-slate-200/80 dark:border-slate-700/80 hover:border-indigo-400 dark:hover:border-indigo-500/60"
+    }`}>
       <div className="space-y-3.5">
-        {/* Top line with author, date, and media badges */}
+        {/* Top line with course badge, author, date, and media badges */}
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2 flex-wrap">
-            {isPublicNotice ? (
+            {isCourseNotice ? (
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-black px-3 py-1 rounded-full bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/80 dark:to-purple-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/80 shadow-2xs">
+                <BookOpen className="w-3.5 h-3.5 text-indigo-500" />
+                <span>{notice.courseCode || "Course Notice"}</span>
+                {notice.semester && <span>• Sem {notice.semester}</span>}
+              </span>
+            ) : isPublicNotice ? (
               <span className="inline-flex items-center gap-1 text-[11px] font-black px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
                 <Globe className="w-3 h-3 text-emerald-500" />
                 <span>Public Notice</span>
@@ -80,9 +104,19 @@ export default function NoticeCard({
               </span>
             )}
 
+            {notice.category && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700/80 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-600">
+                {notice.category}
+              </span>
+            )}
+
             <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
-              <User className="w-3.5 h-3.5 text-indigo-500" />
-              <span>{authorName}</span>
+              {isCourseNotice ? (
+                <GraduationCap className="w-3.5 h-3.5 text-indigo-500" />
+              ) : (
+                <User className="w-3.5 h-3.5 text-indigo-500" />
+              )}
+              <span>{isCourseNotice ? `Teacher: ${authorName}` : authorName}</span>
             </span>
 
             <span className="text-slate-300 dark:text-slate-600">•</span>
@@ -94,6 +128,11 @@ export default function NoticeCard({
           </div>
 
           <div className="flex items-center gap-1.5">
+            {notice.priority === "urgent" && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60 animate-pulse">
+                Urgent
+              </span>
+            )}
             {hasAudio && (
               <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800/50">
                 <Headphones className="w-3 h-3" />
@@ -110,9 +149,16 @@ export default function NoticeCard({
         </div>
 
         {/* Notice Headline */}
-        <h3 className="font-bold text-slate-900 dark:text-white text-base leading-snug">
-          {notice.title}
-        </h3>
+        <div>
+          <h3 className="font-bold text-slate-900 dark:text-white text-base leading-snug">
+            {notice.title}
+          </h3>
+          {notice.courseTitle && (
+            <p className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 mt-0.5">
+              Course: {notice.courseTitle}
+            </p>
+          )}
+        </div>
 
         {/* Gated internal notice box for guests */}
         {isLockedForGuest ? (
@@ -181,7 +227,7 @@ export default function NoticeCard({
           <ExternalLink className="w-3 h-3" />
         </Link>
 
-        {isAdmin && (
+        {canEdit && (
           <div className="flex items-center gap-3">
             <button
               type="button"

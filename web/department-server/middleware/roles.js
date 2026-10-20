@@ -58,9 +58,20 @@ const requireStudent =
 const requireTeacher = async (req, res, next) => {
   try {
     const { teachers } = getCollections();
-    const teacher = await findProfile(teachers, req.user);
+    let teacher = await findProfile(teachers, req.user);
     if (!teacher) {
-      return res.status(403).json({ error: 'No faculty profile is linked to this account.', code: 'NOT_A_TEACHER' });
+      const email = String(req.user?.email || '').trim().toLowerCase();
+      if (req.user?.role === 'admin' || adminEmails.includes(email)) {
+        teacher = {
+          name: req.user?.name || 'Administrator',
+          email: req.user?.email,
+          role: 'admin',
+          userId: String(req.user?.sub || 'admin'),
+          status: 'approved',
+        };
+      } else {
+        return res.status(403).json({ error: 'No faculty profile is linked to this account.', code: 'NOT_A_TEACHER' });
+      }
     }
     if (BLOCKED_STATUSES.has(teacher.status)) {
       return res.status(403).json({
@@ -69,7 +80,7 @@ const requireTeacher = async (req, res, next) => {
       });
     }
     req.teacher = teacher;
-    req.userId = String(teacher.userId || req.user.sub);
+    req.userId = String(teacher.userId || req.user.sub || teacher._id);
     return next();
   } catch (err) {
     console.error('[requireTeacher]', err);

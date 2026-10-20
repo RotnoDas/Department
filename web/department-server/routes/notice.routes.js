@@ -85,7 +85,7 @@ const removeDiskFile = (filePath) => {
 router.get('/', async (req, res) => {
   try {
     const { notices } = getCollections();
-    const { search, limit } = req.query;
+    const { search, limit, noticeType, courseCode, semester } = req.query;
 
     const query = {};
     if (search && search.trim()) {
@@ -93,7 +93,31 @@ router.get('/', async (req, res) => {
       query.$or = [
         { title: { $regex: s, $options: 'i' } },
         { content: { $regex: s, $options: 'i' } },
+        { courseCode: { $regex: s, $options: 'i' } },
+        { courseTitle: { $regex: s, $options: 'i' } },
+        { authorName: { $regex: s, $options: 'i' } },
       ];
+    }
+
+    if (noticeType && noticeType !== 'all') {
+      if (noticeType === 'course') {
+        query.$or = [
+          { noticeType: 'course' },
+          { courseCode: { $exists: true, $ne: null, $ne: '' } }
+        ];
+      } else if (noticeType === 'department') {
+        query.noticeType = { $ne: 'course' };
+        query.$and = [
+          { $or: [{ courseCode: { $exists: false } }, { courseCode: null }, { courseCode: '' }] }
+        ];
+      }
+    }
+
+    if (courseCode && courseCode.trim()) {
+      query.courseCode = courseCode.trim().toUpperCase();
+    }
+    if (semester && String(semester).trim()) {
+      query.semester = String(semester).trim();
     }
 
     const maxItems = Math.min(Math.max(Number(limit) || 100, 1), 200);
@@ -108,11 +132,23 @@ router.get('/', async (req, res) => {
       const isPublic = n.isPublic !== undefined 
         ? Boolean(n.isPublic) 
         : (n.visibility === 'public' || n.category === 'Event' || n.category === 'Public' || String(n.title).toLowerCase().includes('contest') || String(n.title).toLowerCase().includes('greetings') || String(n.title).toLowerCase().includes('hackathon'));
+      
+      const isCourseNotice = n.noticeType === 'course' || Boolean(n.courseCode);
+
       return {
         ...n,
         id: n._id.toString(),
         isPublic,
-        authorName: n.authorName || n.author?.name || 'Department Admin',
+        noticeType: isCourseNotice ? 'course' : 'department',
+        courseCode: n.courseCode || null,
+        courseTitle: n.courseTitle || null,
+        semester: n.semester || null,
+        authorName: n.authorName || n.author?.name || (isCourseNotice ? 'Course Teacher' : 'Department Admin'),
+        authorRole: n.authorRole || (isCourseNotice ? 'teacher' : 'admin'),
+        authorEmail: n.authorEmail || n.teacherEmail || null,
+        teacherEmail: n.teacherEmail || n.authorEmail || null,
+        category: n.category || (isCourseNotice ? 'Course Notice' : 'General'),
+        priority: n.priority || 'normal',
       };
     });
 
@@ -164,6 +200,15 @@ router.post('/', (req, res) => {
         content = '',
         authorName,
         audioDuration,
+        noticeType,
+        courseCode,
+        courseTitle,
+        semester,
+        authorEmail,
+        teacherEmail,
+        authorRole,
+        priority,
+        category,
       } = req.body;
 
       if (!title || !title.trim()) {
@@ -198,18 +243,28 @@ router.post('/', (req, res) => {
 
       const now = new Date();
       const isPublic = req.body.isPublic === 'true' || req.body.isPublic === true || req.body.visibility === 'public';
+      const isCourse = noticeType === 'course' || Boolean(courseCode);
 
       const newNotice = {
         title: title.trim(),
         content: content.trim(),
         isPublic: Boolean(isPublic),
+        noticeType: isCourse ? 'course' : 'department',
+        courseCode: courseCode ? courseCode.trim().toUpperCase() : null,
+        courseTitle: courseTitle ? courseTitle.trim() : null,
+        semester: semester ? String(semester).trim() : null,
+        authorName: (authorName || (isCourse ? 'Course Teacher' : 'Department Admin')).trim(),
+        authorEmail: (authorEmail || teacherEmail || '').trim().toLowerCase() || null,
+        teacherEmail: (teacherEmail || authorEmail || '').trim().toLowerCase() || null,
+        authorRole: authorRole || (isCourse ? 'teacher' : 'admin'),
+        priority: priority || 'normal',
+        category: category || (isCourse ? 'Course Notice' : 'General'),
         attachments,
         audio,
         filePath: attachments[0]?.filePath || null,
         originalName: attachments[0]?.originalName || null,
         fileMime: attachments[0]?.fileMime || null,
         fileSize: attachments[0]?.fileSize || null,
-        authorName: (authorName || 'Department Admin').trim(),
         createdAt: now,
         updatedAt: now,
       };
@@ -322,6 +377,16 @@ router.put('/:id', (req, res) => {
       if (req.body.isPublic !== undefined || req.body.visibility !== undefined) {
         updateFields.isPublic = req.body.isPublic === 'true' || req.body.isPublic === true || req.body.visibility === 'public';
       }
+      if (req.body.noticeType !== undefined) updateFields.noticeType = req.body.noticeType;
+      if (req.body.courseCode !== undefined) updateFields.courseCode = req.body.courseCode ? req.body.courseCode.trim().toUpperCase() : null;
+      if (req.body.courseTitle !== undefined) updateFields.courseTitle = req.body.courseTitle ? req.body.courseTitle.trim() : null;
+      if (req.body.semester !== undefined) updateFields.semester = req.body.semester ? String(req.body.semester).trim() : null;
+      if (req.body.authorName !== undefined) updateFields.authorName = req.body.authorName.trim();
+      if (req.body.authorEmail !== undefined) updateFields.authorEmail = req.body.authorEmail ? req.body.authorEmail.trim().toLowerCase() : null;
+      if (req.body.teacherEmail !== undefined) updateFields.teacherEmail = req.body.teacherEmail ? req.body.teacherEmail.trim().toLowerCase() : null;
+      if (req.body.authorRole !== undefined) updateFields.authorRole = req.body.authorRole;
+      if (req.body.priority !== undefined) updateFields.priority = req.body.priority;
+      if (req.body.category !== undefined) updateFields.category = req.body.category;
 
       updateFields.attachments = updatedAttachments;
       updateFields.audio = updatedAudio;

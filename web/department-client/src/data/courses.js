@@ -152,3 +152,26 @@ export function getAllCurriculumCourses() {
   }
   return all;
 }
+
+/**
+ * Resolves the semester number (1-8) for a given course code.
+ * Searches curriculum database and falls back to standard course numbering conventions (e.g., CSE 4102 -> Year 4, Term 1 -> Sem 7).
+ */
+export function getSemesterByCourseCode(code) {
+  if (!code) return null;
+  const normalized = String(code).toUpperCase().replace(/\s+/g, "");
+  for (const [sem, list] of Object.entries(SEMESTER_COURSES)) {
+    if (list.some((c) => c.code.toUpperCase().replace(/\s+/g, "") === normalized)) {
+      return Number(sem);
+    }
+  }
+  const match = normalized.match(/[A-Z]+(\d)(\d)/);
+  if (match) {
+    const year = parseInt(match[1], 10);
+    const term = parseInt(match[2], 10);
+    if (year >= 1 && year <= 4 && (term === 1 || term === 2)) {
+      return (year - 1) * 2 + term;
+    }
+  }
+  return null;
+}

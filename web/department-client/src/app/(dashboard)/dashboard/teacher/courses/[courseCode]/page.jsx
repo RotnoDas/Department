@@ -49,8 +49,6 @@ import {
   Bell,
   Edit3,
   Save,
-  Megaphone,
-  Radio,
   CalendarCheck,
   History
 } from "lucide-react";
@@ -175,18 +173,6 @@ export default function TeacherCourseWorkspacePage() {
   const [plannedClassesInput, setPlannedClassesInput] = useState("");
   const [isSavingPlannedClasses, setIsSavingPlannedClasses] = useState(false);
 
-  // Announce Class Session Modal State
-  const [showAnnounceClassModal, setShowAnnounceClassModal] = useState(false);
-  const [announceForm, setAnnounceForm] = useState({
-    sessionDate: new Date().toISOString().split("T")[0],
-    timeSlot: "09:00 - 10:00",
-    room: "",
-    topic: "",
-    notes: "",
-    actionType: "announce_only", // "announce_only" | "start_live" | "record_rollcall"
-    notifyCohort: true,
-  });
-  const [isAnnouncingClass, setIsAnnouncingClass] = useState(false);
 
   // Course Sessions History Inspector Modal
   const [showSessionsModal, setShowSessionsModal] = useState(false);
@@ -206,11 +192,6 @@ export default function TeacherCourseWorkspacePage() {
           setRoutineSlots(data.routineSlots);
           if (data.routineSlots.length > 0 && data.routineSlots[0].timeSlot) {
             setManualTimeSlot(data.routineSlots[0].timeSlot);
-            setAnnounceForm((prev) => ({
-              ...prev,
-              timeSlot: prev.timeSlot || data.routineSlots[0].timeSlot,
-              room: prev.room || data.routineSlots[0].room || "",
-            }));
           }
         }
       } else {
@@ -334,10 +315,10 @@ export default function TeacherCourseWorkspacePage() {
   }, [course, fetchCourseRoster]);
 
   useEffect(() => {
-    if (course?.totalClasses !== undefined && course?.totalClasses !== null) {
-      setPlannedClassesInput(Number(course.totalClasses));
-    } else if (rosterData?.totalPlannedClasses !== undefined && rosterData?.totalPlannedClasses !== null) {
-      setPlannedClassesInput(Number(rosterData.totalPlannedClasses));
+    if (course?.totalClasses !== undefined && course?.totalClasses !== null && !isNaN(Number(course.totalClasses))) {
+      setPlannedClassesInput(String(course.totalClasses));
+    } else if (rosterData?.totalPlannedClasses !== undefined && rosterData?.totalPlannedClasses !== null && !isNaN(Number(rosterData.totalPlannedClasses))) {
+      setPlannedClassesInput(String(rosterData.totalPlannedClasses));
     } else {
       setPlannedClassesInput("");
     }
@@ -861,62 +842,6 @@ export default function TeacherCourseWorkspacePage() {
     }
   };
 
-  // ── ANNOUNCE CLASS SESSION HANDLER ───────────────────────────
-  const handleAnnounceClassSubmit = async (e) => {
-    e.preventDefault();
-    if (!announceForm.sessionDate) {
-      toast.error("Please pick a class session date.");
-      return;
-    }
-    setIsAnnouncingClass(true);
-    try {
-      const selectedSlot = announceForm.timeSlot || routineSlots[0]?.timeSlot || "09:00 - 10:00";
-      const selectedRoom = announceForm.room || routineSlots[0]?.room || "Assigned Classroom";
-      const payload = {
-        courseCode,
-        semester: course?.semesterNum || 7,
-        sessionDate: announceForm.sessionDate,
-        timeSlot: selectedSlot,
-        room: selectedRoom,
-        topic: announceForm.topic.trim(),
-        notes: announceForm.notes.trim(),
-        actionType: announceForm.actionType,
-        notifyCohort: announceForm.notifyCohort,
-        teacherName: user?.name || course?.faculty || "Course Instructor",
-        teacherEmail: user?.email || "",
-      };
-
-      const res = await fetch("/backend/api/attendance/teacher/session/announce", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        toast.success(data.message || `Class session announced for ${courseCode}!`);
-        setShowAnnounceClassModal(false);
-        setAnnounceForm((prev) => ({ ...prev, topic: "", notes: "" }));
-        await fetchCourseRoster(false);
-
-        if (announceForm.actionType === "record_rollcall") {
-          setManualDate(payload.sessionDate);
-          setManualTimeSlot(payload.timeSlot);
-          setManualTopic(payload.topic);
-          handleOpenManualModal();
-        } else if (announceForm.actionType === "start_live") {
-          handleStartLiveSession(routineSlots[0]?._id);
-        }
-      } else {
-        toast.error(data.error || "Failed to announce class session");
-      }
-    } catch (err) {
-      console.error("Error announcing class session:", err);
-      toast.error("Network error announcing class session");
-    } finally {
-      setIsAnnouncingClass(false);
-    }
-  };
 
   // ── FILTERED DATA HOOKS ──────────────────────────────────────
   const rosterStudents = useMemo(() => {
@@ -1194,41 +1119,20 @@ export default function TeacherCourseWorkspacePage() {
 
           {/* Quick Action Hub in Banner */}
           <div className="flex flex-col sm:flex-row lg:flex-col gap-2.5 w-full lg:w-auto shrink-0">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setAnnounceForm((prev) => ({
-                    ...prev,
-                    sessionDate: new Date().toISOString().split("T")[0],
-                    timeSlot: routineSlots[0]?.timeSlot || "09:00 - 10:00",
-                    room: routineSlots[0]?.room || "",
-                    topic: "",
-                    notes: "",
-                  }));
-                  setShowAnnounceClassModal(true);
-                }}
-                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-black text-xs shadow-xl shadow-indigo-600/30 transition-all hover:scale-105 active:scale-95 cursor-pointer"
-              >
-                <Megaphone className="w-4 h-4" />
-                <span>Announce Class Session</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleOpenManualModal}
-                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-indigo-600/90 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-600/30 transition-all hover:scale-105 active:scale-95 cursor-pointer border border-indigo-400/30"
-              >
-                <UserCheck className="w-4 h-4 text-indigo-200" />
-                <span>Record Attendance (Roll Call)</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={handleOpenManualModal}
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-black text-xs shadow-xl shadow-indigo-600/30 transition-all hover:scale-105 active:scale-95 cursor-pointer border border-indigo-400/30"
+            >
+              <UserCheck className="w-4 h-4 text-white" />
+              <span>Record Attendance (Roll Call)</span>
+            </button>
 
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => {
-                  setPlannedClassesInput(courseStats.targetClasses || "");
+                  setPlannedClassesInput(courseStats.targetClasses ? String(courseStats.targetClasses) : "");
                   setShowEditClassesModal(true);
                 }}
                 className={`inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl font-bold text-xs border backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer ${
@@ -1301,25 +1205,7 @@ export default function TeacherCourseWorkspacePage() {
                 <button
                   type="button"
                   onClick={() => {
-                    setAnnounceForm((prev) => ({
-                      ...prev,
-                      sessionDate: new Date().toISOString().split("T")[0],
-                      timeSlot: routineSlots[0]?.timeSlot || "09:00 - 10:00",
-                      room: routineSlots[0]?.room || "",
-                      topic: "",
-                    }));
-                    setShowAnnounceClassModal(true);
-                  }}
-                  className="text-[10px] font-bold text-sky-300 hover:text-white bg-sky-500/20 hover:bg-sky-500/40 px-2 py-0.5 rounded-md border border-sky-400/30 transition-all flex items-center gap-1 cursor-pointer"
-                  title="Announce a new class session"
-                >
-                  <Megaphone className="w-2.5 h-2.5" />
-                  <span>Announce</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPlannedClassesInput(courseStats.targetClasses || "");
+                    setPlannedClassesInput(courseStats.targetClasses ? String(courseStats.targetClasses) : "");
                     setShowEditClassesModal(true);
                   }}
                   className="text-[10px] font-bold text-indigo-300 hover:text-white bg-indigo-500/20 hover:bg-indigo-500/40 px-2 py-0.5 rounded-md border border-indigo-400/30 transition-all flex items-center gap-1 cursor-pointer"
@@ -1344,9 +1230,9 @@ export default function TeacherCourseWorkspacePage() {
                   <div className="h-full bg-slate-700/50 rounded-full w-full" />
                 </div>
                 <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium">
-                  <span className="text-sky-300 font-semibold flex items-center gap-1">
-                    <Sparkles className="w-3 h-3 text-sky-400" />
-                    <span>Click to announce</span>
+                  <span className="text-indigo-300 font-semibold flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-indigo-400" />
+                    <span>Inspect sessions</span>
                   </span>
                   <span>{routineSlots.length > 0 ? `${routineSlots.length} weekly slots` : "No timetable"}</span>
                 </div>
@@ -1558,57 +1444,22 @@ export default function TeacherCourseWorkspacePage() {
                 <button
                   type="button"
                   onClick={handleOpenManualModal}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/20 transition cursor-pointer"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/25 transition-all hover:scale-102 active:scale-98 cursor-pointer"
                 >
-                  <UserCheck className="w-4 h-4" />
+                  <UserCheck className="w-4 h-4 text-white" />
                   <span>Take Attendance (Roll Call)</span>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => handleStartLiveSession()}
-                  disabled={isStartingLive}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-600/20 transition cursor-pointer disabled:opacity-50"
-                  title="Open 10-minute check-in window for currently scheduled class"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  <span>{isStartingLive ? "Opening Window..." : "Open Geofence Window"}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPlannedClassesInput(courseStats.targetClasses);
-                    setShowEditClassesModal(true);
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-xs font-bold transition cursor-pointer border border-indigo-200/80 dark:border-indigo-800"
-                  title="Configure how many classes will be held for this course"
-                >
-                  <Calendar className="w-4 h-4 text-indigo-500" />
-                  <span>Target: {courseStats.targetClasses} Classes</span>
-                </button>
-
-                <button
-                  type="button"
                   onClick={handleExportAttendanceCSV}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold transition cursor-pointer"
-                  title="Download complete attendance sheet as CSV spreadsheet"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 dark:bg-emerald-400/10 dark:hover:bg-emerald-400/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 hover:border-emerald-500/50 text-xs font-bold transition-all hover:scale-102 active:scale-98 shadow-xs hover:shadow-emerald-500/10 cursor-pointer backdrop-blur-md"
+                  title="Download complete attendance & eligibility sheet as CSV spreadsheet"
                 >
-                  <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                   <span>Export CSV</span>
+                  <Download className="w-3.5 h-3.5 text-emerald-600/70 dark:text-emerald-400/70" />
                 </button>
-
-                {courseStats.atRiskCount > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleCopyAtRiskEmails}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 text-xs font-bold transition cursor-pointer"
-                    title="Copy emails of students below 75% attendance threshold"
-                  >
-                    <Mail className="w-4 h-4 text-rose-500" />
-                    <span>Copy At-Risk Emails ({courseStats.atRiskCount})</span>
-                  </button>
-                )}
               </div>
             </div>
 
@@ -1640,7 +1491,7 @@ export default function TeacherCourseWorkspacePage() {
                 <input
                   type="text"
                   placeholder="Search student ID, name, email..."
-                  value={studentSearch}
+                  value={studentSearch ?? ""}
                   onChange={(e) => setStudentSearch(e.target.value)}
                   className="w-full h-10 pl-9 pr-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 outline-none focus:ring-1 focus:ring-indigo-500"
                 />
@@ -1947,7 +1798,7 @@ export default function TeacherCourseWorkspacePage() {
               <input
                 type="text"
                 placeholder="Search material title or filename..."
-                value={materialSearch}
+                value={materialSearch ?? ""}
                 onChange={(e) => setMaterialSearch(e.target.value)}
                 className="w-full h-10 pl-9 pr-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 outline-none focus:ring-1 focus:ring-indigo-500"
               />
@@ -2345,7 +2196,7 @@ export default function TeacherCourseWorkspacePage() {
                   <input
                     type="date"
                     required
-                    value={manualDate}
+                    value={manualDate ?? ""}
                     onChange={(e) => setManualDate(e.target.value)}
                     className="w-full h-10 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold outline-none focus:border-indigo-500"
                   />
@@ -2378,7 +2229,7 @@ export default function TeacherCourseWorkspacePage() {
                 <input
                   type="text"
                   placeholder="e.g. Chapter 4: Adversarial Search & Minimax Alpha-Beta Pruning"
-                  value={manualTopic}
+                  value={manualTopic ?? ""}
                   onChange={(e) => setManualTopic(e.target.value)}
                   className="w-full h-10 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium outline-none focus:border-indigo-500"
                 />
@@ -2427,7 +2278,7 @@ export default function TeacherCourseWorkspacePage() {
                   <input
                     type="text"
                     placeholder="Filter students in roll call checklist..."
-                    value={manualSearch}
+                    value={manualSearch ?? ""}
                     onChange={(e) => setManualSearch(e.target.value)}
                     className="w-full h-8 pl-8 pr-3 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 outline-none"
                   />
@@ -2552,7 +2403,7 @@ export default function TeacherCourseWorkspacePage() {
               <input
                 type="text"
                 placeholder="Search student in this session..."
-                value={sessionSearch}
+                value={sessionSearch ?? ""}
                 onChange={(e) => setSessionSearch(e.target.value)}
                 className="w-full h-9 pl-9 pr-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs outline-none"
               />
@@ -2649,7 +2500,7 @@ export default function TeacherCourseWorkspacePage() {
                   type="text"
                   required
                   placeholder="e.g. Chapter 4: Adversarial Search & Game Playing"
-                  value={materialForm.title}
+                  value={materialForm.title ?? ""}
                   onChange={(e) => setMaterialForm({ ...materialForm, title: e.target.value })}
                   className="w-full h-10 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium outline-none focus:border-indigo-500"
                 />
@@ -2675,7 +2526,7 @@ export default function TeacherCourseWorkspacePage() {
                 <textarea
                   rows={2}
                   placeholder="Additional context, reading instructions, or lab exercises..."
-                  value={materialForm.description}
+                  value={materialForm.description ?? ""}
                   onChange={(e) => setMaterialForm({ ...materialForm, description: e.target.value })}
                   className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium outline-none focus:border-indigo-500"
                 />
@@ -2750,7 +2601,7 @@ export default function TeacherCourseWorkspacePage() {
                   type="text"
                   required
                   placeholder="e.g. Lab Task 2: Implement A* Search Algorithm in Python"
-                  value={assignmentForm.title}
+                  value={assignmentForm.title ?? ""}
                   onChange={(e) => setAssignmentForm({ ...assignmentForm, title: e.target.value })}
                   className="w-full h-10 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium outline-none focus:border-sky-500"
                 />
@@ -2762,7 +2613,7 @@ export default function TeacherCourseWorkspacePage() {
                   <input
                     type="datetime-local"
                     required
-                    value={assignmentForm.deadline}
+                    value={assignmentForm.deadline ?? ""}
                     onChange={(e) => setAssignmentForm({ ...assignmentForm, deadline: e.target.value })}
                     className="w-full h-10 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium outline-none focus:border-sky-500"
                   />
@@ -2774,7 +2625,7 @@ export default function TeacherCourseWorkspacePage() {
                     type="number"
                     min="1"
                     max="100"
-                    value={assignmentForm.totalMarks}
+                    value={assignmentForm.totalMarks ?? 20}
                     onChange={(e) => setAssignmentForm({ ...assignmentForm, totalMarks: e.target.value })}
                     className="w-full h-10 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium outline-none focus:border-sky-500"
                   />
@@ -2786,7 +2637,7 @@ export default function TeacherCourseWorkspacePage() {
                 <textarea
                   rows={3}
                   placeholder="Detail instructions, test cases, or submission format (ZIP, PDF, GitHub link)..."
-                  value={assignmentForm.description}
+                  value={assignmentForm.description ?? ""}
                   onChange={(e) => setAssignmentForm({ ...assignmentForm, description: e.target.value })}
                   className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium outline-none focus:border-sky-500"
                 />
@@ -2889,7 +2740,7 @@ export default function TeacherCourseWorkspacePage() {
                 <input
                   type="text"
                   placeholder="Search student..."
-                  value={submissionSearch}
+                  value={submissionSearch ?? ""}
                   onChange={(e) => setSubmissionSearch(e.target.value)}
                   className="w-full h-8 pl-8 pr-3 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs outline-none"
                 />
@@ -2992,14 +2843,14 @@ export default function TeacherCourseWorkspacePage() {
                             <input
                               type="number"
                               placeholder="Marks"
-                              value={gradeInput}
+                              value={gradeInput ?? ""}
                               onChange={(e) => setGradeInput(e.target.value)}
                               className="w-20 h-9 px-2.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-xs font-bold outline-none"
                             />
                             <input
                               type="text"
                               placeholder="Feedback note..."
-                              value={feedbackInput}
+                              value={feedbackInput ?? ""}
                               onChange={(e) => setFeedbackInput(e.target.value)}
                               className="w-52 h-9 px-3 rounded-xl bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-xs outline-none"
                             />
@@ -3024,12 +2875,12 @@ export default function TeacherCourseWorkspacePage() {
                           type="button"
                           onClick={() => {
                             setGradingSubId(sub._id);
-                            setGradeInput(sub.marks !== null ? String(sub.marks) : "");
+                            setGradeInput(sub.marks !== undefined && sub.marks !== null ? String(sub.marks) : "");
                             setFeedbackInput(sub.feedback || "");
                           }}
                           className="px-4 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition cursor-pointer"
                         >
-                          {sub.marks !== null ? "Edit Grade" : "Grade Submission"}
+                          {sub.marks !== undefined && sub.marks !== null ? "Edit Grade" : "Grade Submission"}
                         </button>
                       )}
                     </div>
@@ -3080,7 +2931,7 @@ export default function TeacherCourseWorkspacePage() {
                   type="text"
                   required
                   placeholder="e.g. Class Rescheduled to Wednesday 11:00 AM"
-                  value={noticeForm.title}
+                  value={noticeForm.title ?? ""}
                   onChange={(e) => setNoticeForm({ ...noticeForm, title: e.target.value })}
                   className="w-full h-10 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium outline-none focus:border-indigo-500"
                 />
@@ -3104,7 +2955,7 @@ export default function TeacherCourseWorkspacePage() {
                   rows={4}
                   required
                   placeholder="Write announcement details, room changes, quiz alerts, or exam preparation instructions..."
-                  value={noticeForm.content}
+                  value={noticeForm.content ?? ""}
                   onChange={(e) => setNoticeForm({ ...noticeForm, content: e.target.value })}
                   className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium outline-none focus:border-indigo-500"
                 />
@@ -3212,7 +3063,7 @@ export default function TeacherCourseWorkspacePage() {
                     max="300"
                     required
                     placeholder="e.g. 30"
-                    value={plannedClassesInput}
+                    value={plannedClassesInput ?? ""}
                     onChange={(e) => setPlannedClassesInput(e.target.value)}
                     className="w-full h-11 px-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-extrabold text-slate-900 dark:text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                   />
@@ -3284,221 +3135,7 @@ export default function TeacherCourseWorkspacePage() {
         </div>
       )}
 
-      {/* ════════════════════════════════════════════════════════════════
-          MODAL 8: ANNOUNCE CLASS SESSION
-          ════════════════════════════════════════════════════════════════ */}
-      {showAnnounceClassModal && (
-        <div
-          data-lenis-prevent
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in overscroll-contain"
-        >
-          <div className="relative w-full max-w-xl bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-6 max-h-[92vh] overflow-y-auto overscroll-contain scrollbar-thin">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-sky-500 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/20">
-                  <Megaphone className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-slate-900 dark:text-white">
-                    Announce Class Session • {courseCode}
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    Broadcast lecture details to students & record in course progression
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowAnnounceClassModal(false)}
-                className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            <form onSubmit={handleAnnounceClassSubmit} className="space-y-4">
-              {/* Date & Time Slot Row */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-indigo-500" />
-                    <span>Session Date *</span>
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={announceForm.sessionDate}
-                    onChange={(e) => setAnnounceForm((prev) => ({ ...prev, sessionDate: e.target.value }))}
-                    className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Time Slot *</span>
-                  </label>
-                  <select
-                    value={announceForm.timeSlot}
-                    onChange={(e) => setAnnounceForm((prev) => ({ ...prev, timeSlot: e.target.value }))}
-                    className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500 cursor-pointer"
-                  >
-                    {routineSlots.map((slot, idx) => (
-                      <option key={idx} value={slot.timeSlot}>
-                        {slot.day}: {slot.timeSlot} ({slot.room || "Lab"})
-                      </option>
-                    ))}
-                    <option value="09:00 - 10:00">09:00 - 10:00 AM</option>
-                    <option value="10:00 - 11:00">10:00 - 11:00 AM</option>
-                    <option value="11:00 - 12:00">11:00 - 12:00 PM</option>
-                    <option value="12:00 - 01:00">12:00 - 01:00 PM</option>
-                    <option value="02:00 - 03:00">02:00 - 03:00 PM</option>
-                    <option value="03:00 - 04:00">03:00 - 04:00 PM</option>
-                    <option value="04:00 - 05:00">04:00 - 05:00 PM</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Classroom / Location */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>Classroom / Lab Location</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. AI & Data Science Lab / Room 407"
-                  value={announceForm.room}
-                  onChange={(e) => setAnnounceForm((prev) => ({ ...prev, room: e.target.value }))}
-                  className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              {/* Lecture Topic */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                  <FileText className="w-3.5 h-3.5 text-indigo-500" />
-                  <span>Class Lecture Topic / Agenda</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Chapter 4: Adversarial Search & Alpha-Beta Pruning"
-                  value={announceForm.topic}
-                  onChange={(e) => setAnnounceForm((prev) => ({ ...prev, topic: e.target.value }))}
-                  className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              {/* Action Mode Radio Cards */}
-              <div className="space-y-2 pt-1">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Select Action Mode
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                  <div
-                    onClick={() => setAnnounceForm((prev) => ({ ...prev, actionType: "announce_only" }))}
-                    className={`p-3 rounded-2xl border text-left cursor-pointer transition-all ${
-                      announceForm.actionType === "announce_only"
-                        ? "bg-indigo-50 dark:bg-indigo-950/50 border-indigo-500 ring-2 ring-indigo-500/30"
-                        : "bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:border-slate-300"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <Megaphone className={`w-4 h-4 ${announceForm.actionType === "announce_only" ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400"}`} />
-                      <span className="text-xs font-extrabold text-slate-900 dark:text-white">Announce Only</span>
-                    </div>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
-                      Logs held session & notifies enrolled students.
-                    </p>
-                  </div>
-
-                  <div
-                    onClick={() => setAnnounceForm((prev) => ({ ...prev, actionType: "start_live" }))}
-                    className={`p-3 rounded-2xl border text-left cursor-pointer transition-all ${
-                      announceForm.actionType === "start_live"
-                        ? "bg-sky-50 dark:bg-sky-950/50 border-sky-500 ring-2 ring-sky-500/30"
-                        : "bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:border-slate-300"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <Radio className={`w-4 h-4 ${announceForm.actionType === "start_live" ? "text-sky-600 dark:text-sky-400" : "text-slate-400"}`} />
-                      <span className="text-xs font-extrabold text-slate-900 dark:text-white">Start Live Session</span>
-                    </div>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
-                      Opens 10-min live window for GPS & face check-in.
-                    </p>
-                  </div>
-
-                  <div
-                    onClick={() => setAnnounceForm((prev) => ({ ...prev, actionType: "record_rollcall" }))}
-                    className={`p-3 rounded-2xl border text-left cursor-pointer transition-all ${
-                      announceForm.actionType === "record_rollcall"
-                        ? "bg-emerald-50 dark:bg-emerald-950/50 border-emerald-500 ring-2 ring-emerald-500/30"
-                        : "bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:border-slate-300"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <UserCheck className={`w-4 h-4 ${announceForm.actionType === "record_rollcall" ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400"}`} />
-                      <span className="text-xs font-extrabold text-slate-900 dark:text-white">Take Roll Call</span>
-                    </div>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
-                      Opens roster to record attendance right now.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Special Instructions / Notes */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Instructions / Notes for Students (Optional)
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="e.g. Please bring laptops with lab environment configured. Quick quiz at start of class."
-                  value={announceForm.notes}
-                  onChange={(e) => setAnnounceForm((prev) => ({ ...prev, notes: e.target.value }))}
-                  className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-indigo-500 resize-none"
-                />
-              </div>
-
-              {/* Broadcast Notice Checkbox */}
-              <label className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={announceForm.notifyCohort}
-                  onChange={(e) => setAnnounceForm((prev) => ({ ...prev, notifyCohort: e.target.checked }))}
-                  className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
-                />
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Broadcast notice to course student Notice Board & cohort alert feed
-                </span>
-              </label>
-
-              {/* Actions */}
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setShowAnnounceClassModal(false)}
-                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300 bg-slate-100/90 dark:bg-slate-800/80 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 border border-slate-200/80 dark:border-slate-700/80 hover:border-indigo-200 dark:hover:border-indigo-800/60 transition-all cursor-pointer shadow-2xs active:scale-95"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isAnnouncingClass}
-                  className="inline-flex items-center gap-1.5 px-6 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-black text-xs transition cursor-pointer shadow-md shadow-indigo-600/30 disabled:opacity-50"
-                >
-                  <Megaphone className="w-3.5 h-3.5" />
-                  <span>{isAnnouncingClass ? "Announcing Class..." : "Broadcast & Announce Class"}</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* ════════════════════════════════════════════════════════════════
           MODAL 9: COURSE SESSIONS & HELD HISTORY INSPECTOR
@@ -3521,7 +3158,7 @@ export default function TeacherCourseWorkspacePage() {
                     Class Sessions Hub • {courseCode}
                   </h3>
                   <p className="text-xs text-slate-400">
-                    {rosterData?.sessions?.length || 0} class session(s) announced / conducted
+                    {rosterData?.sessions?.length || 0} class session(s) conducted
                   </p>
                 </div>
               </div>
@@ -3530,19 +3167,12 @@ export default function TeacherCourseWorkspacePage() {
                   type="button"
                   onClick={() => {
                     setShowSessionsModal(false);
-                    setAnnounceForm((prev) => ({
-                      ...prev,
-                      sessionDate: new Date().toISOString().split("T")[0],
-                      timeSlot: routineSlots[0]?.timeSlot || "09:00 - 10:00",
-                      room: routineSlots[0]?.room || "",
-                      topic: "",
-                    }));
-                    setShowAnnounceClassModal(true);
+                    handleOpenManualModal();
                   }}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition shadow-xs cursor-pointer"
                 >
-                  <Megaphone className="w-3.5 h-3.5" />
-                  <span>+ Announce Class</span>
+                  <UserCheck className="w-3.5 h-3.5" />
+                  <span>+ Record Roll Call</span>
                 </button>
                 <button
                   type="button"
@@ -3565,26 +3195,19 @@ export default function TeacherCourseWorkspacePage() {
                     No Class Sessions Held Yet
                   </h4>
                   <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                    This course has no announced or conducted class sessions yet. When you announce a lecture session or take roll call, it will appear here.
+                    This course has no conducted class sessions yet. When you take roll call or launch an attendance session, it will appear here.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => {
                     setShowSessionsModal(false);
-                    setAnnounceForm((prev) => ({
-                      ...prev,
-                      sessionDate: new Date().toISOString().split("T")[0],
-                      timeSlot: routineSlots[0]?.timeSlot || "09:00 - 10:00",
-                      room: routineSlots[0]?.room || "",
-                      topic: "",
-                    }));
-                    setShowAnnounceClassModal(true);
+                    handleOpenManualModal();
                   }}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-600/30 transition-all cursor-pointer"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold text-xs shadow-md shadow-indigo-600/30 transition-all cursor-pointer"
                 >
-                  <Megaphone className="w-4 h-4" />
-                  <span>Announce First Class Session</span>
+                  <UserCheck className="w-4 h-4" />
+                  <span>Record First Roll Call</span>
                 </button>
               </div>
             ) : (
@@ -3645,8 +3268,8 @@ export default function TeacherCourseWorkspacePage() {
                         <button
                           type="button"
                           onClick={() => {
-                            setManualDate(sess.date);
-                            setManualTimeSlot(sess.timeSlot);
+                            setManualDate(sess.date || new Date().toISOString().split("T")[0]);
+                            setManualTimeSlot(sess.timeSlot || "09:00 - 10:00");
                             setManualTopic(sess.topic || "");
                             setShowSessionsModal(false);
                             handleOpenManualModal();

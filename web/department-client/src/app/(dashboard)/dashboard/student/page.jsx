@@ -337,6 +337,41 @@ export default function StudentDashboardPage() {
     }
   }, [user?.email]);
 
+  // Polling for live session activation & seconds countdown
+  useEffect(() => {
+    if (!user?.email) return;
+
+    // Background poll every 12s so when a teacher starts attendance, student sees it automatically
+    const pollInterval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        loadAttendanceData(false);
+      }
+    }, 12000);
+
+    // 1-second countdown for open sessions
+    const timerInterval = setInterval(() => {
+      setAttendanceSessions((prev) =>
+        prev.map((s) => {
+          if (s.secondsLeft && s.secondsLeft > 0 && (s.isOpen || s.isMarkable)) {
+            const next = s.secondsLeft - 1;
+            return {
+              ...s,
+              secondsLeft: next,
+              isOpen: next > 0,
+              isMarkable: next > 0 && !s.attendanceId,
+            };
+          }
+          return s;
+        })
+      );
+    }, 1000);
+
+    return () => {
+      clearInterval(pollInterval);
+      clearInterval(timerInterval);
+    };
+  }, [user?.email, attendanceTargetDay]);
+
   useEffect(() => {
     if (studentEnrolledSem) {
       setSelectedRoutineSemester(String(studentEnrolledSem));
@@ -640,12 +675,12 @@ export default function StudentDashboardPage() {
       return;
     }
 
-    if (session.attendanceId) {
+    if (session.attendanceId || session.attendance?.id || session.state === "marked") {
       toast.success("Attendance already recorded for this class session.");
       return;
     }
 
-    if (!session.isMarkable) {
+    if (!session.isMarkable && !session.isOpen && session.state !== "open") {
       toast.error("Attendance window is closed for this class (strictly available within first 10 minutes of class start).");
       return;
     }
@@ -1704,10 +1739,11 @@ export default function StudentDashboardPage() {
             ) : (
               <div className="space-y-3.5">
                 {attendanceSessions.map((session, index) => {
-                  const isAttended = Boolean(session.attendanceId);
-                  const isMarkable = session.isMarkable;
-                  const isActive = session.isActive;
-                  const isPast = session.isPast;
+                  const isAttended = Boolean(session.attendanceId || session.attendance?.id || session.state === "marked");
+                  const isOpenNow = Boolean(session.isOpen || session.state === "open");
+                  const isMarkable = Boolean(session.isMarkable || (isOpenNow && !isAttended));
+                  const isActive = Boolean(session.isActive ?? isOpenNow);
+                  const isPast = Boolean(session.isPast ?? (session.state === "closed"));
 
                   return (
                     <div
@@ -1754,7 +1790,7 @@ export default function StudentDashboardPage() {
                               {!isAttended && isActive && isMarkable && (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-600 text-white animate-pulse">
                                   <Zap className="w-3 h-3" />
-                                  <span>Check-in Open</span>
+                                  <span>Check-in Open {session.secondsLeft > 0 ? `(${Math.floor(session.secondsLeft / 60)}:${String(session.secondsLeft % 60).padStart(2, "0")} left)` : ""}</span>
                                 </span>
                               )}
 
@@ -2342,6 +2378,9 @@ export default function StudentDashboardPage() {
         subtitle="Department broadcast & official academic circulars."
         isCollapsed={collapsedSections.notices}
         onToggle={() => toggleSection("notices")}
+        userRole="student"
+        studentSemester={enrolledSemester || profile?.semester || user?.semester}
+        studentCourses={semesterCourses}
       />
 
       {/* ── Learning Resources & Course Materials ───────────────── */}

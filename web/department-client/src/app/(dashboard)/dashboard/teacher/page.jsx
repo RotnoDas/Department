@@ -40,18 +40,21 @@ import {
   Coffee,
   ChevronRight,
   Search,
-  ArrowRight
+  ArrowRight,
+  Bell,
 } from "lucide-react";
 import { FaGithub, FaLinkedin } from "react-icons/fa";
 import toast from "react-hot-toast";
 import Loading from "@/components/common/Loading";
 import { TeacherAnalyticsCharts } from "@/components/dashboard/DashboardCharts";
 import NoticeBoardSection from "@/components/notice/NoticeBoardSection";
+import CourseNoticeModal from "@/components/notice/CourseNoticeModal";
 import { 
   SectionCollapseToggle, 
   CollapsibleBody, 
   DashboardCollapseControls 
 } from "@/components/dashboard/CollapsibleSection";
+import { apiFetch } from "@/lib/api";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
@@ -96,6 +99,10 @@ export default function TeacherDashboardPage() {
   const [targetClassesInput, setTargetClassesInput] = useState(36);
   const [isSavingDashboardTarget, setIsSavingDashboardTarget] = useState(false);
 
+  // Course Notice Modal State (Teacher top button & notice management)
+  const [isCourseNoticeModalOpen, setIsCourseNoticeModalOpen] = useState(false);
+  const [editingCourseNotice, setEditingCourseNotice] = useState(null);
+
   // Profile Edit & Photo State
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -122,6 +129,66 @@ export default function TeacherDashboardPage() {
     website: "",
     image: "",
   });
+
+  // Live Attendance Session Management
+  const [activeAttendanceSessions, setActiveAttendanceSessions] = useState({});
+  const [startingAttendanceCode, setStartingAttendanceCode] = useState(null);
+
+  const formatTimer = (totalSec) => {
+    if (!totalSec || totalSec <= 0) return "00:00";
+    const m = Math.floor(totalSec / 60);
+    const s = Math.floor(totalSec % 60);
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  };
+
+  const loadActiveAttendance = async () => {
+    try {
+      const res = await apiFetch("/api/attendance/teacher/active-sessions");
+      if (res.ok && Array.isArray(res.data?.sessions)) {
+        const map = {};
+        res.data.sessions.forEach((s) => {
+          if (s.isOpen && s.secondsLeft > 0 && s.courseCode) {
+            map[s.courseCode.toUpperCase()] = {
+              routineId: s.routineId,
+              secondsLeft: s.secondsLeft,
+              isOpen: true,
+              startedAt: s.startedAt,
+            };
+          }
+        });
+        setActiveAttendanceSessions(map);
+      }
+    } catch (err) {
+      console.error("Error loading active teacher attendance sessions:", err);
+    }
+  };
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setActiveAttendanceSessions((prev) => {
+        let changed = false;
+        const updated = { ...prev };
+        Object.keys(updated).forEach((key) => {
+          const curr = updated[key];
+          if (curr && curr.secondsLeft > 0) {
+            const nextSec = curr.secondsLeft - 1;
+            if (nextSec <= 0) {
+              delete updated[key];
+              changed = true;
+            } else {
+              updated[key] = { ...curr, secondsLeft: nextSec };
+              changed = true;
+            }
+          } else {
+            delete updated[key];
+            changed = true;
+          }
+        });
+        return changed ? updated : prev;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Collapsible sections state
   const [collapsedSections, setCollapsedSections] = useState({
@@ -297,6 +364,7 @@ export default function TeacherDashboardPage() {
   useEffect(() => {
     if (user?.email) {
       loadProfile();
+      loadActiveAttendance();
     } else if (!sessionLoading) {
       setIsLoading(false);
     }
@@ -449,34 +517,187 @@ export default function TeacherDashboardPage() {
     setIsEditing(false);
   };
 
+  // ── Routine Scheduled Class Time Validation Helpers ──
+  const parseSlotMinutes = (slotStr) => {
+    if (!slotStr || typeof slotStr !== "string") return null;
+    const m = slotStr.match(/^\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*[-\u2013\u2014]\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*$/i);
+    if (!m) return null;
+    const toMin = (hStr, mStr, meridiem) => {
+      let h = parseInt(hStr, 10);
+      const min = parseInt(mStr || "0", 10);
+      if (min > 59 || h > 23) return null;
+      if (meridiem) {
+        if (h < 1 || h > 12) return null;
+        h = h % 12;
+        if (meridiem.toLowerCase() === "pm") h += 12;
+      } else if (h >= 1 && h <= 7) {
+        h += 12;
+      }
+      return h * 60 + min;
+    };
+    const startMin = toMin(m[1], m[2], m[3]);
+    const endMin = toMin(m[4], m[5], m[6]);
+    if (startMin === null || endMin === null || endMin <= startMin) return null;
+    const pad = (h, mm) => `${String(h).padStart(2, "0")}:${String(mm || "00").padStart(2, "0")}`;
+    return {
+      startMin,
+      endMin,
+      startLabel: pad(m[1], m[2]),
+      endLabel: pad(m[4], m[5]),
+    };
+  };
+
+  const getCurrentDayAndMinutes = () => {
+    const now = new Date();
+    const weekdayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const currentDay = weekdayNames[now.getDay()];
+    const currentMinutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+    return { currentDay, currentMinutes };
+  };
+
+  const getSlotRoutineTiming = (day, timeSlot) => {
+    const { currentDay, currentMinutes } = getCurrentDayAndMinutes();
+    const slot = parseSlotMinutes(timeSlot);
+    if (!slot) {
+      return { canTake: false, status: "invalid", label: "Invalid Slot", reason: "Invalid time format" };
+    }
+
+    const isToday = (day || "").toLowerCase() === currentDay.toLowerCase();
+    if (!isToday) {
+      return {
+        canTake: false,
+        status: "wrong_day",
+        label: `Scheduled: ${day}`,
+        reason: `Class is scheduled on ${day}. Today is ${currentDay}.`,
+        slot,
+      };
+    }
+
+    // Teacher can start attendance from 5 minutes before scheduled start until scheduled end
+    if (currentMinutes < slot.startMin - 5) {
+      return {
+        canTake: false,
+        status: "upcoming",
+        label: `Upcoming (${slot.startLabel})`,
+        reason: `Class starts at ${slot.startLabel}. Attendance opens during class hours.`,
+        slot,
+      };
+    }
+
+    if (currentMinutes >= slot.endMin) {
+      return {
+        canTake: false,
+        status: "ended",
+        label: "Class Ended",
+        reason: `Class ended at ${slot.endLabel}.`,
+        slot,
+      };
+    }
+
+    return {
+      canTake: true,
+      status: "in_session",
+      label: "Take Attendance",
+      reason: `Class is in session (${slot.startLabel} - ${slot.endLabel}). Click to launch 10-minute student check-in.`,
+      slot,
+    };
+  };
+
+  const getCourseRoutineTiming = (course) => {
+    const { currentDay } = getCurrentDayAndMinutes();
+    const slots = course.slots || [];
+    const todaySlot = slots.find((s) => (s.day || "").toLowerCase() === currentDay.toLowerCase());
+
+    if (!todaySlot) {
+      const days = Array.from(new Set(slots.map((s) => s.day).filter(Boolean)));
+      const dayLabel = days.length ? days.join(", ") : "Other Day";
+      return {
+        canTake: false,
+        status: "no_class_today",
+        label: "No Class Today",
+        reason: `No lecture scheduled today (${currentDay}). Scheduled on: ${dayLabel}.`,
+        targetSlot: slots[0] || course,
+      };
+    }
+
+    const timing = getSlotRoutineTiming(todaySlot.day, todaySlot.time);
+    return {
+      ...timing,
+      targetSlot: todaySlot,
+    };
+  };
+
   const handleStartAttendance = async (cls) => {
     if (isPending) {
       toast.error("Your faculty account is pending administrator approval.");
       return;
     }
 
-    try {
-      const targetRoom = cls.room || (cls.rooms ? Array.from(cls.rooms)[0] : "Room 407");
-      const targetTime = cls.time || (cls.slots && cls.slots[0]?.time) || "09:00 - 10:00";
-      const targetDay = cls.day || (cls.slots && cls.slots[0]?.day) || "Saturday";
+    const code = cls.code || cls.courseCode;
+    if (!code) {
+      toast.error("Course code is missing.");
+      return;
+    }
+    const key = code.toUpperCase();
 
-      await fetch(`${SERVER_URL}/api/attendance/session/start`, {
+    if (activeAttendanceSessions[key]?.isOpen && activeAttendanceSessions[key]?.secondsLeft > 0) {
+      toast.success(
+        `Attendance session for ${code} is already running (${formatTimer(activeAttendanceSessions[key].secondsLeft)} remaining).`,
+        { icon: "⏱️" }
+      );
+      return;
+    }
+
+    const targetRoom = cls.room || (cls.rooms ? Array.from(cls.rooms)[0] : "Room 407");
+    const targetTime = cls.time || (cls.slots && cls.slots[0]?.time) || "09:00 - 10:00";
+    const targetDay = cls.day || (cls.slots && cls.slots[0]?.day) || "Saturday";
+    const routineId = cls.id || cls.routineId || (cls.slots && cls.slots[0]?.id) || undefined;
+
+    // Validate routine timing
+    const timing = getSlotRoutineTiming(targetDay, targetTime);
+    if (!timing.canTake) {
+      toast.error(timing.reason || "Attendance can only be taken during scheduled routine class time.");
+      return;
+    }
+
+    setStartingAttendanceCode(key);
+    try {
+      const res = await apiFetch("/api/attendance/session/start", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          courseCode: cls.code,
-          courseTitle: cls.title,
+        body: {
+          routineId,
+          courseCode: code,
+          courseTitle: cls.title || cls.courseTitle,
           semester: cls.semesterNum || cls.semester,
-          teacherName: activeName,
           room: targetRoom,
           timeSlot: targetTime,
-          day: targetDay
-        })
+          day: targetDay,
+        },
       });
-      toast.success(`Live attendance session launched for ${cls.code} (${targetRoom})! Students can now check in.`);
-    } catch (e) {
-      console.error(e);
-      toast.success(`Active attendance session started for ${cls.code}!`);
+
+      if (!res.ok) {
+        throw new Error(res.data?.error || "Failed to start attendance session");
+      }
+
+      const secondsLeft = res.data?.secondsLeft || 600;
+      setActiveAttendanceSessions({
+        [key]: {
+          routineId: res.data?.session?.routineId || routineId,
+          secondsLeft,
+          isOpen: true,
+          startedAt: res.data?.session?.startedAt || new Date().toISOString(),
+        },
+      });
+
+      toast.success(
+        `Live 10-minute attendance window launched for ${code}! Students have 10 minutes to submit attendance.`,
+        { duration: 6000, icon: "⏱️" }
+      );
+    } catch (err) {
+      console.error("Attendance session start error:", err);
+      toast.error(err.message || "Failed to launch attendance session.");
+    } finally {
+      setStartingAttendanceCode(null);
     }
   };
 
@@ -522,6 +743,8 @@ export default function TeacherDashboardPage() {
       if (!map.has(key)) {
         const planned = coursePlannedMap[key] || 36;
         map.set(key, {
+          id: slot.id,
+          routineId: slot.id,
           code: slot.code,
           title: slot.title,
           semester: slot.semester,
@@ -534,9 +757,13 @@ export default function TeacherDashboardPage() {
       }
       const entry = map.get(key);
       entry.slots.push({
+        id: slot.id,
+        routineId: slot.id,
+        code: slot.code,
         day: slot.day,
         time: slot.time,
         room: slot.room,
+        semesterNum: slot.semesterNum,
       });
       if (slot.room) entry.rooms.add(slot.room);
     });
@@ -656,7 +883,19 @@ export default function TeacherDashboardPage() {
               </span>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingCourseNotice(null);
+                  setIsCourseNoticeModalOpen(true);
+                }}
+                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-sky-500 via-indigo-600 to-purple-600 hover:from-sky-400 hover:via-indigo-500 hover:to-purple-500 text-white font-bold text-xs shadow-lg shadow-sky-950/40 border border-white/20 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                title="Publish Course Notice for Enrolled Students"
+              >
+                <Bell className="w-4 h-4 text-sky-200" />
+                <span>Course Notice</span>
+              </button>
               <DashboardCollapseControls
                 onCollapseAll={collapseAllSections}
                 onExpandAll={expandAllSections}
@@ -1418,15 +1657,70 @@ export default function TeacherDashboardPage() {
                       <BookOpen className="w-4 h-4" />
                       <span>Course Workspace ➔</span>
                     </Link>
-                    <button
-                      onClick={() => handleStartAttendance(course.slots[0] || course)}
-                      disabled={isPending}
-                      title="Launch live attendance session for this course"
-                      className="inline-flex items-center justify-center gap-1.5 px-3 h-11 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20 transition-all active:scale-95 cursor-pointer shrink-0 disabled:opacity-50"
-                    >
-                      <UserCheck className="w-4 h-4" />
-                      <span>Take Attendance</span>
-                    </button>
+                    {(() => {
+                      const codeKey = (course.code || "").toUpperCase();
+                      const session = activeAttendanceSessions[codeKey];
+                      const isActive = session?.isOpen && session?.secondsLeft > 0;
+                      const isStarting = startingAttendanceCode === codeKey;
+                      const timing = getCourseRoutineTiming(course);
+
+                      if (isStarting) {
+                        return (
+                          <button
+                            disabled
+                            className="inline-flex items-center justify-center gap-1.5 px-3 h-11 rounded-xl font-bold text-xs bg-slate-100 dark:bg-slate-800 text-slate-500 shrink-0 cursor-not-allowed"
+                          >
+                            <RefreshCw className="w-4 h-4 animate-spin text-sky-500" />
+                            <span>Starting...</span>
+                          </button>
+                        );
+                      }
+
+                      if (isActive) {
+                        return (
+                          <button
+                            disabled
+                            title={`Session active: ${formatTimer(session.secondsLeft)} remaining`}
+                            className="inline-flex items-center justify-center gap-1.5 px-3 h-11 rounded-xl font-bold text-xs bg-emerald-600 text-white ring-2 ring-emerald-400/50 shadow-md shadow-emerald-600/30 animate-pulse shrink-0 cursor-default"
+                          >
+                            <span className="relative flex h-2.5 w-2.5">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
+                            </span>
+                            <span>Active ({formatTimer(session.secondsLeft)})</span>
+                          </button>
+                        );
+                      }
+
+                      if (!timing.canTake) {
+                        return (
+                          <button
+                            disabled
+                            title={timing.reason}
+                            className="inline-flex items-center justify-center gap-1.5 px-3 h-11 rounded-xl font-bold text-xs bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 border border-slate-200/60 dark:border-slate-700/60 cursor-not-allowed shrink-0"
+                          >
+                            {timing.status === "upcoming" ? (
+                              <Clock className="w-4 h-4 text-amber-500" />
+                            ) : (
+                              <Calendar className="w-4 h-4 text-slate-400" />
+                            )}
+                            <span>{timing.label}</span>
+                          </button>
+                        );
+                      }
+
+                      return (
+                        <button
+                          onClick={() => handleStartAttendance(timing.targetSlot || course)}
+                          disabled={isPending}
+                          title={timing.reason}
+                          className="inline-flex items-center justify-center gap-1.5 px-3.5 h-11 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20 transition-all hover:scale-105 active:scale-95 cursor-pointer shrink-0 disabled:opacity-50"
+                        >
+                          <UserCheck className="w-4 h-4" />
+                          <span>Take Attendance</span>
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
               ))}
@@ -1627,19 +1921,70 @@ export default function TeacherDashboardPage() {
                         <BookOpen className="w-3.5 h-3.5" />
                         <span>Course Workspace ➔</span>
                       </Link>
-                      <button 
-                        onClick={() => handleStartAttendance(cls)}
-                        disabled={isPending}
-                        title="Start live geofenced attendance session"
-                        className={`inline-flex items-center justify-center gap-1 px-3 h-10 rounded-xl font-bold text-xs transition-colors shrink-0 ${
-                          isPending
-                            ? "bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed shadow-none"
-                            : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 cursor-pointer"
-                        }`}
-                      >
-                        <Play className="w-3 h-3 fill-current text-emerald-600 dark:text-emerald-400" />
-                        <span className="hidden sm:inline">Live</span>
-                      </button>
+                      {(() => {
+                        const codeKey = (cls.code || "").toUpperCase();
+                        const session = activeAttendanceSessions[codeKey];
+                        const isActive = session?.isOpen && session?.secondsLeft > 0;
+                        const isStarting = startingAttendanceCode === codeKey;
+                        const timing = getSlotRoutineTiming(cls.day, cls.time);
+
+                        if (isStarting) {
+                          return (
+                            <button
+                              disabled
+                              className="inline-flex items-center justify-center gap-1.5 px-3 h-10 rounded-xl font-bold text-xs bg-slate-100 dark:bg-slate-800 text-slate-500 shrink-0 cursor-not-allowed"
+                            >
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin text-sky-500" />
+                              <span>Starting...</span>
+                            </button>
+                          );
+                        }
+
+                        if (isActive) {
+                          return (
+                            <button
+                              disabled
+                              title={`Session active: ${formatTimer(session.secondsLeft)} remaining`}
+                              className="inline-flex items-center justify-center gap-1.5 px-3 h-10 rounded-xl font-bold text-xs bg-emerald-600 text-white ring-2 ring-emerald-400/50 shadow-xs animate-pulse shrink-0 cursor-default"
+                            >
+                              <span className="relative flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+                              </span>
+                              <span>Active ({formatTimer(session.secondsLeft)})</span>
+                            </button>
+                          );
+                        }
+
+                        if (!timing.canTake) {
+                          return (
+                            <button
+                              disabled
+                              title={timing.reason}
+                              className="inline-flex items-center justify-center gap-1.5 px-2.5 h-10 rounded-xl font-bold text-xs bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 border border-slate-200/60 dark:border-slate-700/60 cursor-not-allowed shrink-0"
+                            >
+                              {timing.status === "upcoming" ? (
+                                <Clock className="w-3.5 h-3.5 text-amber-500" />
+                              ) : (
+                                <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                              )}
+                              <span>{timing.label}</span>
+                            </button>
+                          );
+                        }
+
+                        return (
+                          <button
+                            onClick={() => handleStartAttendance(cls)}
+                            disabled={isPending}
+                            title={timing.reason}
+                            className="inline-flex items-center justify-center gap-1.5 px-3 h-10 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition-all hover:scale-105 active:scale-95 cursor-pointer shrink-0 disabled:opacity-50"
+                          >
+                            <UserCheck className="w-3.5 h-3.5" />
+                            <span>Take Attendance</span>
+                          </button>
+                        );
+                      })()}
                     </div>
                   </div>
                 ))}
@@ -1854,6 +2199,17 @@ export default function TeacherDashboardPage() {
           subtitle="Department broadcast & official faculty circulars."
           isCollapsed={collapsedSections.notices}
           onToggle={() => toggleSection("notices")}
+          userRole="teacher"
+          teacherCourses={assignedCourses}
+          teacherProfile={{
+            name: activeName,
+            email: user?.email,
+            designation: activeDesignation,
+          }}
+          onOpenCourseNotice={() => {
+            setEditingCourseNotice(null);
+            setIsCourseNoticeModalOpen(true);
+          }}
         />
       </div>
 
@@ -1974,6 +2330,24 @@ export default function TeacherDashboardPage() {
           </div>
         </div>
       )}
+      {/* Course Notice Modal opened from Top Button or Section */}
+      <CourseNoticeModal
+        isOpen={isCourseNoticeModalOpen}
+        onClose={() => {
+          setIsCourseNoticeModalOpen(false);
+          setEditingCourseNotice(null);
+        }}
+        onNoticeSaved={() => {
+          window.dispatchEvent(new CustomEvent("refresh-notices"));
+        }}
+        teacherCourses={assignedCourses}
+        currentTeacher={{
+          name: activeName,
+          email: user?.email,
+          designation: activeDesignation,
+        }}
+        editingNotice={editingCourseNotice}
+      />
     </div>
   );
 }

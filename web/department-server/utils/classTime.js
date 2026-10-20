@@ -94,22 +94,25 @@ function parseTimeSlot(slot) {
  *   dev      - local testing only (devMode): `windowMinutes` from the moment it was opened
  */
 function buildWindows({ slot, session, today, windowMinutes, devMode, timeZone }) {
-  const windows = [
-    {
+  const windows = [];
+
+  if (slot && Number.isFinite(slot.startMin) && Number.isFinite(slot.endMin)) {
+    windows.push({
       source: 'schedule',
       startMin: slot.startMin,
       endMin: Math.min(slot.startMin + windowMinutes, slot.endMin),
-    },
-  ];
+    });
+  }
 
-  const startedAt = session?.startedAt ? new Date(session.startedAt) : null;
+  const isSessionActive = session?.status === 'active';
+  const startedAt = isSessionActive && session?.startedAt ? new Date(session.startedAt) : null;
   if (startedAt && !Number.isNaN(startedAt.getTime())) {
     const started = getZonedParts(startedAt, timeZone);
-    if (started.date === today && started.minutes >= slot.startMin && started.minutes < slot.endMin) {
+    if (started.date === today) {
       windows.push({
         source: 'teacher',
         startMin: started.minutes,
-        endMin: Math.min(started.minutes + windowMinutes, slot.endMin),
+        endMin: Math.min(started.minutes + windowMinutes, slot ? slot.endMin : started.minutes + windowMinutes),
       });
     }
   }

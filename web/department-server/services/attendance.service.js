@@ -180,10 +180,12 @@ const normalizeName = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g
 
 /** True when the routine slot is taught by this teacher (matched by teacher id, else by name). */
 function teacherOwnsRoutine(teacher, routine) {
+  if (teacher?.role === 'admin') return true;
   const ids = [teacher.teacherId, teacher._id && String(teacher._id), teacher.userId]
     .filter(Boolean)
     .map(String);
   if (routine.teacherId && ids.includes(String(routine.teacherId))) return true;
+  if (routine.teacherEmail && teacher.email && routine.teacherEmail.toLowerCase() === teacher.email.toLowerCase()) return true;
   return Boolean(routine.teacherName) && normalizeName(routine.teacherName) === normalizeName(teacher.name);
 }
 
@@ -197,13 +199,24 @@ async function listDaySessions({ student, userId, queryDay, now = new Date() }) 
   const local = getZonedParts(now, cfg.timezone);
   const day = WEEKDAYS.includes(queryDay) ? queryDay : local.weekday;
 
+  const isToday = day === local.weekday;
+
+  // Auto-complete any active sessions whose 10-minute window has passed
+  try {
+    await attendanceSessions.updateMany(
+      { status: 'active', expiresAt: { $lt: now } },
+      { $set: { status: 'completed', updatedAt: now } }
+    );
+  } catch (_) {}
+
+  // Strictly load only classes scheduled on this routine day for this semester
   const routineDocs = await routines.find({ day, semester }).toArray();
+
   const slots = routineDocs
     .map((routine) => ({ routine, slot: parseTimeSlot(routine.timeSlot) }))
     .filter((x) => x.slot)
     .sort((a, b) => a.slot.startMin - b.slot.startMin);
 
-  const isToday = day === local.weekday;
   const keys = slots.map(({ routine }) => sessionKeyFor(local.date, routine._id));
   const sessionDocs = keys.length
     ? await attendanceSessions.find({ sessionKey: { $in: keys } }).toArray()
@@ -221,6 +234,7 @@ async function listDaySessions({ student, userId, queryDay, now = new Date() }) 
 
   const sessionByKey = new Map(sessionDocs.map((s) => [s.sessionKey, s]));
 
+  let activeOpenFound = false;
   const sessions = slots.map(({ routine, slot }) => {
     const sessionKey = sessionKeyFor(local.date, routine._id);
     const session = sessionByKey.get(sessionKey) || null;
@@ -237,11 +251,30 @@ async function listDaySessions({ student, userId, queryDay, now = new Date() }) 
 
     const window = describeWindow({ routine, slot, session, local });
     let state;
-    if (record) state = 'marked';
-    else if (window.state === 'open') state = 'open';
-    else if (window.state === 'upcoming') state = 'upcoming';
-    else if (window.state === 'closed') state = 'closed';
-    else state = 'scheduled';
+    let isOpen = window.state === 'open';
+    let isMarkable = window.state === 'open' && !record;
+    let secondsLeft = window.secondsLeft;
+
+    // Enforce single active class: never allow multiple classes to be open simultaneously
+    if (isOpen) {
+      if (activeOpenFound) {
+        isOpen = false;
+        isMarkable = false;
+        secondsLeft = 0;
+        state = 'closed';
+      } else {
+        activeOpenFound = true;
+        state = 'open';
+      }
+    } else if (record) {
+      state = 'marked';
+    } else if (window.state === 'upcoming') {
+      state = 'upcoming';
+    } else if (window.state === 'closed') {
+      state = 'closed';
+    } else {
+      state = 'scheduled';
+    }
 
     return {
       routineId: String(routine._id),
@@ -257,11 +290,14 @@ async function listDaySessions({ student, userId, queryDay, now = new Date() }) 
       room: routine.room || null,
       semester,
       state,
-      isOpen: window.state === 'open',
-      isMarkable: window.state === 'open' && !record,
+      isOpen,
+      isActive: isOpen,
+      isMarkable,
+      isPast: state === 'closed',
+      attendanceId: record ? String(record._id) : null,
       windowSource: window.source,
       secondsToOpen: window.secondsToOpen,
-      secondsLeft: window.secondsLeft,
+      secondsLeft,
       attendance: record
         ? {
             id: String(record._id),

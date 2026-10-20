@@ -220,46 +220,148 @@ router.get('/student/history', verifyToken, requireStudent(), async (req, res) =
 });
 
 // ── POST /api/attendance/session/start (teacher) ─────────────────────────────────────────────────
-// A teacher can (re)open check-in for THEIR OWN class, but only while that class is in session:
-// the window then runs for 10 minutes from this moment, never past the end of the class.
+// When a teacher presses the button, an active attendance session starts immediately and runs for
+// 10 minutes from this moment, allowing enrolled students to give attendance.
 router.post('/session/start', verifyToken, requireTeacher, async (req, res) => {
   try {
     const now = new Date();
     const local = getZonedParts(now, cfg.timezone);
+    const { routines, courses, attendanceSessions } = getCollections();
 
-    const routine = await findRoutine(req.body?.routineId);
-    if (!routine) throw new AttendanceError('CLASS_NOT_FOUND', 'That class was not found.', 404);
+    let routine = null;
+    const routineId = req.body?.routineId || req.body?.id;
+    if (routineId) {
+      routine = await findRoutine(routineId);
+    }
+
+    const courseCode = req.body?.courseCode || req.body?.code;
+    if (!routine && courseCode) {
+      const normCode = String(courseCode).trim().toUpperCase();
+      const codeRegex = new RegExp(`^${normCode}$`, 'i');
+      const candidates = await routines.find({ courseCode: codeRegex }).toArray();
+      // Match teacher and today's weekday if possible
+      routine =
+        candidates.find((r) => teacherOwnsRoutine(req.teacher, r) && r.day === local.weekday) ||
+        candidates.find((r) => teacherOwnsRoutine(req.teacher, r)) ||
+        candidates.find((r) => r.day === local.weekday) ||
+        candidates[0] ||
+        null;
+
+      if (!routine) {
+        // If course exists in courses collection, auto-create a routine slot so teacher can conduct attendance
+        const courseDoc = await courses.findOne({
+          $or: [{ code: codeRegex }, { code: normCode }],
+        });
+        if (courseDoc) {
+          const insertRes = await routines.insertOne({
+            courseCode: courseDoc.code,
+            courseTitle: courseDoc.title,
+            semester: Number(courseDoc.semesterNum || courseDoc.semester || req.body?.semester || 1),
+            teacherId: req.teacher.teacherId || null,
+            teacherName: req.teacher.name || null,
+            teacherEmail: req.teacher.email || null,
+            room: req.body?.room || 'Room 401',
+            day: local.weekday,
+            timeSlot: req.body?.timeSlot || '09:00 - 10:00',
+            createdAt: now,
+          });
+          routine = await routines.findOne({ _id: insertRes.insertedId });
+        }
+      }
+    }
+
+    if (!routine) throw new AttendanceError('CLASS_NOT_FOUND', 'That class was not found in the academic routine.', 404);
     if (!teacherOwnsRoutine(req.teacher, routine)) {
       throw new AttendanceError('NOT_YOUR_CLASS', 'You can only start attendance for your own classes.', 403);
     }
+
+    // Criterion 1: Routine Scheduled Day
     if (routine.day !== local.weekday) {
-      throw new AttendanceError('CLASS_NOT_TODAY', `${routine.courseCode} is scheduled on ${routine.day}, not today.`, 409);
-    }
-    const slot = parseTimeSlot(routine.timeSlot);
-    if (!slot) throw new AttendanceError('CLASS_NOT_FOUND', 'That class has no valid time slot.', 409);
-    if (local.minutes < slot.startMin || local.minutes >= slot.endMin) {
       throw new AttendanceError(
-        'OUTSIDE_CLASS_TIME',
-        `You can only start attendance while the class is in session (${slot.startLabel} - ${slot.endLabel}).`,
-        409
+        'CLASS_NOT_TODAY',
+        `${routine.courseCode} is scheduled on ${routine.day}, not today (${local.weekday}). Attendance can only be taken on the routine scheduled day.`,
+        400
       );
     }
+
+    // Criterion 2: Routine Scheduled Class Hours
+    const slot = parseTimeSlot(routine.timeSlot);
+    if (!slot) {
+      throw new AttendanceError('CLASS_NOT_FOUND', 'That class has no valid time slot.', 400);
+    }
+
+    // Teacher can start attendance from 5 minutes before scheduled start time until the class ends
+    if (local.minutes < slot.startMin - 5) {
+      throw new AttendanceError(
+        'CLASS_NOT_STARTED',
+        `${routine.courseCode} class starts at ${slot.startLabel}. Attendance cannot be started before class time.`,
+        400
+      );
+    }
+
+    if (local.minutes >= slot.endMin) {
+      throw new AttendanceError(
+        'CLASS_ALREADY_ENDED',
+        `${routine.courseCode} class ended at ${slot.endLabel}. Attendance cannot be taken after scheduled class hours.`,
+        400
+      );
+    }
+
+    // Criterion 3: Cohort Single Active Class
+    // Auto-complete any other active session for this semester today so multiple classes are NEVER open simultaneously
+    await attendanceSessions.updateMany(
+      {
+        sessionDate: local.date,
+        semester: Number(routine.semester),
+        status: 'active',
+        sessionKey: { $ne: `${local.date}|${routine._id}` },
+      },
+      {
+        $set: {
+          status: 'completed',
+          closedReason: 'superseded',
+          updatedAt: now,
+        },
+      }
+    );
 
     let session = await ensureSession({ routine, slot, local, now });
     let window = describeWindow({ routine, slot, session, local });
 
-    if (window.state === 'open') {
+    // If window is already open and teacher did not explicitly request force restart
+    if (window.state === 'open' && !req.body?.force) {
       return res.json({
         success: true,
         alreadyOpen: true,
-        message: `Check-in for ${routine.courseCode} is already open.`,
+        message: `Check-in for ${routine.courseCode} is already open (${Math.ceil(window.secondsLeft / 60)} min left).`,
         secondsLeft: window.secondsLeft,
+        session: {
+          id: String(session._id),
+          routineId: String(routine._id),
+          courseCode: session.courseCode,
+          timeSlot: session.timeSlot,
+          sessionDate: session.sessionDate,
+          startedAt: session.startedAt,
+        },
       });
     }
 
-    session = await getCollections().attendanceSessions.findOneAndUpdate(
+    // Dynamic 10-minute window capped by class end time
+    const remainingMinutesInClass = Math.max(1, Math.ceil(slot.endMin - local.minutes));
+    const effectiveWindowMinutes = Math.min(cfg.windowMinutes, remainingMinutesInClass);
+    const expiresAt = new Date(now.getTime() + effectiveWindowMinutes * 60 * 1000);
+
+    session = await attendanceSessions.findOneAndUpdate(
       { sessionKey: session.sessionKey },
-      { $set: { status: 'active', startedAt: now, startedBy: req.userId, updatedAt: now } },
+      {
+        $set: {
+          status: 'active',
+          startedAt: now,
+          expiresAt,
+          startedBy: req.userId,
+          updatedAt: now,
+        },
+      },
       { returnDocument: 'after' }
     );
     window = describeWindow({ routine, slot, session, local });
@@ -268,17 +370,84 @@ router.post('/session/start', verifyToken, requireTeacher, async (req, res) => {
       success: true,
       alreadyOpen: false,
       message: `Check-in for ${routine.courseCode} is open for ${Math.ceil(window.secondsLeft / 60)} minute(s).`,
-      secondsLeft: window.secondsLeft,
+      secondsLeft: window.secondsLeft || effectiveWindowMinutes * 60,
       session: {
         id: String(session._id),
+        routineId: String(routine._id),
         courseCode: session.courseCode,
         timeSlot: session.timeSlot,
         sessionDate: session.sessionDate,
         startedAt: session.startedAt,
+        expiresAt: session.expiresAt,
       },
     });
   } catch (err) {
     sendError(res, err, 'Failed to start the attendance session.');
+  }
+});
+
+// ── GET /api/attendance/teacher/active-sessions ─────────────────────────────────────────────────
+// Returns list of currently active sessions for today for this teacher
+router.get('/teacher/active-sessions', verifyToken, requireTeacher, async (req, res) => {
+  try {
+    const now = new Date();
+    const local = getZonedParts(now, cfg.timezone);
+    const { attendanceSessions } = getCollections();
+
+    const query = { sessionDate: local.date };
+    if (req.teacher.role !== 'admin') {
+      const ids = [req.teacher.teacherId, req.teacher._id && String(req.teacher._id), req.teacher.userId].filter(Boolean);
+      query.$or = [
+        { teacherId: { $in: ids } },
+        { teacherName: req.teacher.name },
+        { startedBy: req.userId },
+      ];
+    }
+
+    const sessions = await attendanceSessions.find(query).toArray();
+    const result = [];
+
+    for (const s of sessions) {
+      let routine = null;
+      if (s.routineId) {
+        routine = await findRoutine(s.routineId);
+      }
+      if (!routine) {
+        routine = {
+          _id: s.routineId,
+          courseCode: s.courseCode,
+          courseTitle: s.courseTitle,
+          semester: s.semester,
+          day: s.day,
+          timeSlot: s.timeSlot,
+        };
+      }
+      const slot = parseTimeSlot(s.timeSlot || routine?.timeSlot);
+      const window = describeWindow({ routine, slot, session: s, local });
+
+      result.push({
+        sessionId: String(s._id),
+        routineId: s.routineId ? String(s.routineId) : null,
+        courseCode: s.courseCode,
+        courseTitle: s.courseTitle,
+        semester: s.semester,
+        timeSlot: s.timeSlot,
+        room: s.room,
+        startedAt: s.startedAt,
+        status: s.status,
+        state: window.state,
+        isOpen: window.state === 'open',
+        secondsLeft: window.secondsLeft || 0,
+      });
+    }
+
+    res.json({
+      success: true,
+      serverTime: now.toISOString(),
+      sessions: result,
+    });
+  } catch (err) {
+    sendError(res, err, 'Failed to fetch active teacher sessions.');
   }
 });
 
@@ -461,102 +630,6 @@ router.get('/teacher/roster-report', async (req, res) => {
   }
 });
 
-// ── POST /api/attendance/teacher/session/announce ───────────────────────
-// Teacher announces a class session for this course cohort
-router.post('/teacher/session/announce', async (req, res) => {
-  try {
-    const { attendanceSessions, notices } = getCollections();
-    const {
-      courseCode,
-      semester,
-      sessionDate,
-      timeSlot,
-      room,
-      topic,
-      notes,
-      actionType = 'announce_only', // 'announce_only' | 'start_live' | 'record_rollcall'
-      notifyCohort = true,
-      teacherName,
-      teacherEmail,
-    } = req.body || {};
-
-    if (!courseCode || !sessionDate) {
-      return res.status(400).json({ error: 'Course code and session date are required' });
-    }
-
-    const cleanCourse = courseCode.trim().toUpperCase();
-    const cleanSlot = timeSlot || '09:00 - 10:00';
-    const sessionKey = `${sessionDate}|${cleanCourse}|${cleanSlot}`;
-    const now = new Date();
-
-    const initialStatus = actionType === 'start_live' ? 'active' : (actionType === 'record_rollcall' ? 'active' : 'announced');
-    const initialMethod = actionType === 'start_live' ? 'live_geofence' : (actionType === 'record_rollcall' ? 'manual_rollcall' : 'announced_session');
-
-    await attendanceSessions.updateOne(
-      { sessionKey },
-      {
-        $set: {
-          sessionKey,
-          courseCode: cleanCourse,
-          semester: Number(semester) || 1,
-          sessionDate,
-          timeSlot: cleanSlot,
-          room: room || 'Classroom',
-          topic: topic ? topic.trim() : 'Scheduled Lecture Session',
-          notes: notes ? notes.trim() : '',
-          teacherName: teacherName || 'Course Instructor',
-          teacherEmail: teacherEmail || '',
-          method: initialMethod,
-          status: initialStatus,
-          announcedAt: now,
-          updatedAt: now,
-          ...(actionType === 'start_live' ? { startedAt: now } : {}),
-        },
-        $setOnInsert: {
-          createdAt: now,
-        }
-      },
-      { upsert: true }
-    );
-
-    let noticeDoc = null;
-    if (notifyCohort) {
-      const cleanTopic = topic ? topic.trim() : 'Class Lecture';
-      const semLabel = semester ? `Semester ${semester}` : 'All Students';
-      noticeDoc = {
-        title: `Class Announcement: ${cleanCourse} - ${cleanTopic}`,
-        category: 'Academic',
-        audience: semLabel,
-        courseCode: cleanCourse,
-        content: `A class session for ${cleanCourse} (${cleanTopic}) has been announced by ${teacherName || 'Course Instructor'}.\n\n📅 Date: ${sessionDate}\n⏰ Time: ${cleanSlot}\n📍 Room: ${room || 'Assigned Room'}${notes ? `\n\n📝 Notes: ${notes.trim()}` : ''}`,
-        priority: 'High',
-        date: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
-        createdAt: now,
-      };
-      await notices.insertOne(noticeDoc);
-    }
-
-    res.json({
-      success: true,
-      message: `Class session announced for ${cleanCourse} on ${sessionDate}!`,
-      sessionKey,
-      session: {
-        sessionKey,
-        courseCode: cleanCourse,
-        sessionDate,
-        timeSlot: cleanSlot,
-        room,
-        topic,
-        status: initialStatus,
-        method: initialMethod,
-      },
-      noticeCreated: Boolean(noticeDoc),
-    });
-  } catch (err) {
-    console.error('Error announcing class session:', err);
-    res.status(500).json({ error: 'Failed to announce class session' });
-  }
-});
 
 // ── POST /api/attendance/teacher/manual-session ────────────────────────
 // Allows teacher to record a complete roll-call attendance session for a course
