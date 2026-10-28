@@ -19,7 +19,6 @@ import {
   ShieldCheck,
   CheckCircle2
 } from "lucide-react";
-import { Button } from "@heroui/react";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import { authClient } from "@/lib/auth-client";
@@ -199,20 +198,6 @@ export function EventsNotices() {
           <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 max-w-2xl font-normal leading-relaxed">
             Real-time circulars, public university announcements, examination schedules, and voice notes. Public notices are openly accessible to all guests and applicants.
           </p>
-        </div>
-
-        {/* Action Header Button */}
-        <div className="flex items-center gap-3 shrink-0">
-          <Button 
-            as={Link}
-            href="/notices"
-            variant="flat" 
-            color="primary" 
-            className="h-11 px-5 font-bold rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 active:scale-95 transition-all text-xs sm:text-sm flex items-center gap-2"
-          >
-            <span>Explore All Notice Board</span>
-            <ArrowRight className="h-4 w-4" />
-          </Button>
         </div>
       </div>
 
