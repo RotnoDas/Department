@@ -23,7 +23,9 @@ import {
   HelpCircle,
   MessageSquare,
   GraduationCap,
-  Lock
+  Lock,
+  Mic,
+  Square
 } from "lucide-react";
 import Link from "next/link";
 import toast from "react-hot-toast";
@@ -117,7 +119,8 @@ function stripMarkdownForAudio(text) {
     .replace(/`([^`]+)`/g, "$1")
     .replace(/[-*•]\s+/g, "")
     .replace(/\d+\.\s+/g, "")
-    .replace(/[👉📍📅🛡️🔐📚📢🎓💡🎯✨]/gu, "")
+    .replace(/[👉📍📅🛡️🔐📚📢🎓💡🎯✨🇧🇩]/gu, "")
+    .replace(/http[s]?:\/\/\S+/g, "")
     .trim();
 }
 
@@ -281,7 +284,15 @@ function formatInline(str, isLoggedIn) {
   return parts;
 }
 
-export function AiChatBot({ isOpen, onClose }) {
+export function AiChatBot({ 
+  isOpen, 
+  onClose, 
+  isLeft: propIsLeft, 
+  isTop: propIsTop, 
+  corner = "bottom-right" 
+}) {
+  const isLeft = propIsLeft !== undefined ? propIsLeft : corner.includes("left");
+  const isTop = propIsTop !== undefined ? propIsTop : corner.includes("top");
   const { data: session } = authClient.useSession();
   const user = session?.user;
   const isLoggedIn = Boolean(user?.email);
@@ -290,15 +301,15 @@ export function AiChatBot({ isOpen, onClose }) {
     {
       role: "assistant",
       text: `Hello! I am the **PUST CSE Academic Portal Assistant**. 🎓
-
-I can provide verified guidance regarding our department:
+      
+I provide verified department assistance via **text and voice**:
 - **Smart Attendance:** Active face liveness and classroom 10m geofencing.
 - **Weekly Schedule:** Lecture slots, lab allocations, and timetable.
 - **Academic Courses:** Curriculum syllabus from Semester 1 to 8.
 - **Support & Complaints:** 24/7 confidential grievances and IT tickets.
-- **Portals:** Student, Teacher, and Administrative portal services.
+- **Voice Support:** Tap the 🎙️ **Microphone** to speak in English or বাংলা!
 
-Ask a question below or choose a topic to get started!`,
+Ask a question or tap a suggestion below to get started!`,
       followUps: [
         "How does Face Attendance work?",
         "What is the weekly Class Schedule?",
@@ -319,8 +330,14 @@ Ask a question below or choose a topic to get started!`,
   const [speakingIdx, setSpeakingIdx] = useState(null);
   const [reactions, setReactions] = useState({});
 
+  // Voice Interaction States
+  const [isListening, setIsListening] = useState(false);
+  const [voiceLang, setVoiceLang] = useState("bn"); // "bn" or "en"
+  const [autoVoiceReply, setAutoVoiceReply] = useState(false); // Whether AI reads out response automatically
+
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const recognitionRef = useRef(null);
 
   // Auto-scroll to bottom on new message
   useEffect(() => {
@@ -330,26 +347,165 @@ Ask a question below or choose a topic to get started!`,
     }
   }, [messages, isOpen, loading]);
 
-  // Clean up speech synthesis when unmounting or closing
+  // Clean up speech synthesis & recognition on unmount or close
   useEffect(() => {
-    if (!isOpen && typeof window !== "undefined" && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-      setSpeakingIdx(null);
+    if (!isOpen) {
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+        setSpeakingIdx(null);
+      }
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (_) {}
+      }
+      setIsListening(false);
     }
   }, [isOpen]);
 
-  // Handle Send
-  const handleSend = async (messageText = null) => {
+  // Voice Recognition Controls (Speech-to-Text)
+  const startListening = () => {
+    if (typeof window === "undefined") return;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      toast.error("Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari.", { icon: "🎙️" });
+      return;
+    }
+
+    // Stop ongoing speech playback
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+      setSpeakingIdx(null);
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = voiceLang === "bn" ? "bn-BD" : "en-US";
+
+      recognition.onstart = () => {
+        setIsListening(true);
+        toast.success(voiceLang === "bn" ? "মাইক্রোফোন চালু হয়েছে, বাংলায় বলুন..." : "Listening... Speak in English", { id: "voice-active", icon: "🎙️" });
+      };
+
+      recognition.onresult = (event) => {
+        let interim = "";
+        let final = "";
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            final += event.results[i][0].transcript;
+          } else {
+            interim += event.results[i][0].transcript;
+          }
+        }
+        const text = (final || interim).trim();
+        if (text) {
+          setInput(text);
+        }
+      };
+
+      recognition.onerror = (event) => {
+        console.warn("[SpeechRecognition] error:", event.error);
+        setIsListening(false);
+        if (event.error === "not-allowed") {
+          toast.error("Microphone permission denied. Allow mic access in browser.", { id: "voice-err" });
+        } else if (event.error !== "no-speech") {
+          toast.error(`Mic error: ${event.error}`, { id: "voice-err" });
+        }
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err) {
+      console.error("SpeechRecognition start error:", err);
+      setIsListening(false);
+      toast.error("Could not start microphone.");
+    }
+  };
+
+  const stopListening = (autoSend = false) => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (_) {}
+    }
+    setIsListening(false);
+    if (autoSend && input.trim()) {
+      handleSend(input.trim(), true);
+    }
+  };
+
+  const toggleListening = () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
+    }
+  };
+
+  // Text-to-Speech Output Handler
+  const handleToggleSpeak = (text, idx) => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      toast.error("Speech synthesis is not supported on this browser.");
+      return;
+    }
+
+    if (speakingIdx === idx) {
+      window.speechSynthesis.cancel();
+      setSpeakingIdx(null);
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const cleanText = stripMarkdownForAudio(text);
+    if (!cleanText) return;
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    const isBangla = /[\u0980-\u09FF]/.test(cleanText);
+    utterance.lang = isBangla ? "bn-BD" : "en-US";
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+
+    // Localized natural voice selection
+    const voices = window.speechSynthesis.getVoices();
+    if (voices && voices.length > 0) {
+      if (isBangla) {
+        const bnVoice = voices.find((v) => v.lang.includes("bn") || v.name.toLowerCase().includes("bangla") || v.name.toLowerCase().includes("bengali"));
+        if (bnVoice) utterance.voice = bnVoice;
+      } else {
+        const enVoice = voices.find((v) => (v.lang.startsWith("en-US") || v.lang.startsWith("en-GB")) && (v.name.includes("Google") || v.name.includes("Natural") || v.name.includes("Samantha")));
+        if (enVoice) utterance.voice = enVoice;
+      }
+    }
+
+    utterance.onend = () => setSpeakingIdx(null);
+    utterance.onerror = () => setSpeakingIdx(null);
+
+    setSpeakingIdx(idx);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // Handle Send with Voice Awareness
+  const handleSend = async (messageText = null, isVoice = false) => {
     const textToSend = (messageText || input).trim();
     if (!textToSend || loading) return;
 
-    // Stop ongoing speech
+    if (isListening) {
+      stopListening(false);
+    }
+
+    // Stop ongoing audio speech
     if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.cancel();
       setSpeakingIdx(null);
     }
 
-    const userMessage = { role: "user", text: textToSend };
+    const userMessage = { role: "user", text: textToSend, isVoice };
     setMessages((prev) => [...prev, userMessage]);
     if (!messageText) setInput("");
     setLoading(true);
@@ -369,6 +525,7 @@ Ask a question below or choose a topic to get started!`,
 
       const data = await res.json();
       if (data.success && data.reply) {
+        const newAssistantIdx = messages.length + 1;
         setMessages((prev) => [
           ...prev,
           {
@@ -379,6 +536,13 @@ Ask a question below or choose a topic to get started!`,
             actionLinks: data.actionLinks || [],
           },
         ]);
+
+        // Automatically read aloud if Voice Mode is active OR question was asked via voice
+        if (autoVoiceReply || isVoice) {
+          setTimeout(() => {
+            handleToggleSpeak(data.reply, newAssistantIdx);
+          }, 350);
+        }
       } else {
         throw new Error(data.error || "Failed to get response");
       }
@@ -415,31 +579,6 @@ Ask a question below or choose a topic to get started!`,
     }
   };
 
-  const handleToggleSpeak = (text, idx) => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-      toast.error("Speech synthesis is not supported on this browser.");
-      return;
-    }
-
-    if (speakingIdx === idx) {
-      window.speechSynthesis.cancel();
-      setSpeakingIdx(null);
-      return;
-    }
-
-    window.speechSynthesis.cancel();
-    const cleanText = stripMarkdownForAudio(text);
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
-
-    utterance.onend = () => setSpeakingIdx(null);
-    utterance.onerror = () => setSpeakingIdx(null);
-
-    setSpeakingIdx(idx);
-    window.speechSynthesis.speak(utterance);
-  };
-
   const handleReaction = (idx, type) => {
     setReactions((prev) => ({
       ...prev,
@@ -458,7 +597,7 @@ Ask a question below or choose a topic to get started!`,
     setMessages([
       {
         role: "assistant",
-        text: `Chat reset! I am ready for your questions about PUST CSE courses, timetable, attendance, or department services. How can I assist?`,
+        text: `Chat reset! I am ready for your questions about PUST CSE courses, timetable, attendance, or department services via text or voice. How can I assist?`,
         followUps: [
           "How does Face Attendance work?",
           "What is the weekly Class Schedule?",
@@ -484,57 +623,91 @@ Ask a question below or choose a topic to get started!`,
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          initial={{ opacity: 0, y: 40, scale: 0.95 }}
+          initial={{ opacity: 0, y: 25, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 30, scale: 0.95 }}
-          transition={{ duration: 0.3, ease: "easeOut" }}
-          className="fixed bottom-24 right-4 sm:right-8 z-[110] w-[94vw] sm:w-[450px] h-[630px] max-h-[85vh] rounded-[2rem] bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl border border-slate-200/90 dark:border-white/10 shadow-[0_20px_60px_rgba(0,0,0,0.18)] dark:shadow-[0_25px_60px_rgba(0,0,0,0.6)] flex flex-col overflow-hidden"
+          exit={{ opacity: 0, y: 20, scale: 0.95 }}
+          transition={{ duration: 0.25, ease: "easeOut" }}
+          className={`fixed z-[110] w-[94vw] sm:w-[460px] h-[640px] max-h-[85vh] rounded-[2rem] bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl border border-slate-200/90 dark:border-white/10 shadow-[0_20px_60px_rgba(0,0,0,0.22)] dark:shadow-[0_25px_60px_rgba(0,0,0,0.7)] flex flex-col overflow-hidden ${
+            isTop ? "top-20" : "bottom-24"
+          } ${
+            isLeft ? "left-4 sm:left-8" : "right-4 sm:right-8"
+          }`}
         >
-          {/* Header - Premium Academic Slate & Indigo Gradient matching the website navbar */}
-          <div className="relative px-5 py-3.5 border-b border-indigo-500/20 bg-gradient-to-r from-slate-950 via-indigo-950 to-slate-900 text-white flex items-center justify-between shrink-0 shadow-lg">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center shadow-md shadow-indigo-900/40 border border-white/20">
+          {/* Header - Premium Academic Slate & Indigo Gradient matching website navbar */}
+          <div className="relative px-4 sm:px-5 py-3.5 border-b border-indigo-500/20 bg-gradient-to-r from-slate-950 via-indigo-950 to-slate-900 text-white flex items-center justify-between shrink-0 shadow-lg select-none">
+            
+            {/* Left Portal Branding */}
+            <div className="flex items-center gap-2.5 min-w-0 pr-1">
+              <div className="relative shrink-0">
+                <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center shadow-md shadow-indigo-900/40 border border-white/20">
                   <GraduationCap className="w-5 h-5 text-white" />
                 </div>
-                <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3">
+                <span className="absolute -bottom-0.5 -right-0.5 flex h-2.5 w-2.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-400 border-2 border-slate-900" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400 border border-slate-900" />
                 </span>
               </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-extrabold text-sm sm:text-base tracking-tight text-white leading-none">
-                    PUST CSE Academic Portal
+              <div className="flex flex-col min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <h3 className="font-extrabold text-xs sm:text-sm tracking-tight text-white leading-tight truncate">
+                    PUST CSE AI Assistant
                   </h3>
-                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
-                    Official
+                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-indigo-500/30 text-indigo-300 border border-indigo-400/30 shrink-0">
+                    Voice & Text
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-300 font-medium mt-1 leading-none flex items-center gap-1.5">
-                  <span>Department Helpdesk & Academic Assistant</span>
-                  <span className="inline-block w-1 h-1 rounded-full bg-emerald-400" />
-                  <span className="text-emerald-400 font-semibold text-[10px]">Live Support</span>
+                <p className="text-[10px] text-slate-300 font-medium leading-none flex items-center gap-1 mt-0.5 truncate">
+                  <span>Helpdesk & Voice Guidance</span>
+                  <span className="inline-block w-1 h-1 rounded-full bg-emerald-400 shrink-0" />
+                  <span className="text-emerald-400 font-semibold text-[9.5px]">Live</span>
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-1">
+            {/* Right Action Tools: Auto-Voice Mode, Restart, Close */}
+            <div className="flex items-center gap-1 shrink-0">
+              
+              {/* Auto Voice Response Toggle */}
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !autoVoiceReply;
+                  setAutoVoiceReply(next);
+                  toast.success(next ? "Voice Mode: AI will speak replies" : "Voice Mode: Text replies only", { icon: next ? "🔊" : "🔇" });
+                  if (!next && typeof window !== "undefined" && window.speechSynthesis) {
+                    window.speechSynthesis.cancel();
+                    setSpeakingIdx(null);
+                  }
+                }}
+                className={`p-1.5 rounded-xl transition cursor-pointer flex items-center gap-1 ${
+                  autoVoiceReply 
+                    ? "bg-indigo-600 text-white shadow-xs font-bold" 
+                    : "text-slate-300 hover:text-white hover:bg-white/10"
+                }`}
+                title={autoVoiceReply ? "Voice Mode: Active (click to mute auto-speak)" : "Voice Mode: Inactive (click to enable spoken responses)"}
+              >
+                {autoVoiceReply ? <Volume2 className="w-3.5 h-3.5 text-white animate-pulse" /> : <VolumeX className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline text-[10px] uppercase font-bold">{autoVoiceReply ? "Voice On" : "Voice"}</span>
+              </button>
+
+              {/* Restart Chat */}
               <button
                 type="button"
                 onClick={handleResetChat}
                 title="Restart conversation"
                 className="p-1.5 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
               >
-                <RotateCcw className="w-4 h-4" />
+                <RotateCcw className="w-3.5 h-3.5" />
               </button>
+
+              {/* Close Button */}
               <button
                 type="button"
                 onClick={onClose}
                 title="Close chat"
                 className="p-1.5 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -583,7 +756,7 @@ Ask a question below or choose a topic to get started!`,
                     {isUser ? <User className="w-3 h-3" /> : <GraduationCap className="w-3.5 h-3.5" />}
                   </div>
 
-                  {/* Thinner, Sleek Chat Bubble */}
+                  {/* Sleek Chat Bubble */}
                   <div
                     className={`relative group rounded-2xl text-xs sm:text-[13px] shadow-2xs leading-relaxed ${
                       isUser
@@ -592,7 +765,14 @@ Ask a question below or choose a topic to get started!`,
                     }`}
                   >
                     {isUser ? (
-                      <p className="whitespace-pre-wrap">{msg.text}</p>
+                      <div className="flex flex-col">
+                        <p className="whitespace-pre-wrap">{msg.text}</p>
+                        {msg.isVoice && (
+                          <span className="text-[9px] text-indigo-200 flex items-center gap-1 mt-1 opacity-80">
+                            <Mic className="w-2.5 h-2.5" /> Voice query
+                          </span>
+                        )}
+                      </div>
                     ) : (
                       <>
                         <RenderMarkdown text={msg.text} isLoggedIn={isLoggedIn} />
@@ -668,7 +848,7 @@ Ask a question below or choose a topic to get started!`,
                                   ? "bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 font-bold" 
                                   : "hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                               }`}
-                              title={isSpeaking ? "Stop voice playback" : "Listen aloud"}
+                              title={isSpeaking ? "Stop voice playback" : "Listen aloud in voice"}
                             >
                               {isSpeaking ? <VolumeX className="w-3 h-3 animate-pulse" /> : <Volume2 className="w-3 h-3" />}
                             </button>
@@ -733,7 +913,7 @@ Ask a question below or choose a topic to get started!`,
                   <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "0ms" }} />
                   <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "150ms" }} />
                   <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "300ms" }} />
-                  <span className="text-[11px] text-slate-400 ml-1 font-medium">Verified Desk replying...</span>
+                  <span className="text-[11px] text-slate-400 ml-1 font-medium">Analyzing voice query & formulating verified reply...</span>
                 </div>
               </div>
             )}
@@ -742,7 +922,7 @@ Ask a question below or choose a topic to get started!`,
           </div>
 
           {/* Quick Category Suggestions Carousel */}
-          {!loading && (
+          {!loading && !isListening && (
             <div className="px-3.5 py-1.5 border-t border-slate-100 dark:border-white/5 bg-slate-50/70 dark:bg-slate-900/60">
               <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
                 <span className="flex items-center gap-1">
@@ -766,15 +946,71 @@ Ask a question below or choose a topic to get started!`,
             </div>
           )}
 
-          {/* Footer Input Area */}
+          {/* Live Voice Recording Audio Wave Banner (Active when listening) */}
+          {isListening && (
+            <div className="px-3 py-2 bg-gradient-to-r from-rose-500/10 via-indigo-500/10 to-rose-500/10 border-t border-rose-300 dark:border-rose-900/50 flex items-center justify-between text-xs animate-in fade-in">
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-600" />
+                </span>
+                <span className="font-bold text-rose-700 dark:text-rose-300 text-[11px]">
+                  {voiceLang === "bn" ? "শুনছি... আপনার প্রশ্ন বাংলায় বলুন" : "Listening... Speak your question in English"}
+                </span>
+              </div>
+
+              {/* Dynamic Sound Wave Simulation */}
+              <div className="flex items-center gap-0.5 h-4">
+                <span className="w-0.5 h-2 bg-rose-500 rounded-full animate-[pulse_0.4s_ease-in-out_infinite]" />
+                <span className="w-0.5 h-3.5 bg-indigo-500 rounded-full animate-[pulse_0.6s_ease-in-out_infinite]" />
+                <span className="w-0.5 h-4 bg-rose-500 rounded-full animate-[pulse_0.3s_ease-in-out_infinite]" />
+                <span className="w-0.5 h-2.5 bg-purple-500 rounded-full animate-[pulse_0.5s_ease-in-out_infinite]" />
+                <span className="w-0.5 h-4 bg-rose-500 rounded-full animate-[pulse_0.7s_ease-in-out_infinite]" />
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => stopListening(true)}
+                  className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] shadow-xs transition cursor-pointer"
+                >
+                  Send Voice
+                </button>
+                <button
+                  type="button"
+                  onClick={() => stopListening(false)}
+                  className="px-2 py-1 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-[10px] transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Footer Input Area with Microphone & Language Toggles */}
           <div className="p-2.5 sm:p-3 border-t border-slate-200/80 dark:border-white/10 bg-white dark:bg-slate-900/90 shrink-0">
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 handleSend();
               }}
-              className="flex items-center gap-2"
+              className="flex items-center gap-1.5 sm:gap-2"
             >
+              {/* Voice Language Toggle (Bangla / English) */}
+              <button
+                type="button"
+                onClick={() => {
+                  const next = voiceLang === "bn" ? "en" : "bn";
+                  setVoiceLang(next);
+                  toast.success(next === "bn" ? "ভয়েস ভাষা: বাংলা (bn-BD)" : "Voice Language: English (en-US)", { icon: "🌐" });
+                }}
+                className="px-2 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer shrink-0"
+                title={`Click to switch voice language (Current: ${voiceLang === "bn" ? "বাংলা" : "English"})`}
+              >
+                {voiceLang === "bn" ? "🇧🇩 বাং" : "🇬🇧 EN"}
+              </button>
+
+              {/* Text Input Area */}
               <div className="relative flex-1">
                 <textarea
                   ref={inputRef}
@@ -782,12 +1018,34 @@ Ask a question below or choose a topic to get started!`,
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Ask about PUST CSE attendance, routine, courses, support..."
+                  placeholder={
+                    isListening 
+                      ? "Listening to your voice..." 
+                      : voiceLang === "bn"
+                        ? "প্রশ্ন লিখুন বা মাইকে বলুন..."
+                        : "Ask or tap mic to speak in English/বাংলা..."
+                  }
                   disabled={loading}
                   className="w-full px-3 py-2 text-xs sm:text-[13px] bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 outline-none focus:ring-1 focus:ring-indigo-500 resize-none max-h-20 leading-relaxed"
                 />
               </div>
 
+              {/* Voice Microphone Input Button */}
+              <button
+                type="button"
+                onClick={toggleListening}
+                disabled={loading}
+                className={`h-9 w-9 rounded-xl flex items-center justify-center shrink-0 transition-all cursor-pointer shadow-xs ${
+                  isListening
+                    ? "bg-rose-600 text-white animate-pulse shadow-md shadow-rose-600/40 ring-2 ring-rose-400"
+                    : "bg-slate-100 hover:bg-indigo-50 dark:bg-slate-800 dark:hover:bg-indigo-950/60 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 border border-slate-200/80 dark:border-slate-700"
+                }`}
+                title={isListening ? "Stop listening" : "Speak your question using microphone"}
+              >
+                {isListening ? <Square className="w-3.5 h-3.5 fill-current" /> : <Mic className="w-4 h-4" />}
+              </button>
+
+              {/* Text Send Button */}
               <button
                 type="submit"
                 disabled={!input.trim() || loading}
@@ -799,7 +1057,9 @@ Ask a question below or choose a topic to get started!`,
             </form>
 
             <div className="mt-1 flex items-center justify-between text-[10px] text-slate-400 px-1">
-              <span>Enter to send • Shift+Enter for new line</span>
+              <span className="flex items-center gap-1">
+                <span>Enter to send • 🎙️ Speak in {voiceLang === "bn" ? "বাংলা" : "English"}</span>
+              </span>
               <span className="flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400">
                 <Sparkles className="w-2.5 h-2.5" />
                 PUST CSE Official Portal

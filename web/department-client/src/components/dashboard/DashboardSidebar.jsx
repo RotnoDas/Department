@@ -1,11 +1,18 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import gsap from "gsap";
+import { ScrollToPlugin } from "gsap/ScrollToPlugin";
 import { authClient, safeSignOut } from "@/lib/auth-client";
 import { getCoursesBySemester } from "@/data/courses";
 import { ThemeToggle } from "@/components/common/ThemeToggle";
+
+// Register GSAP Plugins
+if (typeof window !== "undefined") {
+  gsap.registerPlugin(ScrollToPlugin);
+}
 import { 
   GraduationCap, 
   LayoutDashboard, 
@@ -42,7 +49,9 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [currentHash, setCurrentHash] = useState("");
-  const [activeScrollSection, setActiveScrollSection] = useState("");
+  const [activeSection, setActiveSection] = useState("profile");
+  const isManualScrollingRef = useRef(false);
+  const scrollTimeoutRef = useRef(null);
 
   // Dynamic state for teacher assigned courses & schedule count
   const [assignedCourses, setAssignedCourses] = useState([]);
@@ -52,11 +61,24 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
   // Dynamic state for student profile & courses
   const [studentProfile, setStudentProfile] = useState(null);
 
-  // Monitor URL hash changes
+  // Monitor URL hash changes and sync on mount (SSR safe)
   useEffect(() => {
     if (typeof window !== "undefined") {
-      setCurrentHash(window.location.hash);
-      const handleHashChange = () => setCurrentHash(window.location.hash);
+      const initialHash = window.location.hash;
+      setCurrentHash(initialHash);
+      const initialHashId = initialHash.replace("#", "");
+      if (initialHashId) {
+        setActiveSection(initialHashId);
+      }
+
+      const handleHashChange = () => {
+        const rawHash = window.location.hash;
+        setCurrentHash(rawHash);
+        const hashId = rawHash.replace("#", "");
+        if (hashId) {
+          setActiveSection(hashId);
+        }
+      };
       window.addEventListener("hashchange", handleHashChange);
       return () => window.removeEventListener("hashchange", handleHashChange);
     }
@@ -222,18 +244,38 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
     return getCoursesBySemester(studentSemester) || [];
   }, [studentSemester]);
 
-  // Student Navigation Items with section IDs and live badges
+  // Student Navigation Items with section IDs, descriptions, and live badges (mapped exactly to page DOM order)
   const studentNavItems = useMemo(() => [
     { 
-      name: "Student Portal Overview", 
+      name: "Student Profile", 
+      description: "Bio, CGPA & academic status",
       href: "/dashboard/student", 
       hash: "", 
       scrollTarget: "profile",
-      badge: "Portal",
+      badge: "Overview",
       icon: LayoutDashboard 
     },
     { 
-      name: "Smart Geofence Check-in", 
+      name: "Profile & Face Biometrics", 
+      description: "Bio editor & face enrollment",
+      href: "/dashboard/student#profile-settings", 
+      hash: "#profile-settings", 
+      scrollTarget: "profile-settings",
+      badge: "Face ID",
+      icon: GraduationCap 
+    },
+    { 
+      name: "Academic Analytics", 
+      description: "Attendance % & exam eligibility",
+      href: "/dashboard/student#analytics", 
+      hash: "#analytics", 
+      scrollTarget: "analytics",
+      badge: "Analytics",
+      icon: BarChart3 
+    },
+    { 
+      name: "Smart Face Attendance", 
+      description: "10m Geofence & AI check-in",
       href: "/dashboard/student#attendance", 
       hash: "#attendance", 
       scrollTarget: "attendance",
@@ -241,15 +283,8 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
       icon: UserCheck 
     },
     { 
-      name: "Academic Analytics", 
-      href: "/dashboard/student#analytics", 
-      hash: "#analytics", 
-      scrollTarget: "analytics",
-      badge: "Eligibility",
-      icon: BarChart3 
-    },
-    { 
       name: "Class Routine & Timetable", 
+      description: "Weekly timetable & room matrix",
       href: "/dashboard/student#routine", 
       hash: "#routine", 
       scrollTarget: "routine",
@@ -257,36 +292,31 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
       icon: Calendar 
     },
     { 
-      name: "Department Notice Board", 
-      href: "/dashboard/student#notices", 
-      hash: "#notices", 
-      scrollTarget: "notices",
-      badge: "Official",
-      icon: Bell 
-    },
-    { 
       name: "Course Study Materials", 
+      description: "Lecture slides & syllabus notes",
       href: "/dashboard/student#materials", 
       hash: "#materials", 
       scrollTarget: "materials",
-      badge: "Slides & Files",
+      badge: "Files",
       icon: BookOpen 
     },
     { 
-      name: "Continuous Tasks & Tests", 
+      name: "Tasks & Assignments", 
+      description: "Coursework submissions & marks",
       href: "/dashboard/student#assignments", 
       hash: "#assignments", 
       scrollTarget: "assignments",
-      badge: "Assessments",
+      badge: "Tasks",
       icon: FileText 
     },
     { 
-      name: "Profile & Face Biometrics", 
-      href: "/dashboard/student#profile-settings", 
-      hash: "#profile-settings", 
-      scrollTarget: "profile-settings",
-      badge: "Credentials",
-      icon: GraduationCap 
+      name: "Department Notice Board", 
+      description: "Official circulars & audio alerts",
+      href: "/dashboard/student#notices", 
+      hash: "#notices", 
+      scrollTarget: "notices",
+      badge: "Notices",
+      icon: Bell 
     },
   ], []);
 
@@ -294,122 +324,158 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
   const handleStudentCourseClick = (course) => {
     setIsOpen(false);
     if (pathname === "/dashboard/student") {
+      setActiveSection("materials");
+      setCurrentHash("#materials");
+      isManualScrollingRef.current = true;
+
       window.dispatchEvent(new CustomEvent("dashboard-expand-section", { detail: { id: "materials" } }));
       window.dispatchEvent(new CustomEvent("dashboard-expand-section", { detail: { id: "assignments" } }));
       window.dispatchEvent(new CustomEvent("dashboard-filter-course", { detail: { courseCode: course.code } }));
-      window.history.pushState(null, "", "/dashboard/student#materials");
-      setCurrentHash("#materials");
-      window.dispatchEvent(new HashChangeEvent("hashchange"));
 
-      setTimeout(() => {
-        const targetEl = document.getElementById("materials");
-        if (targetEl) {
-          targetEl.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
-      }, 60);
+      if (typeof window !== "undefined" && window.history.pushState) {
+        window.history.pushState(null, "", "/dashboard/student#materials");
+      }
+
+      const targetEl = document.getElementById("materials");
+      if (targetEl) {
+        gsap.to(window, {
+          duration: 0.6,
+          scrollTo: { y: "#materials", offsetY: 70, autoKill: false },
+          ease: "power2.inOut",
+          onComplete: () => {
+            if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+            scrollTimeoutRef.current = setTimeout(() => {
+              isManualScrollingRef.current = false;
+            }, 100);
+          }
+        });
+      } else {
+        isManualScrollingRef.current = false;
+      }
     } else {
       router.push("/dashboard/student#materials");
     }
   };
 
-  // Scroll spy for both teacher and student dashboards
+  // Dynamic serial navigation mapping IDs for role
+  const activeNavItems = useMemo(() => {
+    if (role === "student") return studentNavItems;
+    if (role === "teacher") {
+      return [
+        { scrollTarget: "profile" },
+        { scrollTarget: "profile-settings" },
+        { scrollTarget: "assigned-courses" },
+        { scrollTarget: "routine" },
+        { scrollTarget: "analytics" },
+        { scrollTarget: "notices" },
+      ];
+    }
+    return [];
+  }, [role, studentNavItems]);
+
+  // Active section scroll spy listener (mirroring Navbar.jsx's serial logic with exact viewport checks)
   useEffect(() => {
     if (pathname !== "/dashboard/teacher" && pathname !== "/dashboard/student") {
-      setActiveScrollSection("");
       return;
     }
 
-    const handleScroll = () => {
-      const scrollPos = window.scrollY + 220;
-      let matched = "";
+    const ids = activeNavItems.map((item) => item.scrollTarget).filter(Boolean);
+    if (!ids.length) return;
 
-      if (pathname === "/dashboard/student") {
-        if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 60) {
-          matched = "assignments";
-        } else {
-          const sections = [
-            { id: "assignments", target: "assignments" },
-            { id: "materials", target: "materials" },
-            { id: "notices", target: "notices" },
-            { id: "routine", target: "routine" },
-            { id: "attendance", target: "attendance" },
-            { id: "analytics", target: "analytics" },
-            { id: "profile-settings", target: "profile-settings" },
-            { id: "profile", target: "profile" }
-          ];
+    const handleScrollSpy = () => {
+      if (isManualScrollingRef.current) return;
 
-          for (const sec of sections) {
-            const el = document.getElementById(sec.id);
-            if (el && scrollPos >= el.offsetTop) {
-              matched = sec.target;
-              break;
-            }
-          }
-        }
-      } else if (pathname === "/dashboard/teacher") {
-        if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 60) {
-          matched = "notices";
-        } else {
-          const sections = [
-            { id: "notices", threshold: 0 },
-            { id: "analytics", threshold: 0 },
-            { id: "routine", threshold: 0 },
-            { id: "assigned-courses", threshold: 0 },
-            { id: "profile-settings", threshold: 0 },
-            { id: "profile", threshold: 0 }
-          ];
+      // Bottom of the page threshold -> select the last item
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 60) {
+        const lastId = ids[ids.length - 1];
+        if (lastId) setActiveSection(lastId);
+        return;
+      }
 
-          for (const sec of sections) {
-            const el = document.getElementById(sec.id);
-            if (el && scrollPos >= el.offsetTop) {
-              matched = sec.id;
-              break;
-            }
+      // Check sections from bottom to top (serial sequence)
+      for (let i = ids.length - 1; i >= 0; i--) {
+        const el = document.getElementById(ids[i]);
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          // When top of element has entered the upper 180px of viewport
+          if (rect.top <= 180) {
+            setActiveSection(ids[i]);
+            return;
           }
         }
       }
 
-      if (matched) {
-        setActiveScrollSection(matched);
-      }
+      // Top of page fallback -> first item
+      setActiveSection(ids[0] || "profile");
     };
 
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    handleScroll();
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, [pathname]);
+    window.addEventListener("scroll", handleScrollSpy, { passive: true });
+    handleScrollSpy();
+    return () => window.removeEventListener("scroll", handleScrollSpy);
+  }, [pathname, activeNavItems]);
 
   const handleLogout = async () => {
     await safeSignOut("/login");
   };
 
-  // Smooth scroll and uncollapse handler
+  // Smooth scroll and uncollapse handler with instant selection
   const handleNavClick = (e, item) => {
     setIsOpen(false);
-    if (item.href.includes("#")) {
-      const [itemPath, hash] = item.href.split("#");
-      if (pathname === itemPath) {
-        e.preventDefault();
-        
-        // Dispatch expansion event for collapsible sections
-        window.dispatchEvent(new CustomEvent("dashboard-expand-section", { detail: { id: hash } }));
-        window.history.pushState(null, "", item.href);
-        setCurrentHash(`#${hash}`);
-        window.dispatchEvent(new HashChangeEvent("hashchange"));
+    const hasHash = Boolean(item.href?.includes("#"));
+    const [itemPath, hash] = hasHash ? item.href.split("#") : [item.href, ""];
+    const targetId = item.scrollTarget || hash || "profile";
 
-        setTimeout(() => {
-          const targetEl = document.getElementById(hash);
-          if (targetEl) {
-            targetEl.scrollIntoView({ behavior: "smooth", block: "start" });
-          }
-        }, 60);
-      }
-    } else if (pathname === item.href) {
+    if (pathname === itemPath) {
       e.preventDefault();
-      window.scrollTo({ top: 0, behavior: "smooth" });
-      window.history.pushState(null, "", item.href);
-      setCurrentHash("");
-      window.dispatchEvent(new HashChangeEvent("hashchange"));
+
+      // 1. INSTANT SELECTION FEEDBACK (Zero delay)
+      setActiveSection(targetId);
+      setCurrentHash(hash ? `#${hash}` : "");
+      isManualScrollingRef.current = true;
+
+      // 2. Dispatch expansion event for collapsible sections
+      window.dispatchEvent(new CustomEvent("dashboard-expand-section", { detail: { id: targetId } }));
+
+      // 3. Update URL silently
+      if (typeof window !== "undefined" && window.history.pushState) {
+        window.history.pushState(null, "", item.href);
+      }
+
+      // 4. Smooth programmatic GSAP scroll with 70px offset & autoKill: false (identical to Navbar.jsx)
+      if (typeof window !== "undefined") {
+        if (targetId === "profile" && !hash) {
+          gsap.to(window, {
+            duration: 0.6,
+            scrollTo: { y: 0, autoKill: false },
+            ease: "power2.inOut",
+            onComplete: () => {
+              if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+              scrollTimeoutRef.current = setTimeout(() => {
+                isManualScrollingRef.current = false;
+              }, 100);
+            }
+          });
+        } else {
+          const targetEl = document.getElementById(targetId);
+          if (targetEl) {
+            gsap.to(window, {
+              duration: 0.6,
+              scrollTo: { y: `#${targetId}`, offsetY: 70, autoKill: false },
+              ease: "power2.inOut",
+              onComplete: () => {
+                if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+                scrollTimeoutRef.current = setTimeout(() => {
+                  isManualScrollingRef.current = false;
+                }, 100);
+              }
+            });
+          } else {
+            isManualScrollingRef.current = false;
+          }
+        }
+      }
+    } else {
+      router.push(item.href);
     }
   };
 
@@ -442,14 +508,14 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
       case "student":
       default:
         return [
-          { name: "Student Portal", href: "/dashboard/student", icon: LayoutDashboard },
-          { name: "Notice Board", href: "/dashboard/student#notices", icon: Bell },
+          { name: "Student Profile", href: "/dashboard/student", icon: LayoutDashboard },
+          { name: "Profile & Face Biometrics", href: "/dashboard/student#profile-settings", icon: GraduationCap },
           { name: "Academic Analytics", href: "/dashboard/student#analytics", icon: BarChart3 },
-          { name: "Semester Curriculum", href: "/dashboard/student#routine", icon: BookOpen },
-          { name: "Course Materials", href: "/dashboard/student#materials", icon: BookOpen },
-          { name: "My Assignments", href: "/dashboard/student#assignments", icon: FileText },
-          { name: "Geofence Check-in", href: "/dashboard/student#checkin", icon: UserCheck },
-          { name: "Academic Profile", href: "/dashboard/student#profile-settings", icon: GraduationCap },
+          { name: "Smart Face Attendance", href: "/dashboard/student#attendance", icon: UserCheck },
+          { name: "Class Routine & Timetable", href: "/dashboard/student#routine", icon: Calendar },
+          { name: "Course Study Materials", href: "/dashboard/student#materials", icon: BookOpen },
+          { name: "Tasks & Assignments", href: "/dashboard/student#assignments", icon: FileText },
+          { name: "Department Notice Board", href: "/dashboard/student#notices", icon: Bell },
         ];
     }
   };
@@ -771,7 +837,7 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
                       
                       // Match either current URL hash or scroll spy position
                       const isHashActive = hasHash ? currentHash === item.hash : (!currentHash || currentHash === "#");
-                      const isScrollActive = activeScrollSection === item.scrollTarget;
+                      const isScrollActive = activeSection === item.scrollTarget;
                       const isActive = isHashActive || isScrollActive;
 
                       return (
@@ -872,39 +938,62 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
               <div className="space-y-1">
                 {studentNavItems.map((item) => {
                   const Icon = item.icon;
-                  const hasHash = Boolean(item.hash);
-                  
-                  // Match either current URL hash or scroll spy position
-                  const isHashActive = hasHash ? currentHash === item.hash : (!currentHash || currentHash === "#");
-                  const isScrollActive = activeScrollSection === item.scrollTarget;
-                  const isActive = isHashActive || isScrollActive;
+                  const isActive = activeSection === item.scrollTarget;
 
                   return (
-                    <Link
+                    <a
                       key={item.name}
                       href={item.href}
                       onClick={(e) => handleNavClick(e, item)}
                       className={`
-                        flex items-center justify-between px-3 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer
+                        group relative flex items-center justify-between p-2.5 rounded-2xl transition-all duration-200 cursor-pointer border
                         ${isActive 
-                          ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30" 
-                          : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"}
+                          ? "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold border-indigo-200/80 dark:border-indigo-800/60 shadow-xs" 
+                          : "text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 border-transparent hover:border-slate-200/60 dark:hover:border-white/5"}
                       `}
                     >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-white" : "text-slate-400 dark:text-slate-400"}`} />
-                        <span className="truncate">{item.name}</span>
-                      </div>
-                      {item.badge && (
-                        <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full shrink-0 ${
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <div className={`p-2 rounded-xl transition-all duration-200 shrink-0 ${
                           isActive 
-                            ? "bg-white/20 text-white" 
-                            : "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 ring-1 ring-indigo-200 dark:ring-indigo-800"
+                            ? "bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 shadow-xs" 
+                            : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 group-hover:bg-indigo-50 dark:group-hover:bg-indigo-950/40 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"
                         }`}>
-                          {item.badge}
-                        </span>
-                      )}
-                    </Link>
+                          <Icon className="w-4 h-4" />
+                        </div>
+                        <div className="flex flex-col min-w-0 flex-1 text-left">
+                          <span className={`text-xs truncate leading-tight ${
+                            isActive 
+                              ? "font-bold text-indigo-600 dark:text-indigo-400" 
+                              : "font-semibold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"
+                          }`}>
+                            {item.name}
+                          </span>
+                          {item.description && (
+                            <span className={`text-[10px] truncate leading-tight mt-0.5 ${
+                              isActive 
+                                ? "font-medium text-indigo-500/90 dark:text-indigo-300/90" 
+                                : "font-normal text-slate-400 dark:text-slate-500"
+                            }`}>
+                              {item.description}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0 ml-1.5">
+                        {item.badge && (
+                          <span className={`text-[9.5px] font-extrabold px-2 py-0.5 rounded-full transition-colors ${
+                            isActive 
+                              ? "bg-indigo-600 text-white shadow-xs" 
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 ring-1 ring-slate-200/60 dark:ring-white/5 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/60 group-hover:text-indigo-600 dark:group-hover:text-indigo-300"
+                          }`}>
+                            {item.badge}
+                          </span>
+                        )}
+                        {isActive && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 shrink-0 animate-pulse" />
+                        )}
+                      </div>
+                    </a>
                   );
                 })}
               </div>

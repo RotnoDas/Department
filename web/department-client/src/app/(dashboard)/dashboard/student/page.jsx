@@ -2372,17 +2372,6 @@ export default function StudentDashboardPage() {
         </CollapsibleBody>
       </div>
 
-      {/* Official Notice Board */}
-      <NoticeBoardSection
-        title="Notice Board"
-        subtitle="Department broadcast & official academic circulars."
-        isCollapsed={collapsedSections.notices}
-        onToggle={() => toggleSection("notices")}
-        userRole="student"
-        studentSemester={enrolledSemester || profile?.semester || user?.semester}
-        studentCourses={semesterCourses}
-      />
-
       {/* ── Learning Resources & Course Materials ───────────────── */}
       <div id="materials" className="space-y-3 scroll-mt-6">
         <div className="flex items-center justify-between px-1">
@@ -2432,6 +2421,17 @@ export default function StudentDashboardPage() {
           />
         </CollapsibleBody>
       </div>
+
+      {/* Official Notice Board */}
+      <NoticeBoardSection
+        title="Notice Board"
+        subtitle="Department broadcast & official academic circulars."
+        isCollapsed={collapsedSections.notices}
+        onToggle={() => toggleSection("notices")}
+        userRole="student"
+        studentSemester={enrolledSemester || profile?.semester || user?.semester}
+        studentCourses={semesterCourses}
+      />
 
       {/* Live Face Verification & Enrollment Modal */}
       <FaceVerificationModal

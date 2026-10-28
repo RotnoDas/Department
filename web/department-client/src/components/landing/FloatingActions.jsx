@@ -1,14 +1,38 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowUp, MessageSquareText, X, Bot, Sparkles } from "lucide-react";
+import { ArrowUp, X, Bot, Sparkles, Move } from "lucide-react";
 import { AiChatBot } from "@/components/landing/AiChatBot";
 
 export function FloatingActions() {
   const [isScrollVisible, setIsScrollVisible] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatCorner, setChatCorner] = useState("bottom-right");
+  const [windowSize, setWindowSize] = useState({ width: 1280, height: 800 });
 
+  const isDraggingRef = useRef(false);
+  const dragStartPosRef = useRef({ x: 0, y: 0 });
+
+  // Measure screen size safely on client mount & resize for drag boundary constraints
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const handleResize = () => {
+        setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+      };
+      handleResize();
+
+      const savedCorner = localStorage.getItem("dept_chatbot_corner");
+      if (savedCorner && ["bottom-right", "bottom-left", "top-right", "top-left"].includes(savedCorner)) {
+        setChatCorner(savedCorner);
+      }
+
+      window.addEventListener("resize", handleResize);
+      return () => window.removeEventListener("resize", handleResize);
+    }
+  }, []);
+
+  // Scroll to Top visibility tracker
   useEffect(() => {
     const toggleVisibility = () => {
       if (window.scrollY > 400) {
@@ -29,81 +53,178 @@ export function FloatingActions() {
     });
   };
 
+  // Drag handlers with movement threshold to prevent accidental clicks
+  const handleDragStart = (event, info) => {
+    isDraggingRef.current = false;
+    dragStartPosRef.current = { x: info.point.x, y: info.point.y };
+  };
+
+  const handleDrag = (event, info) => {
+    const dx = info.point.x - dragStartPosRef.current.x;
+    const dy = info.point.y - dragStartPosRef.current.y;
+    if (Math.hypot(dx, dy) > 8) {
+      isDraggingRef.current = true;
+    }
+  };
+
+  const handleDragEnd = (event, info) => {
+    const dx = info.point.x - dragStartPosRef.current.x;
+    const dy = info.point.y - dragStartPosRef.current.y;
+    const moved = Math.hypot(dx, dy);
+
+    if (moved > 8) {
+      isDraggingRef.current = true;
+      // Retain dragging flag briefly so the click event following pointer-up is ignored
+      setTimeout(() => {
+        isDraggingRef.current = false;
+      }, 150);
+
+      // Detect dropped quadrant / corner of the screen
+      if (typeof window !== "undefined") {
+        const screenW = window.innerWidth;
+        const screenH = window.innerHeight;
+        const isLeftSide = info.point.x < screenW / 2;
+        const isTopSide = info.point.y < screenH / 2;
+
+        let newCorner = "bottom-right";
+        if (isLeftSide && isTopSide) newCorner = "top-left";
+        else if (isLeftSide && !isTopSide) newCorner = "bottom-left";
+        else if (!isLeftSide && isTopSide) newCorner = "top-right";
+        else newCorner = "bottom-right";
+
+        setChatCorner(newCorner);
+        try {
+          localStorage.setItem("dept_chatbot_corner", newCorner);
+        } catch (_) {}
+      }
+    } else {
+      isDraggingRef.current = false;
+    }
+  };
+
+  const handleCircleClick = () => {
+    if (isDraggingRef.current) return;
+    setIsChatOpen((prev) => !prev);
+  };
+
+  const isLeft = chatCorner.includes("left");
+  const isTop = chatCorner.includes("top");
+
+  // Drag boundaries within viewport
+  const dragConstraints = {
+    left: -(Math.max(windowSize.width - 96, 300)),
+    right: 0,
+    top: -(Math.max(windowSize.height - 110, 400)),
+    bottom: 0,
+  };
+
   return (
     <>
-      {/* Interactive AI Chat Assistant Window */}
-      <AiChatBot isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
+      {/* 
+        AI Chat Assistant Window (Fixed in chosen corner, NOT draggable, clean & stable)
+      */}
+      <AiChatBot 
+        isOpen={isChatOpen} 
+        onClose={() => setIsChatOpen(false)}
+        isLeft={isLeft}
+        isTop={isTop}
+        corner={chatCorner}
+      />
 
-      <div className="fixed bottom-8 right-6 md:right-10 z-[100] flex flex-col gap-5 items-end pointer-events-none">
-        
-        {/* Scroll to Top Button */}
-        <AnimatePresence>
-          {isScrollVisible && (
-            <motion.div
-              initial={{ opacity: 0, y: 20, scale: 0.8 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 20, scale: 0.8 }}
-              transition={{ duration: 0.4, type: "spring", stiffness: 300, damping: 25 }}
-              className="pointer-events-auto relative group"
+      {/* 
+        Independent Scroll to Top Button (Stays at bottom-right, independent from dragged chat bubble)
+      */}
+      <AnimatePresence>
+        {isScrollVisible && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.8 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.8 }}
+            transition={{ duration: 0.3 }}
+            className="fixed bottom-28 right-6 md:right-8 z-[90] pointer-events-auto"
+          >
+            <button
+              onClick={scrollToTop}
+              title="Scroll to top"
+              className="relative flex items-center justify-center h-11 w-11 rounded-full bg-white/90 dark:bg-slate-800/90 backdrop-blur-2xl border border-indigo-100 dark:border-slate-700 shadow-[0_8px_25px_rgba(0,0,0,0.12)] hover:shadow-[0_12px_35px_rgba(99,102,241,0.35)] hover:border-indigo-500/50 transition-all duration-300 hover:-translate-y-1 overflow-hidden cursor-pointer group"
             >
-              {/* Soft background glow */}
-              <div className="absolute -inset-1 rounded-full bg-gradient-to-b from-indigo-500 to-transparent opacity-0 group-hover:opacity-30 blur-sm transition-opacity duration-500"></div>
+              <div className="absolute inset-0 bg-gradient-to-t from-indigo-600 to-violet-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+              <ArrowUp className="relative z-10 h-5 w-5 text-slate-600 dark:text-slate-300 group-hover:text-white transition-colors duration-300" strokeWidth={2.5} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-              <button
-                onClick={scrollToTop}
-                className="relative flex items-center justify-center h-12 w-12 rounded-full bg-white/90 dark:bg-slate-800/90 backdrop-blur-2xl border border-indigo-100 dark:border-slate-700 shadow-[0_8px_30px_rgba(0,0,0,0.12)] hover:shadow-[0_15px_40px_rgba(99,102,241,0.4)] hover:border-indigo-500/50 transition-all duration-300 hover:-translate-y-1.5 overflow-hidden z-10 cursor-pointer"
-              >
-                {/* Vibrant Hover Background */}
-                <div className="absolute inset-0 bg-gradient-to-t from-indigo-600 to-violet-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                
-                {/* Smoothly Floating Arrow */}
-                <motion.div
-                  animate={{ y: [0, -3, 0] }}
-                  transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                  className="relative z-10"
-                >
-                  <ArrowUp className="h-5 w-5 text-slate-600 dark:text-slate-300 group-hover:text-white transition-colors duration-300" strokeWidth={2.5} />
-                </motion.div>
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Premium AI Chatbot Trigger Button */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.8, y: 20 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.2, type: "spring", stiffness: 200, damping: 15 }}
-          className="group pointer-events-auto relative"
-        >
-          {/* Hover Tooltip (shown when chat is closed) */}
-          {!isChatOpen && (
-            <div className="absolute right-full top-1/2 -translate-y-1/2 mr-4 px-4 py-2.5 rounded-2xl bg-white dark:bg-slate-800 text-sm font-bold text-slate-700 dark:text-slate-200 shadow-[0_10px_40px_rgba(0,0,0,0.1)] border border-slate-100 dark:border-slate-700 opacity-0 translate-x-4 pointer-events-none group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-400 whitespace-nowrap flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-              <span>Ask CSE AI Assistant</span>
-              <div className="absolute right-[-5.5px] top-1/2 -translate-y-1/2 w-3 h-3 bg-white dark:bg-slate-800 border-r border-t border-slate-100 dark:border-slate-700 rotate-45"></div>
+      {/* 
+        Floating Draggable Chat Circle (Draggable across the screen when closed, fixed when open)
+      */}
+      <motion.div
+        drag={!isChatOpen}
+        dragMomentum={false}
+        dragElastic={0.08}
+        dragConstraints={dragConstraints}
+        onDragStart={handleDragStart}
+        onDrag={handleDrag}
+        onDragEnd={handleDragEnd}
+        whileDrag={{ scale: 1.12, cursor: "grabbing" }}
+        className="fixed bottom-8 right-6 md:right-8 z-[100] touch-none select-none pointer-events-auto group"
+      >
+        {/* Floating Hover Tooltip (shown only when chat is closed and not dragging) */}
+        {!isChatOpen && (
+          <div
+            className={`absolute top-1/2 -translate-y-1/2 ${
+              isLeft ? "left-full ml-3.5" : "right-full mr-3.5"
+            } px-3.5 py-2 rounded-2xl bg-slate-900/95 dark:bg-slate-800/95 backdrop-blur-xl text-white text-xs font-semibold shadow-[0_10px_35px_rgba(0,0,0,0.25)] border border-white/10 opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none whitespace-nowrap flex flex-col gap-0.5 z-50`}
+          >
+            <div className="flex items-center gap-1.5 font-bold text-slate-100">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+              <span>Ask CSE AI & Voice</span>
             </div>
-          )}
+            <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium">
+              <Move className="w-2.5 h-2.5 text-indigo-400 shrink-0" />
+              <span>Drag anywhere on screen</span>
+            </div>
+            <div
+              className={`absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-slate-900 dark:bg-slate-800 ${
+                isLeft
+                  ? "left-[-4.5px] border-l border-b border-white/10 rotate-45"
+                  : "right-[-4.5px] border-r border-t border-white/10 rotate-45"
+              }`}
+            />
+          </div>
+        )}
 
-          {/* Outer Pulsating Ring (only when chat is closed) */}
-          {!isChatOpen && (
-            <div className="absolute inset-0 rounded-full bg-indigo-500/40 animate-[ping_3s_cubic-bezier(0,0,0.2,1)_infinite]"></div>
-          )}
-          
+        {/* Outer Pulsating Halo when idle & closed */}
+        {!isChatOpen && (
+          <div className="absolute inset-0 rounded-full bg-indigo-500/35 animate-[ping_3.2s_cubic-bezier(0,0,0.2,1)_infinite] pointer-events-none" />
+        )}
+
+        {/* 
+          Inner Floating Animated Circle:
+          Gentle floating/bobbing when closed so it feels weightless and floating.
+        */}
+        <motion.div
+          animate={isChatOpen ? { y: 0 } : { y: [0, -6, 0] }}
+          transition={
+            isChatOpen
+              ? { duration: 0.2 }
+              : { repeat: Infinity, duration: 3, ease: "easeInOut" }
+          }
+        >
           <button
-            onClick={() => setIsChatOpen((prev) => !prev)}
-            aria-label={isChatOpen ? "Close AI chat" : "Open AI chat"}
-            className={`relative flex items-center justify-center h-16 w-16 rounded-full transition-all duration-300 hover:scale-110 cursor-pointer ${
+            onClick={handleCircleClick}
+            aria-label={isChatOpen ? "Close AI chat assistant" : "Open AI chat assistant (Draggable)"}
+            className={`relative flex items-center justify-center h-16 w-16 rounded-full transition-all duration-300 ${
               isChatOpen
-                ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xl"
-                : "bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 shadow-[0_10px_40px_rgba(99,102,241,0.5)] hover:shadow-[0_15px_50px_rgba(99,102,241,0.7)] text-white"
+                ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xl cursor-pointer hover:scale-105"
+                : "bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 shadow-[0_12px_35px_rgba(99,102,241,0.5)] hover:shadow-[0_18px_50px_rgba(99,102,241,0.7)] text-white cursor-grab active:cursor-grabbing hover:scale-105"
             }`}
           >
-            {/* Inner Glow */}
+            {/* Inner Sheen Glow when closed */}
             {!isChatOpen && (
-              <div className="absolute inset-1 rounded-full bg-gradient-to-br from-white/20 to-transparent"></div>
+              <div className="absolute inset-1 rounded-full bg-gradient-to-br from-white/25 to-transparent pointer-events-none" />
             )}
-            
+
             <AnimatePresence mode="wait">
               {isChatOpen ? (
                 <motion.div
@@ -128,18 +249,17 @@ export function FloatingActions() {
                 </motion.div>
               )}
             </AnimatePresence>
-            
-            {/* Online Indicator Dot */}
+
+            {/* Online Live Status Pulse */}
             {!isChatOpen && (
-              <span className="absolute top-1 right-1 flex h-3.5 w-3.5 z-20">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-green-500 border-2 border-white dark:border-slate-900 shadow-sm"></span>
+              <span className="absolute top-1 right-1 flex h-3.5 w-3.5 z-20 pointer-events-none">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500 border-2 border-white dark:border-slate-900 shadow-sm" />
               </span>
             )}
           </button>
         </motion.div>
-
-      </div>
+      </motion.div>
     </>
   );
 }
