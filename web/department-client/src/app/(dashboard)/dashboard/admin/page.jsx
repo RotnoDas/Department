@@ -1080,13 +1080,9 @@ export default function AdminDashboardPage() {
           return item;
         })
       );
-      if (selectedSupport && (selectedSupport._id === id || selectedSupport.id === id)) {
-        setSelectedSupport(prev => ({
-          ...prev,
-          status: newStatus,
-          adminResponse: responseNote || prev.adminResponse,
-        }));
-      }
+      // Close the Review & Resolve modal automatically on successful save
+      setSelectedSupport(null);
+      setAdminResponseDraft("");
     } catch (err) {
       toast.error(err.message || "Failed to update status");
     } finally {

@@ -283,6 +283,49 @@ router.get('/track/:trackingId', async (req, res) => {
   }
 });
 
+// ── 4b. GET /api/support/public - Retrieve public log of submitted complaints & inquiries ──
+router.get('/public', async (_req, res) => {
+  try {
+    const { complaints, supportTickets } = getCollections();
+
+    const [allComplaints, allTickets] = await Promise.all([
+      complaints.find({}).sort({ createdAt: -1 }).limit(50).toArray(),
+      supportTickets.find({ type: { $ne: 'newsletter_subscription' } }).sort({ createdAt: -1 }).limit(50).toArray(),
+    ]);
+
+    const combined = [...allComplaints, ...allTickets]
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, 50);
+
+    // Sanitize output for public viewing: never expose private emails or phone numbers
+    const items = combined.map((d) => ({
+      id: d._id.toString(),
+      trackingId: d.trackingId,
+      type: d.type || (d.category ? 'complaint' : 'general_inquiry'),
+      title: d.title,
+      description: d.description,
+      category: d.category || d.topic || 'General',
+      priority: d.priority || 'Normal',
+      status: d.status || 'Submitted',
+      isAnonymous: Boolean(d.isAnonymous),
+      authorName: d.isAnonymous ? 'Anonymous Member' : (d.authorName || 'University Member'),
+      createdAt: d.createdAt,
+      updatedAt: d.updatedAt,
+      timeline: d.timeline || [],
+      adminResponse: d.adminResponse || null,
+    }));
+
+    return res.json({
+      success: true,
+      count: items.length,
+      items,
+    });
+  } catch (err) {
+    console.error('[GET /api/support/public] Error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to retrieve public desk records.' });
+  }
+});
+
 // ── 5. GET /api/support/admin/all - Admin get all records ─────────────────────
 router.get('/admin/all', async (_req, res) => {
   try {

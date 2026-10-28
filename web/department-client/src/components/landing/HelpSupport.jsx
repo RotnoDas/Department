@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   LifeBuoy, 
@@ -23,7 +23,14 @@ import {
   Building2,
   FileQuestion,
   ExternalLink,
-  ChevronRight
+  ChevronRight,
+  Inbox,
+  Eye,
+  ChevronDown,
+  ChevronUp,
+  RefreshCw,
+  User,
+  Activity
 } from "lucide-react";
 import Link from "next/link";
 import toast from "react-hot-toast";
@@ -32,6 +39,19 @@ import { authClient } from "@/lib/auth-client";
 export function HelpSupport() {
   const { data: session } = authClient.useSession();
   const user = session?.user;
+  const isAdmin = user?.role === "admin";
+
+  // Live submissions state - strictly live data, ZERO hardcoded defaults
+  const [submissions, setSubmissions] = useState([]);
+  const [loadingSubmissions, setLoadingSubmissions] = useState(true);
+  const [activeFilter, setActiveFilter] = useState("all"); // 'all' | 'complaint' | 'technical_support' | 'general_inquiry'
+  const [searchQuery, setSearchQuery] = useState("");
+  const [expandedId, setExpandedId] = useState(null);
+
+  // Quick Tracking ID direct search state
+  const [trackingCodeInput, setTrackingCodeInput] = useState("");
+  const [trackLookupLoading, setTrackLookupLoading] = useState(false);
+  const [lookupResult, setLookupResult] = useState(null);
 
   // Modal states: 'complaint' | 'tech_support' | 'inquiry' | null
   const [activeModal, setActiveModal] = useState(null);
@@ -39,6 +59,26 @@ export function HelpSupport() {
   // Submission success state
   const [submittedResult, setSubmittedResult] = useState(null); // { trackingId, type, message }
   const [copiedCode, setCopiedCode] = useState(false);
+
+  // Fetch real submissions from database (public, sanitized)
+  const fetchSubmissions = async () => {
+    try {
+      setLoadingSubmissions(true);
+      const res = await fetch("/backend/api/support/public");
+      const data = await res.json();
+      if (data.success && Array.isArray(data.items)) {
+        setSubmissions(data.items);
+      }
+    } catch (err) {
+      console.warn("[HelpSupport] Failed to fetch submissions:", err);
+    } finally {
+      setLoadingSubmissions(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSubmissions();
+  }, []);
 
   // Form states - Complaint
   const [complaintForm, setComplaintForm] = useState({
@@ -75,6 +115,11 @@ export function HelpSupport() {
 
   // Pre-fill user data when opening modal
   const openModal = (type) => {
+    if (type === "complaint" && isAdmin) {
+      toast.error("Administrators cannot lodge complaints. You have resolving authority in the Admin Hub.");
+      return;
+    }
+
     setActiveModal(type);
     setSubmittedResult(null);
 
@@ -119,6 +164,10 @@ export function HelpSupport() {
   // Submit Complaint Handler
   const handleComplaintSubmit = async (e) => {
     e.preventDefault();
+    if (isAdmin) {
+      toast.error("Administrators cannot lodge complaints. Please use the Admin Hub to review and resolve grievances.");
+      return;
+    }
     if (!complaintForm.title.trim()) return toast.error("Please enter a complaint subject.");
     if (!complaintForm.description.trim()) return toast.error("Please describe your grievance in detail.");
 
@@ -144,6 +193,7 @@ export function HelpSupport() {
         message: data.message || "Complaint registered securely.",
       });
       toast.success("Complaint submitted successfully!");
+      fetchSubmissions();
     } catch (err) {
       toast.error(err.message || "Failed to submit complaint.");
     } finally {
@@ -180,6 +230,7 @@ export function HelpSupport() {
         message: data.message || "Support ticket created.",
       });
       toast.success("IT Helpdesk ticket created!");
+      fetchSubmissions();
     } catch (err) {
       toast.error(err.message || "Failed to create ticket.");
     } finally {
@@ -213,12 +264,63 @@ export function HelpSupport() {
         message: data.message || "Inquiry sent to Department Office.",
       });
       toast.success("Inquiry sent successfully!");
+      fetchSubmissions();
     } catch (err) {
       toast.error(err.message || "Failed to send inquiry.");
     } finally {
       setInquiryLoading(false);
     }
   };
+
+  // Track code direct query lookup
+  const handleTrackLookup = async (e) => {
+    e?.preventDefault();
+    const code = trackingCodeInput.trim().toUpperCase();
+    if (!code) return toast.error("Please enter a tracking reference code.");
+
+    setTrackLookupLoading(true);
+    try {
+      const res = await fetch(`/backend/api/support/track/${encodeURIComponent(code)}`);
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.found) {
+        throw new Error(data.error || `No record found for "${code}".`);
+      }
+      setLookupResult(data.data);
+      toast.success("Submission record located!");
+    } catch (err) {
+      setLookupResult(null);
+      toast.error(err.message || "Record not found.");
+    } finally {
+      setTrackLookupLoading(false);
+    }
+  };
+
+  // Filtered submissions for display
+  const filteredSubmissions = useMemo(() => {
+    return submissions.filter((item) => {
+      if (activeFilter !== "all" && item.type !== activeFilter) {
+        return false;
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchesTitle = (item.title || "").toLowerCase().includes(q);
+        const matchesCode = (item.trackingId || "").toLowerCase().includes(q);
+        const matchesCategory = (item.category || "").toLowerCase().includes(q);
+        const matchesAuthor = (item.authorName || "").toLowerCase().includes(q);
+        if (!matchesTitle && !matchesCode && !matchesCategory && !matchesAuthor) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [submissions, activeFilter, searchQuery]);
+
+  const counts = useMemo(() => ({
+    all: submissions.length,
+    complaint: submissions.filter((s) => s.type === "complaint").length,
+    technical_support: submissions.filter((s) => s.type === "technical_support").length,
+    general_inquiry: submissions.filter((s) => s.type === "general_inquiry").length,
+  }), [submissions]);
 
   return (
     <div id="support" className="py-24 relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 scroll-mt-24">
@@ -321,29 +423,49 @@ export function HelpSupport() {
 
             <div className="space-y-2">
               <div className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-rose-100 bg-white/20 px-2.5 py-0.5 rounded-full border border-white/20 backdrop-blur-xs">
-                Confidential Grievance Box
+                {isAdmin ? "Admin Resolving Authority" : "Confidential Grievance Box"}
               </div>
               <h3 className="font-extrabold text-xl text-white tracking-tight">
-                Lodge a Complaint
+                {isAdmin ? "Grievance Resolution Desk" : "Lodge a Complaint"}
               </h3>
               <p className="text-rose-100 font-normal leading-relaxed text-xs sm:text-sm">
-                Have any academic, administrative, facility, or disciplinary grievances? Drop them here securely. 100% anonymous submission is supported and protected.
+                {isAdmin
+                  ? "As an administrator, you have full authority to investigate, assign, and resolve student and faculty grievances directly in the Admin Hub."
+                  : "Have any academic, administrative, facility, or disciplinary grievances? Drop them here securely. 100% anonymous submission is supported and protected."}
               </p>
             </div>
           </div>
 
           <div className="relative z-10 pt-6 mt-6 border-t border-white/20 space-y-3">
-            <button
-              type="button"
-              onClick={() => openModal("complaint")}
-              className="w-full h-12 rounded-xl font-bold text-xs sm:text-sm text-rose-700 bg-white hover:bg-rose-50 shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <span>Submit Official Complaint</span>
-              <ArrowRight className="h-4 w-4" />
-            </button>
-            <p className="text-[11px] text-center text-rose-100/90 font-medium">
-              Confidential • Sent to Administration
-            </p>
+            {isAdmin ? (
+              <>
+                <Link
+                  href="/dashboard/admin"
+                  className="w-full h-12 rounded-xl font-bold text-xs sm:text-sm text-rose-700 bg-white hover:bg-rose-50 shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <ShieldCheck className="h-4 w-4 text-rose-700" />
+                  <span>Review & Solve Grievances</span>
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+                <p className="text-[11px] text-center text-amber-200 font-semibold">
+                  Admin Privileges • Manage & Solve in Admin Portal
+                </p>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => openModal("complaint")}
+                  className="w-full h-12 rounded-xl font-bold text-xs sm:text-sm text-rose-700 bg-white hover:bg-rose-50 shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <span>Submit Official Complaint</span>
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+                <p className="text-[11px] text-center text-rose-100/90 font-medium">
+                  Confidential • Sent to Administration
+                </p>
+              </>
+            )}
           </div>
         </motion.div>
 
@@ -392,6 +514,331 @@ export function HelpSupport() {
         </motion.div>
 
       </div>
+
+      {/* ── LIVE DESK SUBMISSIONS & REAL-TIME TRACKING ─────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 30 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-40px" }}
+        transition={{ duration: 0.4 }}
+        className="mt-4 mb-16 rounded-[2.5rem] bg-white/70 dark:bg-slate-900/70 backdrop-blur-2xl border border-slate-200/80 dark:border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.03)] dark:shadow-none p-6 sm:p-10 space-y-8"
+      >
+        {/* Section Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-200/60 dark:border-white/10">
+          <div className="space-y-1.5">
+            <div className="inline-flex items-center gap-2 px-3 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">
+              <Activity className="w-3.5 h-3.5 text-indigo-500 animate-pulse" />
+              <span>Real-Time Support Desk Log</span>
+            </div>
+            <h3 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+              Recent Submissions & Tracking
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-2xl">
+              Live transparency registry of grievances, technical helpdesk requests, and official inquiries. Only real submissions appear here.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={fetchSubmissions}
+              disabled={loadingSubmissions}
+              title="Refresh submissions"
+              className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-indigo-600 hover:border-indigo-300 transition cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${loadingSubmissions ? "animate-spin text-indigo-500" : ""}`} />
+            </button>
+          </div>
+        </div>
+
+        {/* Toolbar: Filter Pills & Search */}
+        <div className="flex flex-col lg:flex-row gap-4 lg:items-center justify-between">
+          {/* Category Tabs */}
+          <div className="flex flex-wrap items-center gap-2">
+            {[
+              { key: "all", label: "All Submissions", count: counts.all },
+              { key: "complaint", label: "Grievances", count: counts.complaint },
+              { key: "technical_support", label: "IT Helpdesk", count: counts.technical_support },
+              { key: "general_inquiry", label: "Inquiries", count: counts.general_inquiry },
+            ].map((tab) => {
+              const active = activeFilter === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveFilter(tab.key)}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+                    active
+                      ? "bg-indigo-600 text-white shadow-sm"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
+                  }`}
+                >
+                  <span>{tab.label}</span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                      active
+                        ? "bg-white/20 text-white"
+                        : "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300"
+                    }`}
+                  >
+                    {tab.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Quick Track by Reference Code Form */}
+          <form onSubmit={handleTrackLookup} className="flex items-center gap-2 max-w-md w-full lg:w-auto">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Track by Code (e.g. CMP-...)"
+                value={trackingCodeInput}
+                onChange={(e) => setTrackingCodeInput(e.target.value)}
+                className="w-full h-10 pl-9 pr-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={trackLookupLoading}
+              className="h-10 px-4 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm cursor-pointer disabled:opacity-50 transition whitespace-nowrap"
+            >
+              {trackLookupLoading ? "Tracking..." : "Track Status"}
+            </button>
+          </form>
+        </div>
+
+        {/* Real-time Tracking Code Result Modal/Card (if user queried a code) */}
+        {lookupResult && (
+          <div className="p-5 rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 space-y-3 relative">
+            <button
+              type="button"
+              onClick={() => setLookupResult(null)}
+              className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              <span className="text-xs font-black uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+                Tracking Details for {lookupResult.trackingId}
+              </span>
+            </div>
+            <h4 className="font-bold text-base text-slate-900 dark:text-white">
+              {lookupResult.title}
+            </h4>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="px-2.5 py-0.5 rounded-full font-bold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                Status: <strong className="text-indigo-600 dark:text-indigo-400">{lookupResult.status}</strong>
+              </span>
+              <span className="px-2.5 py-0.5 rounded-full font-medium bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                Category: {lookupResult.category}
+              </span>
+            </div>
+            {lookupResult.adminResponse && (
+              <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200/80 dark:border-indigo-900/50 text-xs text-slate-700 dark:text-slate-300">
+                <span className="font-bold text-emerald-600 dark:text-emerald-400">Administration Note: </span>
+                {lookupResult.adminResponse}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Submissions Content */}
+        {loadingSubmissions ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-20 rounded-2xl bg-slate-100 dark:bg-slate-800 animate-pulse" />
+            ))}
+          </div>
+        ) : submissions.length === 0 ? (
+          /* Empty State - STRICTLY ZERO DEFAULT MOCK DATA */
+          <div className="text-center py-12 px-4 rounded-3xl bg-slate-50/60 dark:bg-slate-800/40 border border-dashed border-slate-200 dark:border-slate-700 space-y-3">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+              <Inbox className="w-7 h-7" />
+            </div>
+            <h4 className="text-base font-extrabold text-slate-800 dark:text-slate-200">
+              No Complaints or Inquiries Logged Yet
+            </h4>
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
+              The departmental support registry is clean. When a student, teacher, or visitor submits a grievance or inquiry using the forms above, it will be automatically registered and displayed here in real time.
+            </p>
+          </div>
+        ) : filteredSubmissions.length === 0 ? (
+          <div className="text-center py-8 text-xs text-slate-400">
+            No submissions found matching &ldquo;{searchQuery}&rdquo;.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {filteredSubmissions.map((item) => {
+              const isExpanded = expandedId === item.id;
+              const isResolved = ["resolved", "closed"].includes(String(item.status || "").toLowerCase());
+              const isInProgress = ["in progress", "under review", "investigating"].includes(String(item.status || "").toLowerCase());
+
+              return (
+                <div
+                  key={item.id}
+                  className="rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white/90 dark:bg-slate-800/80 p-4 sm:p-5 transition hover:border-slate-300 dark:hover:border-white/20 shadow-xs space-y-3"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* Tracking ID with copy */}
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(item.trackingId)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 cursor-pointer transition"
+                        title="Copy Reference Code"
+                      >
+                        <span>{item.trackingId}</span>
+                        <Copy className="w-3 h-3 opacity-60" />
+                      </button>
+
+                      {/* Type Badge */}
+                      <span
+                        className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${
+                          item.type === "complaint"
+                            ? "bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60"
+                            : item.type === "technical_support"
+                            ? "bg-sky-50 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300 border border-sky-200 dark:border-sky-800/60"
+                            : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60"
+                        }`}
+                      >
+                        {item.type === "complaint"
+                          ? "Grievance"
+                          : item.type === "technical_support"
+                          ? "IT Support"
+                          : "Inquiry"}
+                      </span>
+
+                      {/* Category Badge */}
+                      {item.category && (
+                        <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/60 px-2 py-0.5 rounded-md capitalize">
+                          {item.category.replace("_", " ")}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Status Pill */}
+                    <div className="flex items-center gap-2">
+                      {isAdmin && (
+                        <Link
+                          href="/dashboard/admin"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/80 dark:border-indigo-800/60 text-[11px] font-bold hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition"
+                          title="Open Admin Hub to Resolve"
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                          <span>Solve</span>
+                        </Link>
+                      )}
+                      <span
+                        className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+                          isResolved
+                            ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60"
+                            : isInProgress
+                            ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60"
+                            : "bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60"
+                        }`}
+                      >
+                        {isResolved ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        ) : (
+                          <Clock className="w-3.5 h-3.5 text-amber-600" />
+                        )}
+                        <span>{item.status || "Submitted"}</span>
+                      </span>
+
+                      {/* Accordion toggle */}
+                      <button
+                        type="button"
+                        onClick={() => setExpandedId(isExpanded ? null : item.id)}
+                        className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer transition"
+                      >
+                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Title & Metadata */}
+                  <div className="space-y-1">
+                    <h4 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-white tracking-tight">
+                      {item.title}
+                    </h4>
+                    <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400 font-medium">
+                      <span className="flex items-center gap-1">
+                        {item.isAnonymous ? (
+                          <>
+                            <Lock className="w-3 h-3 text-slate-400" />
+                            <span>Anonymous</span>
+                          </>
+                        ) : (
+                          <>
+                            <User className="w-3 h-3 text-slate-400" />
+                            <span>{item.authorName || "Department Member"}</span>
+                          </>
+                        )}
+                      </span>
+                      <span>•</span>
+                      <span>
+                        {item.createdAt
+                          ? new Date(item.createdAt).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            })
+                          : "Recently"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Admin Response Note Callout (if available) */}
+                  {item.adminResponse && (
+                    <div className="p-3 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/50 flex items-start gap-2.5 text-xs text-emerald-900 dark:text-emerald-200">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-black">Administrative Response: </span>
+                        <span>{item.adminResponse}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Expanded Description & Timeline */}
+                  {isExpanded && (
+                    <div className="pt-3 border-t border-slate-100 dark:border-white/10 space-y-3 text-xs">
+                      {item.description && (
+                        <div className="space-y-1">
+                          <span className="font-bold text-slate-700 dark:text-slate-300">Description:</span>
+                          <p className="text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-line">
+                            {item.description}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Timeline */}
+                      {Array.isArray(item.timeline) && item.timeline.length > 0 && (
+                        <div className="space-y-2 pt-2">
+                          <span className="font-bold text-slate-700 dark:text-slate-300">Status Timeline:</span>
+                          <div className="space-y-1.5 pl-2 border-l-2 border-indigo-200 dark:border-indigo-800">
+                            {item.timeline.map((step, sIdx) => (
+                              <div key={sIdx} className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
+                                <span>{step.note || step.status}</span>
+                                <span className="text-[10px] text-slate-400">
+                                  {step.at ? new Date(step.at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </motion.div>
 
       {/* ── MODALS ───────────────────────────────────────────────────────── */}
       <AnimatePresence>
