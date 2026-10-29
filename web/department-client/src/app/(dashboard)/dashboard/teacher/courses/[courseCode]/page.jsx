@@ -56,6 +56,8 @@ import toast from "react-hot-toast";
 import { authClient } from "@/lib/auth-client";
 import Loading from "@/components/common/Loading";
 import { SEMESTER_COURSES } from "@/data/courses";
+import CourseNoticeModal from "@/components/notice/CourseNoticeModal";
+import NoticeCard from "@/components/notice/NoticeCard";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
@@ -70,10 +72,10 @@ export default function TeacherCourseWorkspacePage() {
 
   const searchParams = useSearchParams();
   const urlTab = searchParams?.get("tab");
-  const validTabs = useMemo(() => ["attendance", "materials", "assignments", "schedule"], []);
+  const validTabs = useMemo(() => ["attendance", "materials", "assignments", "notices", "schedule"], []);
 
-  // Active Tab: "attendance" | "materials" | "assignments" | "schedule"
-  const [activeTab, setActiveTab] = useState(() => (urlTab && ["attendance", "materials", "assignments", "schedule"].includes(urlTab) ? urlTab : "attendance"));
+  // Active Tab: "attendance" | "materials" | "assignments" | "notices" | "schedule"
+  const [activeTab, setActiveTab] = useState(() => (urlTab && ["attendance", "materials", "assignments", "notices", "schedule"].includes(urlTab) ? urlTab : "attendance"));
 
   useEffect(() => {
     if (urlTab && validTabs.includes(urlTab) && urlTab !== activeTab) {
@@ -149,23 +151,24 @@ export default function TeacherCourseWorkspacePage() {
   const [assignmentFile, setAssignmentFile] = useState(null);
   const [creatingAssignment, setCreatingAssignment] = useState(false);
 
-  // Submissions Review Modal State
+  // Submissions & Class Roster Review Modal State (Roll-wise grading)
   const [selectedAssignment, setSelectedAssignment] = useState(null);
   const [submissions, setSubmissions] = useState([]);
+  const [assignmentRoster, setAssignmentRoster] = useState([]);
   const [submissionsLoading, setSubmissionsLoading] = useState(false);
   const [submissionSearch, setSubmissionSearch] = useState("");
-  const [submissionFilter, setSubmissionFilter] = useState("all"); // "all" | "pending" | "graded"
-  const [gradingSubId, setGradingSubId] = useState(null);
+  const [submissionFilter, setSubmissionFilter] = useState("all"); // "all" | "submitted" | "pending-submission" | "graded" | "pending-grade"
+  const [gradingStudentKey, setGradingStudentKey] = useState(null);
   const [gradeInput, setGradeInput] = useState("");
   const [feedbackInput, setFeedbackInput] = useState("");
+  const [isSavingGrade, setIsSavingGrade] = useState(false);
 
-  // Course Announcement Modal
+  // Course Announcement Modal & Notices State
   const [showNoticeModal, setShowNoticeModal] = useState(false);
-  const [noticeForm, setNoticeForm] = useState({
-    title: "",
-    content: "",
-    priority: "Normal",
-  });
+  const [editingNotice, setEditingNotice] = useState(null);
+  const [courseNotices, setCourseNotices] = useState([]);
+  const [isNoticesLoading, setIsNoticesLoading] = useState(true);
+  const [noticeSearch, setNoticeSearch] = useState("");
   const [isPublishingNotice, setIsPublishingNotice] = useState(false);
 
   // Planned Classes Target Modal State
@@ -299,14 +302,40 @@ export default function TeacherCourseWorkspacePage() {
     }
   }, [courseCode]);
 
+  // ── 6. FETCH NOTICES FOR THIS COURSE ─────────────────────────
+  const fetchCourseNotices = useCallback(async () => {
+    setIsNoticesLoading(true);
+    try {
+      const res = await fetch(`/backend/api/notices?courseCode=${encodeURIComponent(courseCode)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setCourseNotices(data.notices || []);
+      }
+    } catch (e) {
+      console.warn("Could not fetch course notices:", e);
+    } finally {
+      setIsNoticesLoading(false);
+    }
+  }, [courseCode]);
+
   useEffect(() => {
     if (courseCode) {
       fetchCourseDetails();
       fetchCourseMaterials();
       fetchCourseAssignments();
+      fetchCourseNotices();
       fetchTeacherCourses();
     }
-  }, [courseCode, fetchCourseDetails, fetchCourseMaterials, fetchCourseAssignments, fetchTeacherCourses]);
+  }, [courseCode, fetchCourseDetails, fetchCourseMaterials, fetchCourseAssignments, fetchCourseNotices, fetchTeacherCourses]);
+
+  // Listen for global notice refresh events
+  useEffect(() => {
+    const handleRefreshNotices = () => {
+      fetchCourseNotices();
+    };
+    window.addEventListener("refresh-notices", handleRefreshNotices);
+    return () => window.removeEventListener("refresh-notices", handleRefreshNotices);
+  }, [fetchCourseNotices]);
 
   useEffect(() => {
     if (course) {
@@ -730,42 +759,103 @@ export default function TeacherCourseWorkspacePage() {
     setSubmissionsLoading(true);
     setSubmissionSearch("");
     setSubmissionFilter("all");
+    setGradingStudentKey(null);
+    setGradeInput("");
+    setFeedbackInput("");
     try {
       const res = await fetch(`/backend/api/assignments/${assignment._id || assignment.id}/submissions`);
       if (res.ok) {
         const data = await res.json();
         setSubmissions(data.submissions || []);
+        setAssignmentRoster(data.roster || []);
+      } else {
+        setSubmissions([]);
+        setAssignmentRoster([]);
       }
     } catch {
       toast.error("Could not fetch student submissions");
+      setSubmissions([]);
+      setAssignmentRoster([]);
     } finally {
       setSubmissionsLoading(false);
     }
   };
 
-  const handleSaveGrade = async (subId) => {
+  const handleSaveGrade = async (targetStudent) => {
     if (gradeInput === "") {
       toast.error("Please enter awarded marks");
       return;
     }
     const num = Number(gradeInput);
-    if (isNaN(num) || num < 0 || num > (selectedAssignment?.totalMarks || 100)) {
-      toast.error(`Marks must be between 0 and ${selectedAssignment?.totalMarks || 100}`);
+    const maxMarks = selectedAssignment?.totalMarks || 20;
+    if (isNaN(num) || num < 0 || num > maxMarks) {
+      toast.error(`Marks must be between 0 and ${maxMarks}`);
       return;
     }
+
+    setIsSavingGrade(true);
     try {
-      const res = await fetch(`/backend/api/assignments/submissions/${subId}/grade`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ marks: num, feedback: feedbackInput }),
-      });
+      let res;
+      if (targetStudent.submissionId) {
+        res = await fetch(`/backend/api/assignments/submissions/${targetStudent.submissionId}/grade`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ marks: num, feedback: feedbackInput }),
+        });
+      } else {
+        const assignmentId = selectedAssignment._id || selectedAssignment.id;
+        res = await fetch(`/backend/api/assignments/${assignmentId}/grade-student`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            studentId: targetStudent.studentId,
+            studentName: targetStudent.studentName,
+            studentEmail: targetStudent.studentEmail,
+            marks: num,
+            feedback: feedbackInput,
+          }),
+        });
+      }
+
       const data = await res.json();
       if (res.ok && data.success) {
-        toast.success("Grade and feedback saved!");
-        setSubmissions((prev) =>
-          prev.map((s) => (s._id === subId ? { ...s, marks: num, feedback: feedbackInput, status: "graded" } : s))
+        toast.success(`Marks saved for Roll ${targetStudent.studentId || targetStudent.studentName}!`);
+
+        // Update roster locally
+        setAssignmentRoster((prev) =>
+          prev.map((s) => {
+            if (s.studentId === targetStudent.studentId || (targetStudent.submissionId && s.submissionId === targetStudent.submissionId)) {
+              return {
+                ...s,
+                marks: num,
+                feedback: feedbackInput,
+                status: "graded",
+                hasSubmitted: true,
+                submissionId: s.submissionId || data.submission?._id,
+              };
+            }
+            return s;
+          })
         );
-        setGradingSubId(null);
+
+        // Update submissions list locally
+        setSubmissions((prev) => {
+          const exists = prev.some((s) => s.studentId === targetStudent.studentId);
+          if (exists) {
+            return prev.map((s) =>
+              s.studentId === targetStudent.studentId
+                ? { ...s, marks: num, feedback: feedbackInput, status: "graded" }
+                : s
+            );
+          }
+          if (data.submission) {
+            return [...prev, data.submission];
+          }
+          return prev;
+        });
+
+        fetchCourseAssignments();
+        setGradingStudentKey(null);
         setGradeInput("");
         setFeedbackInput("");
       } else {
@@ -773,74 +863,150 @@ export default function TeacherCourseWorkspacePage() {
       }
     } catch {
       toast.error("Network error while grading");
+    } finally {
+      setIsSavingGrade(false);
     }
   };
 
-  // Export Assignment Grades to CSV
+  // Export Assignment Grades to CSV (Complete Roll-wise Class Roster with UTF-8 BOM)
   const handleExportGradesCSV = () => {
-    if (!selectedAssignment || submissions.length === 0) {
-      toast.error("No submissions available to export.");
+    const list = assignmentRoster.length > 0 ? assignmentRoster : submissions;
+    if (!selectedAssignment || list.length === 0) {
+      toast.error("No class roster or submissions available to export.");
       return;
     }
 
-    const headers = ["Student ID", "Student Name", "Email", "Submitted Date", "Submission Status", `Marks (Max ${selectedAssignment.totalMarks || 20})`, "Instructor Feedback"];
-    const rows = submissions.map((sub) => [
-      `"${sub.studentId}"`,
-      `"${sub.studentName}"`,
-      `"${sub.studentEmail}"`,
-      `"${new Date(sub.submittedAt).toLocaleString()}"`,
-      `"${sub.isLate ? "Late" : "On Time"}"`,
-      sub.marks !== null && sub.marks !== undefined ? sub.marks : "Ungraded",
-      `"${sub.feedback ? sub.feedback.replace(/"/g, '""') : ""}"`,
-    ]);
+    const maxMarks = selectedAssignment.totalMarks || 20;
+    const headers = [
+      "Roll Number",
+      "Student Name",
+      "Email",
+      "Batch",
+      "Semester",
+      "Course Code",
+      "Assignment Title",
+      "Submission Status",
+      "Submitted Date",
+      `Marks Obtained (Max ${maxMarks})`,
+      "Total Marks",
+      "Percentage (%)",
+      "Letter Grade",
+      "Instructor Feedback",
+    ];
 
-    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.join("\n")].join("\n");
-    const encodedUri = encodeURI(csvContent);
+    const escapeCsv = (val) => {
+      if (val === null || val === undefined) return '""';
+      const str = String(val).replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    // Sort submissions roll-wise ascending
+    const sorted = [...list].sort((a, b) => {
+      const rollA = parseInt(String(a.studentId || "").replace(/\D/g, ""), 10);
+      const rollB = parseInt(String(b.studentId || "").replace(/\D/g, ""), 10);
+      if (!isNaN(rollA) && !isNaN(rollB) && rollA !== rollB) return rollA - rollB;
+      return String(a.studentId || a.studentName || "").localeCompare(String(b.studentId || b.studentName || ""));
+    });
+
+    const getGradeLetter = (score, max) => {
+      if (score === null || score === undefined || !max) return "Ungraded";
+      const pct = (score / max) * 100;
+      if (pct >= 80) return "A+";
+      if (pct >= 75) return "A";
+      if (pct >= 70) return "A-";
+      if (pct >= 65) return "B+";
+      if (pct >= 60) return "B";
+      if (pct >= 55) return "B-";
+      if (pct >= 50) return "C+";
+      if (pct >= 40) return "D";
+      return "F";
+    };
+
+    const rows = sorted.map((s) => {
+      const roll = s.studentId || "N/A";
+      const name = s.studentName || "Student";
+      const email = s.studentEmail || "";
+      const batch = s.batch || "";
+      const semester = s.semester || course?.semesterNum || "";
+      const status = s.hasSubmitted ? (s.isLate ? "Submitted Late" : "Submitted On Time") : "Not Submitted";
+      const dateStr = s.submittedAt ? new Date(s.submittedAt).toLocaleString("en-US", { timeZone: "Asia/Dhaka" }) : "N/A";
+      const marks = s.marks !== null && s.marks !== undefined ? s.marks : "";
+      const pct = marks !== "" ? `${Math.round((Number(marks) / maxMarks) * 100)}%` : "";
+      const grade = marks !== "" ? getGradeLetter(Number(marks), maxMarks) : "Ungraded";
+      const feedback = s.feedback || "";
+
+      return [
+        escapeCsv(roll),
+        escapeCsv(name),
+        escapeCsv(email),
+        escapeCsv(batch),
+        escapeCsv(semester),
+        escapeCsv(courseCode),
+        escapeCsv(selectedAssignment.title),
+        escapeCsv(status),
+        escapeCsv(dateStr),
+        escapeCsv(marks),
+        escapeCsv(maxMarks),
+        escapeCsv(pct),
+        escapeCsv(grade),
+        escapeCsv(feedback),
+      ].join(",");
+    });
+
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\r\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `Grades_${courseCode}_${selectedAssignment.title.replace(/\s+/g, "_")}.csv`);
+    const cleanCourse = courseCode.replace(/[^a-zA-Z0-9_-]/g, "");
+    const cleanTitle = (selectedAssignment.title || "Assignment").replace(/[^a-zA-Z0-9_-]/g, "_");
+    link.href = url;
+    link.download = `${cleanCourse}_${cleanTitle}_Grades_RollWise.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success("Grades exported as CSV!");
+    URL.revokeObjectURL(url);
+    toast.success("Roll-wise class roster & assignment grades exported as CSV!");
   };
 
-  // ── COURSE ANNOUNCEMENT HANDLER ──────────────────────────────
-  const handlePublishCourseNotice = async (e) => {
-    e.preventDefault();
-    if (!noticeForm.title.trim() || !noticeForm.content.trim()) {
-      toast.error("Notice title and content are required.");
-      return;
-    }
-    setIsPublishingNotice(true);
+  // ── COURSE NOTICE ACTION HANDLERS ───────────────────────────
+  const handleCreateNotice = () => {
+    setEditingNotice(null);
+    setShowNoticeModal(true);
+  };
+
+  const handleEditNotice = (notice) => {
+    setEditingNotice(notice);
+    setShowNoticeModal(true);
+  };
+
+  const handleDeleteNotice = async (notice) => {
+    const id = notice.id || notice._id;
+    if (!id) return;
+    if (!window.confirm(`Are you sure you want to remove the course notice "${notice.title}"?`)) return;
     try {
-      const res = await fetch("/backend/api/notices", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: `[${courseCode}] ${noticeForm.title.trim()}`,
-          content: noticeForm.content.trim(),
-          category: "Academic",
-          priority: noticeForm.priority,
-          author: user?.name || "Course Instructor",
-          department: "CSE",
-          targetAudience: course?.semester || `Semester ${course?.semesterNum || 7}`,
-        }),
-      });
+      const res = await fetch(`/backend/api/notices/${id}`, { method: "DELETE" });
       const data = await res.json();
       if (res.ok && data.success) {
-        toast.success(`Announcement broadcasted to ${courseCode} students!`);
-        setShowNoticeModal(false);
-        setNoticeForm({ title: "", content: "", priority: "Normal" });
+        toast.success("Course notice removed");
+        fetchCourseNotices();
+        window.dispatchEvent(new CustomEvent("refresh-notices"));
       } else {
-        toast.error(data.error || "Failed to publish notice");
+        toast.error(data.error || "Failed to delete notice");
       }
     } catch {
-      toast.error("Network error publishing announcement");
-    } finally {
-      setIsPublishingNotice(false);
+      toast.error("Network error removing notice");
     }
   };
+
+  const filteredCourseNotices = useMemo(() => {
+    if (!noticeSearch.trim()) return courseNotices;
+    const q = noticeSearch.toLowerCase();
+    return courseNotices.filter((n) =>
+      n.title?.toLowerCase().includes(q) ||
+      n.content?.toLowerCase().includes(q) ||
+      n.category?.toLowerCase().includes(q)
+    );
+  }, [courseNotices, noticeSearch]);
 
 
   // ── FILTERED DATA HOOKS ──────────────────────────────────────
@@ -884,21 +1050,48 @@ export default function TeacherCourseWorkspacePage() {
     });
   }, [assignments, assignmentFilter]);
 
+  // Selected assignment roster statistics
+  const assignmentRosterStats = useMemo(() => {
+    const list = assignmentRoster.length > 0 ? assignmentRoster : submissions;
+    const total = list.length;
+    const submitted = list.filter((s) => s.hasSubmitted).length;
+    const graded = list.filter((s) => s.marks !== null && s.marks !== undefined).length;
+    const pendingGrade = submitted - graded;
+    return {
+      total,
+      submitted,
+      graded,
+      pendingGrade: Math.max(0, pendingGrade),
+      pendingSubmission: Math.max(0, total - submitted),
+    };
+  }, [assignmentRoster, submissions]);
+
   const filteredSubmissions = useMemo(() => {
-    return submissions.filter((s) => {
-      const matchesSearch =
-        !submissionSearch ||
-        s.studentName?.toLowerCase().includes(submissionSearch.toLowerCase()) ||
-        s.studentId?.toLowerCase().includes(submissionSearch.toLowerCase());
+    const list = assignmentRoster.length > 0 ? assignmentRoster : submissions.map((s) => ({
+      ...s,
+      hasSubmitted: true,
+      submissionId: s._id,
+    }));
 
-      const isGraded = s.marks !== null && s.marks !== undefined;
-      let matchesFilter = true;
-      if (submissionFilter === "pending") matchesFilter = !isGraded;
-      if (submissionFilter === "graded") matchesFilter = isGraded;
+    return list.filter((s) => {
+      // Status filter
+      if (submissionFilter === "submitted" && !s.hasSubmitted) return false;
+      if (submissionFilter === "pending-submission" && s.hasSubmitted) return false;
+      if (submissionFilter === "graded" && (s.marks === null || s.marks === undefined)) return false;
+      if (submissionFilter === "pending-grade" && (s.marks !== null && s.marks !== undefined)) return false;
 
-      return matchesSearch && matchesFilter;
+      // Search query
+      if (submissionSearch.trim()) {
+        const q = submissionSearch.toLowerCase().trim();
+        const rollMatch = String(s.studentId || "").toLowerCase().includes(q);
+        const nameMatch = String(s.studentName || "").toLowerCase().includes(q);
+        const emailMatch = String(s.studentEmail || "").toLowerCase().includes(q);
+        if (!rollMatch && !nameMatch && !emailMatch) return false;
+      }
+
+      return true;
     });
-  }, [submissions, submissionSearch, submissionFilter]);
+  }, [assignmentRoster, submissions, submissionFilter, submissionSearch]);
 
   const filteredManualStudents = useMemo(() => {
     const list = rosterData?.roster || [];
@@ -947,8 +1140,9 @@ export default function TeacherCourseWorkspacePage() {
       totalMaterials: materials.length,
       totalAssignments: assignments.length,
       totalSubmissions,
+      totalNotices: courseNotices.length,
     };
-  }, [rosterData, materials, assignments, course?.totalClasses]);
+  }, [rosterData, materials, assignments, courseNotices, course?.totalClasses]);
 
   // Loading Screen
   if (isLoadingCourse && !course) {
@@ -1007,12 +1201,12 @@ export default function TeacherCourseWorkspacePage() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setShowNoticeModal(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-xs font-bold transition cursor-pointer"
-            title="Broadcast announcement to this course cohort"
+            onClick={handleCreateNotice}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-all hover:scale-105 active:scale-95 cursor-pointer"
+            title="Broadcast course notice to students of this course"
           >
             <Bell className="w-3.5 h-3.5" />
-            <span>Course Notice</span>
+            <span>Give Course Notice</span>
           </button>
 
           <button
@@ -1185,7 +1379,7 @@ export default function TeacherCourseWorkspacePage() {
         </div>
 
         {/* ── COURSE KEY PERFORMANCE METRICS (INTERACTIVE STAT CARDS) ───────────────────────── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-8 pt-6 border-t border-white/10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4 mt-8 pt-6 border-t border-white/10">
           {/* Card 1: Classes Held & Progression */}
           <div
             onClick={() => setShowSessionsModal(true)}
@@ -1383,12 +1577,42 @@ export default function TeacherCourseWorkspacePage() {
                 : "Click to create assignment task"}
             </span>
           </div>
+
+          {/* Card 5: Course Notices */}
+          <div
+            onClick={() => handleTabChange("notices")}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") handleTabChange("notices");
+            }}
+            className="p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-indigo-400/60 backdrop-blur-md space-y-1 relative group/card cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.99] shadow-sm hover:shadow-indigo-500/10 text-left"
+            title="Click to view and broadcast course notices"
+          >
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block group-hover/card:text-indigo-300 transition-colors">
+                Course Notices
+              </span>
+              <span className="text-[10px] font-bold text-indigo-300 opacity-0 group-hover/card:opacity-100 transition-opacity flex items-center gap-0.5">
+                <span>Notices</span>
+                <ChevronRight className="w-2.5 h-2.5" />
+              </span>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-black text-white">{courseStats.totalNotices}</span>
+              <span className="text-xs text-slate-400 font-medium">Broadcasts</span>
+            </div>
+            <span className="text-[10px] text-indigo-300 font-semibold block pt-0.5 truncate">
+              {courseStats.totalNotices > 0 ? "Published to students" : "Click to broadcast notice"}
+            </span>
+          </div>
         </div>
       </div>
 
       {/* ── COURSE WORKSPACE TABS ──────────────────────────────────── */}
       <div className="flex items-center gap-2 border-b border-slate-200 dark:border-white/10 pb-2 overflow-x-auto scrollbar-none">
         {[
+          { id: "notices", label: "Course Notices", icon: Bell, count: courseNotices.length },
           { id: "attendance", label: "Attendance Hub", icon: UserCheck, count: `${courseStats.totalHeld} Sessions` },
           { id: "materials", label: "Study Materials", icon: BookOpen, count: courseStats.totalMaterials },
           { id: "assignments", label: "Continuous Tasks", icon: FileText, count: courseStats.totalAssignments },
@@ -1417,6 +1641,103 @@ export default function TeacherCourseWorkspacePage() {
           );
         })}
       </div>
+
+      {/* ════════════════════════════════════════════════════════════════
+          TAB 0: COURSE NOTICES & ANNOUNCEMENTS
+          ════════════════════════════════════════════════════════════════ */}
+      {activeTab === "notices" && (
+        <div className="p-7 sm:p-8 rounded-[2rem] bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/80 dark:border-white/10 shadow-sm space-y-6 transition-colors">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-white/10">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
+                  Course Notices & Announcements
+                </h2>
+                <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 border border-indigo-200/80 dark:border-indigo-800/80">
+                  {courseNotices.length} Published
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                Broadcast instant guidelines, reschedule alerts, and voice notes to students of {courseCode}. You can view, edit, or remove notices below.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search notices..."
+                  value={noticeSearch}
+                  onChange={(e) => setNoticeSearch(e.target.value)}
+                  className="pl-8 pr-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-44 sm:w-56"
+                />
+                {noticeSearch && (
+                  <button
+                    onClick={() => setNoticeSearch("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCreateNotice}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Give Course Notice</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Notices List */}
+          {isNoticesLoading ? (
+            <div className="py-12 flex flex-col items-center justify-center space-y-3">
+              <RefreshCw className="w-6 h-6 text-indigo-500 animate-spin" />
+              <p className="text-xs text-slate-400 font-medium">Loading course notices...</p>
+            </div>
+          ) : filteredCourseNotices.length > 0 ? (
+            <div className="grid grid-cols-1 gap-4">
+              {filteredCourseNotices.map((notice) => (
+                <NoticeCard
+                  key={notice.id || notice._id}
+                  notice={notice}
+                  isAdmin={true}
+                  onEdit={handleEditNotice}
+                  onDelete={handleDeleteNotice}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="py-16 text-center rounded-2xl bg-slate-50/70 dark:bg-slate-800/40 border border-dashed border-slate-200 dark:border-slate-700 space-y-3">
+              <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center mx-auto text-indigo-500">
+                <Bell className="w-6 h-6" />
+              </div>
+              <h3 className="font-bold text-slate-900 dark:text-white text-sm">
+                {noticeSearch ? "No matching course notices found" : `No notices posted for ${courseCode} yet`}
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                {noticeSearch
+                  ? "Try adjusting your search keyword."
+                  : "Post your first notice, guidelines, schedule announcement, or audio voice note for this course."}
+              </p>
+              {!noticeSearch && (
+                <button
+                  type="button"
+                  onClick={handleCreateNotice}
+                  className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Give First Course Notice</span>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ════════════════════════════════════════════════════════════════
           TAB 1: COURSE ATTENDANCE HUB
@@ -1918,7 +2239,7 @@ export default function TeacherCourseWorkspacePage() {
       )}
 
       {/* ════════════════════════════════════════════════════════════════
-          TAB 3: CONTINUOUS TASKS & ASSIGNMENTS
+          TAB 3: CONTINUOUS TASKS & ASSIGNMENTS (COURSE WORKSPACE)
           ════════════════════════════════════════════════════════════════ */}
       {activeTab === "assignments" && (
         <div className="p-7 sm:p-8 rounded-[2rem] bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/80 dark:border-white/10 shadow-sm space-y-6 transition-colors">
@@ -1926,13 +2247,13 @@ export default function TeacherCourseWorkspacePage() {
             <div>
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 text-xs font-semibold mb-1">
                 <FileText className="w-3.5 h-3.5 text-sky-500" />
-                <span>Continuous Assessment Manager</span>
+                <span>Course Assessment & Grading Studio</span>
               </div>
               <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <span>Coursework Tasks, Project Milestones & Grading</span>
+                <span>{courseCode} Coursework, Deliverables & Marks</span>
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
-                Create continuous assessment assignments specifically for <strong>{courseCode}</strong>, review student submissions, and award marks.
+                Publish continuous assessments specifically for <strong>{courseCode}</strong>, evaluate student submissions roll-wise, award marks with feedback, and export CSV grade sheets.
               </p>
             </div>
 
@@ -1944,6 +2265,35 @@ export default function TeacherCourseWorkspacePage() {
               <Plus className="w-4 h-4" />
               <span>Create New Assignment</span>
             </button>
+          </div>
+
+          {/* Quick Course Assessment Metrics */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Course Tasks</span>
+              <p className="text-lg font-black text-slate-900 dark:text-white mt-0.5">{assignments.length} Published</p>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-sky-50/70 dark:bg-sky-950/40 border border-sky-200/60 dark:border-sky-900/40">
+              <span className="text-[10px] font-bold text-sky-600 uppercase tracking-wider block">Total Submissions</span>
+              <p className="text-lg font-black text-sky-600 dark:text-sky-400 mt-0.5">
+                {assignments.reduce((sum, a) => sum + (a.submissionCount || 0), 0)} On Record
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200/60 dark:border-emerald-900/40">
+              <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">Active Window</span>
+              <p className="text-lg font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
+                {assignments.filter((a) => new Date() <= new Date(a.deadline)).length} Accepting Work
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/60 dark:border-indigo-900/40">
+              <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider block">Enrolled Cohort</span>
+              <p className="text-lg font-black text-indigo-600 dark:text-indigo-400 mt-0.5">
+                {courseStats.totalStudents || 0} Students
+              </p>
+            </div>
           </div>
 
           {/* Filter Pills */}
@@ -1979,7 +2329,7 @@ export default function TeacherCourseWorkspacePage() {
                 No assignments match your filter for {courseCode}
               </h4>
               <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                Set continuous homework, lab assignments, or project deliverables for enrolled students.
+                Set continuous homework, lab assignments, or project deliverables for enrolled students in this course.
               </p>
               <button
                 type="button"
@@ -2029,6 +2379,28 @@ export default function TeacherCourseWorkspacePage() {
                         </p>
                       )}
 
+                      {/* Instructor Problem Sheet / Starter Code Link */}
+                      {asg.filePath && (
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <FileText className="w-4 h-4 text-sky-500 shrink-0" />
+                            <span className="truncate text-xs font-semibold text-slate-700 dark:text-slate-300">
+                              {asg.originalName || "Problem Sheet Attachment"}
+                            </span>
+                          </div>
+                          <a
+                            href={asg.filePath.startsWith("http") ? asg.filePath : `${SERVER_URL}${asg.filePath}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            download={asg.originalName || true}
+                            className="p-1.5 rounded-lg bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/60 text-sky-600 transition shrink-0"
+                            title="Download problem sheet"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+                      )}
+
                       {/* Submission Progress bar */}
                       <div className="space-y-1 pt-1">
                         <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500">
@@ -2058,7 +2430,7 @@ export default function TeacherCourseWorkspacePage() {
                         className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold transition shadow-xs cursor-pointer"
                       >
                         <Eye className="w-3.5 h-3.5" />
-                        <span>View Submissions ({asg.submissionCount || 0})</span>
+                        <span>View & Grade Submissions ({asg.submissionCount || 0})</span>
                       </button>
 
                       <button
@@ -2674,7 +3046,7 @@ export default function TeacherCourseWorkspacePage() {
       )}
 
       {/* ════════════════════════════════════════════════════════════════
-          MODAL 5: VIEW & GRADE SUBMISSIONS
+          MODAL 5: ROLL-WISE CLASS ROSTER & CONTINUOUS GRADING STUDIO
           ════════════════════════════════════════════════════════════════ */}
       {selectedAssignment && (
         <div
@@ -2683,26 +3055,32 @@ export default function TeacherCourseWorkspacePage() {
           aria-modal="true"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in overscroll-contain"
         >
-          <div className="relative w-full max-w-3xl bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-5 max-h-[92vh] overflow-y-auto overscroll-contain scrollbar-thin">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+          <div className="relative w-full max-w-4xl bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-5 max-h-[92vh] overflow-y-auto overscroll-contain scrollbar-thin">
+            {/* Modal Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
               <div>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 text-xs font-mono font-bold mb-1">
+                  {courseCode} • Max: {selectedAssignment.totalMarks || 20} Marks
+                </div>
                 <h3 className="text-lg font-black text-slate-900 dark:text-white">
-                  Submissions: {selectedAssignment.title}
+                  Roll-Wise Submissions & Grading: {selectedAssignment.title}
                 </h3>
                 <p className="text-xs text-slate-400">
-                  {courseCode} • Max Marks: {selectedAssignment.totalMarks || 20}
+                  Evaluate class roster submissions roll-wise or award continuous assessment marks directly.
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+
+              <div className="flex items-center gap-2 self-end sm:self-auto">
                 <button
                   type="button"
                   onClick={handleExportGradesCSV}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold transition cursor-pointer"
-                  title="Export grades as CSV"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs cursor-pointer"
+                  title="Export complete roll-wise roster with marks to CSV"
                 >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Export CSV</span>
+                  <FileSpreadsheet className="w-4 h-4" />
+                  <span>Export Roll-Wise CSV</span>
                 </button>
+
                 <button
                   type="button"
                   onClick={() => setSelectedAssignment(null)}
@@ -2713,16 +3091,50 @@ export default function TeacherCourseWorkspacePage() {
               </div>
             </div>
 
-            {/* Submissions Search and Filter */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto">
+            {/* Assessment Metrics Bar */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Roster</span>
+                <span className="text-base font-black text-slate-900 dark:text-white mt-0.5 block">
+                  {assignmentRosterStats.total} Students
+                </span>
+              </div>
+
+              <div className="p-3 rounded-xl bg-sky-50/70 dark:bg-sky-950/40 border border-sky-200/60 dark:border-sky-900/40">
+                <span className="text-[10px] font-bold text-sky-600 uppercase tracking-wider block">Submitted</span>
+                <span className="text-base font-black text-sky-600 dark:text-sky-400 mt-0.5 block">
+                  {assignmentRosterStats.submitted} Delivered
+                </span>
+              </div>
+
+              <div className="p-3 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200/60 dark:border-emerald-900/40">
+                <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">Graded</span>
+                <span className="text-base font-black text-emerald-600 dark:text-emerald-400 mt-0.5 block">
+                  {assignmentRosterStats.graded} Evaluated
+                </span>
+              </div>
+
+              <div className="p-3 rounded-xl bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-900/40">
+                <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider block">Pending Evaluation</span>
+                <span className="text-base font-black text-amber-600 dark:text-amber-400 mt-0.5 block">
+                  {assignmentRosterStats.pendingGrade} To Grade
+                </span>
+              </div>
+            </div>
+
+            {/* Filter Pills & Roll Search */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
                 {[
-                  { id: "all", label: `All (${submissions.length})` },
-                  { id: "pending", label: "Pending Grade" },
-                  { id: "graded", label: "Graded" },
+                  { id: "all", label: `All Roster (${assignmentRosterStats.total})` },
+                  { id: "submitted", label: `Submitted (${assignmentRosterStats.submitted})` },
+                  { id: "pending-submission", label: `Awaiting File (${assignmentRosterStats.pendingSubmission})` },
+                  { id: "graded", label: `Graded (${assignmentRosterStats.graded})` },
+                  { id: "pending-grade", label: `To Grade (${assignmentRosterStats.pendingGrade})` },
                 ].map((f) => (
                   <button
                     key={f.id}
+                    type="button"
                     onClick={() => setSubmissionFilter(f.id)}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
                       submissionFilter === f.id
@@ -2739,153 +3151,240 @@ export default function TeacherCourseWorkspacePage() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Search student..."
+                  placeholder="Search by Roll or Name..."
                   value={submissionSearch ?? ""}
                   onChange={(e) => setSubmissionSearch(e.target.value)}
-                  className="w-full h-8 pl-8 pr-3 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs outline-none"
+                  className="w-full h-8.5 pl-8.5 pr-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium outline-none focus:border-indigo-500"
                 />
               </div>
             </div>
 
+            {/* Roster & Submissions List */}
             {submissionsLoading ? (
-              <div className="py-12 text-center text-xs text-slate-400 animate-pulse">
-                Loading student submissions...
+              <div className="py-16 text-center text-xs text-slate-400 animate-pulse space-y-2">
+                <RefreshCw className="w-6 h-6 animate-spin text-indigo-500 mx-auto" />
+                <p>Loading complete roll-wise student roster...</p>
               </div>
             ) : filteredSubmissions.length === 0 ? (
-              <div className="py-12 text-center text-xs text-slate-400 space-y-2">
+              <div className="py-14 text-center text-xs text-slate-400 space-y-2 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
                 <FileCheck className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto" />
-                <p>No student submissions match your filter.</p>
+                <p className="font-semibold text-slate-600 dark:text-slate-300">No students match your filter.</p>
+                <p className="text-[11px] text-slate-400">Try changing the filter chips or search keyword above.</p>
               </div>
             ) : (
-              <div className="space-y-4 max-h-[55vh] overflow-y-auto overscroll-contain pr-1 scrollbar-thin">
-                {filteredSubmissions.map((sub) => (
-                  <div
-                    key={sub._id}
-                    className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 space-y-3"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
-                          <span>{sub.studentName}</span>
-                          <span className="font-mono text-xs text-indigo-600 dark:text-indigo-400">
-                            ({sub.studentId})
-                          </span>
+              <div className="space-y-3.5 max-h-[55vh] overflow-y-auto overscroll-contain pr-1.5 scrollbar-thin">
+                {filteredSubmissions.map((sub, sIdx) => {
+                  const studentKey = sub.studentId || sub.submissionId || sub._id || `stu-${sIdx}`;
+                  const isEditingThis = gradingStudentKey === studentKey;
+                  const isGraded = sub.marks !== null && sub.marks !== undefined;
+                  const maxMarks = selectedAssignment.totalMarks || 20;
+                  const pct = isGraded ? Math.round((Number(sub.marks) / maxMarks) * 100) : 0;
+
+                  const getGradeLetter = (score, max) => {
+                    if (score === null || score === undefined || !max) return "Ungraded";
+                    const p = (score / max) * 100;
+                    if (p >= 80) return "A+";
+                    if (p >= 75) return "A";
+                    if (p >= 70) return "A-";
+                    if (p >= 65) return "B+";
+                    if (p >= 60) return "B";
+                    if (p >= 55) return "B-";
+                    if (p >= 50) return "C+";
+                    if (p >= 40) return "D";
+                    return "F";
+                  };
+
+                  return (
+                    <div
+                      key={studentKey}
+                      className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/70 dark:border-slate-700/70 space-y-3 hover:border-indigo-300 dark:hover:border-indigo-600/60 transition shadow-2xs"
+                    >
+                      {/* Top Student Identification & Marks */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono font-extrabold text-xs px-2.5 py-0.5 rounded-lg bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60">
+                              Roll: {sub.studentId || "N/A"}
+                            </span>
+                            <span className="font-bold text-sm text-slate-900 dark:text-white">
+                              {sub.studentName || "Student"}
+                            </span>
+                            {sub.batch && (
+                              <span className="text-[10px] text-slate-400 font-medium">
+                                Batch {sub.batch}
+                              </span>
+                            )}
+                          </div>
+                          {sub.studentEmail && (
+                            <p className="text-[11px] text-slate-400">{sub.studentEmail}</p>
+                          )}
                         </div>
-                        <span className="text-[11px] text-slate-400">
-                          Submitted: {new Date(sub.submittedAt).toLocaleString()}
-                          {sub.isLate && <strong className="text-rose-500 ml-2">(Late Submission)</strong>}
-                        </span>
+
+                        {/* Marks Badge */}
+                        <div className="text-right shrink-0">
+                          {isGraded ? (
+                            <div className="inline-flex items-baseline gap-1.5 px-3 py-1 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 border border-emerald-200 dark:border-emerald-800/70">
+                              <span className="font-black text-sm text-emerald-800 dark:text-emerald-300">
+                                {sub.marks} / {maxMarks}
+                              </span>
+                              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                                ({pct}% • {getGradeLetter(sub.marks, maxMarks)})
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-2.5 py-1 rounded-lg">
+                              <Clock className="w-3 h-3" />
+                              <span>Pending Grade</span>
+                            </span>
+                          )}
+                        </div>
                       </div>
 
-                      <div className="text-right">
-                        {sub.marks !== null && sub.marks !== undefined ? (
-                          <span className="inline-flex items-center gap-1 font-mono font-bold text-xs bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 px-3 py-1 rounded-xl">
-                            <Award className="w-3.5 h-3.5" />
-                            {sub.marks} / {selectedAssignment.totalMarks || 20}
-                          </span>
+                      {/* Deliverable Status / Notes */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                        {sub.hasSubmitted ? (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                                sub.isLate
+                                  ? "bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300"
+                                  : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                              }`}
+                            >
+                              {sub.isLate ? "Submitted Late" : "Submitted On Time"}
+                            </span>
+                            <span className="text-[11px] text-slate-400">
+                              {sub.submittedAt ? new Date(sub.submittedAt).toLocaleString() : ""}
+                            </span>
+                          </div>
                         ) : (
-                          <span className="text-[10px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/60 px-2.5 py-1 rounded-md">
-                            Pending Grade
-                          </span>
+                          <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 text-[11px] font-medium">
+                            <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+                            <span>No digital file submitted • In-person / Viva evaluation</span>
+                          </div>
+                        )}
+
+                        {/* File Download Button */}
+                        {sub.filePath && (
+                          <a
+                            href={sub.filePath.startsWith("http") ? sub.filePath : `${SERVER_URL}${sub.filePath}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            download={sub.originalName || true}
+                            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-xs font-bold transition shrink-0"
+                            title="Download student solution file"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span className="truncate max-w-44">{sub.originalName || "Download Solution"}</span>
+                          </a>
+                        )}
+                      </div>
+
+                      {/* Student Submission Notes */}
+                      {sub.notes && (
+                        <p className="text-xs text-slate-600 dark:text-slate-300 bg-white/90 dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200/50 dark:border-slate-700/50">
+                          {sub.notes}
+                        </p>
+                      )}
+
+                      {/* Existing Instructor Feedback */}
+                      {sub.feedback && !isEditingThis && (
+                        <div className="p-2.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/40 text-xs text-indigo-800 dark:text-indigo-300 flex items-start gap-1.5">
+                          <MessageSquare className="w-3.5 h-3.5 text-indigo-500 shrink-0 mt-0.5" />
+                          <div>
+                            <strong>Faculty Feedback:</strong> &ldquo;{sub.feedback}&rdquo;
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Inline Grading Form or Trigger Button */}
+                      <div className="pt-2.5 border-t border-slate-200/50 dark:border-slate-700/50">
+                        {isEditingThis ? (
+                          <div className="space-y-2.5">
+                            {/* Quick Feedback Chips */}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {[
+                                "🌟 Excellent work!",
+                                "👍 Well structured.",
+                                "⚠️ Incomplete solution.",
+                                "⏱️ Late penalty applied.",
+                                "💯 Outstanding implementation.",
+                              ].map((chip) => (
+                                <button
+                                  key={chip}
+                                  type="button"
+                                  onClick={() => setFeedbackInput(chip)}
+                                  className="text-[10px] font-semibold bg-slate-200/70 dark:bg-slate-700 hover:bg-indigo-100 dark:hover:bg-indigo-950/60 px-2 py-0.5 rounded-md text-slate-700 dark:text-slate-200 transition cursor-pointer"
+                                >
+                                  {chip}
+                                </button>
+                              ))}
+                            </div>
+
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={maxMarks}
+                                  placeholder="Marks"
+                                  value={gradeInput ?? ""}
+                                  onChange={(e) => setGradeInput(e.target.value)}
+                                  className="w-24 h-9 px-3 rounded-xl bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-xs font-black outline-none focus:border-indigo-500"
+                                />
+                                <span className="text-xs text-slate-400 font-bold">/ {maxMarks}</span>
+                              </div>
+
+                              <input
+                                type="text"
+                                placeholder="Faculty remarks / feedback..."
+                                value={feedbackInput ?? ""}
+                                onChange={(e) => setFeedbackInput(e.target.value)}
+                                className="flex-1 h-9 px-3 rounded-xl bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-xs font-medium outline-none focus:border-indigo-500"
+                              />
+
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                  type="button"
+                                  disabled={isSavingGrade}
+                                  onClick={() => handleSaveGrade(sub)}
+                                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-50"
+                                >
+                                  {isSavingGrade ? "Saving..." : "Save Grade"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setGradingStudentKey(null)}
+                                  className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-700 transition cursor-pointer"
+                                  title="Cancel"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-slate-400">
+                              {isGraded ? "Evaluated • Ready to update" : "Awaiting continuous assessment grading"}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setGradingStudentKey(studentKey);
+                                setGradeInput(sub.marks !== undefined && sub.marks !== null ? String(sub.marks) : "");
+                                setFeedbackInput(sub.feedback || "");
+                              }}
+                              className="px-4 py-1.5 rounded-xl bg-slate-100 hover:bg-indigo-50 dark:bg-slate-700 dark:hover:bg-indigo-950/60 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-300 text-xs font-bold transition cursor-pointer border border-slate-200/80 dark:border-slate-600"
+                            >
+                              {isGraded ? "Edit Grade" : "Grade Student"}
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
-
-                    {sub.notes && (
-                      <p className="text-xs text-slate-600 dark:text-slate-300 bg-white/80 dark:bg-slate-800 p-3 rounded-xl border border-slate-200/40 dark:border-slate-700/40">
-                        {sub.notes}
-                      </p>
-                    )}
-
-                    {sub.feedback && gradingSubId !== sub._id && (
-                      <div className="text-[11px] text-indigo-600 dark:text-indigo-300 bg-indigo-50/60 dark:bg-indigo-950/40 p-2.5 rounded-xl border border-indigo-100 dark:border-indigo-900/40">
-                        <strong>Instructor Feedback:</strong> {sub.feedback}
-                      </div>
-                    )}
-
-                    <div className="pt-3 border-t border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between flex-wrap gap-2">
-                      {sub.filePath ? (
-                        <a
-                          href={sub.filePath.startsWith("http") ? sub.filePath : `${SERVER_URL}${sub.filePath}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 text-xs font-bold transition"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>{sub.originalName || "Download Submission"}</span>
-                        </a>
-                      ) : (
-                        <span className="text-xs text-slate-400">No file attached</span>
-                      )}
-
-                      {gradingSubId === sub._id ? (
-                        <div className="flex flex-col gap-2 w-full sm:w-auto">
-                          {/* Quick Feedback Chips */}
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            {[
-                              "🌟 Excellent work!",
-                              "👍 Well structured.",
-                              "⚠️ Needs better comments.",
-                              "⏱️ Late penalty applied.",
-                            ].map((chip) => (
-                              <button
-                                key={chip}
-                                type="button"
-                                onClick={() => setFeedbackInput(chip)}
-                                className="text-[10px] font-semibold bg-slate-200/70 dark:bg-slate-700 px-2 py-0.5 rounded-md hover:bg-indigo-100 cursor-pointer"
-                              >
-                                {chip}
-                              </button>
-                            ))}
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="number"
-                              placeholder="Marks"
-                              value={gradeInput ?? ""}
-                              onChange={(e) => setGradeInput(e.target.value)}
-                              className="w-20 h-9 px-2.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-xs font-bold outline-none"
-                            />
-                            <input
-                              type="text"
-                              placeholder="Feedback note..."
-                              value={feedbackInput ?? ""}
-                              onChange={(e) => setFeedbackInput(e.target.value)}
-                              className="w-52 h-9 px-3 rounded-xl bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-xs outline-none"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleSaveGrade(sub._id)}
-                              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition"
-                            >
-                              Save
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setGradingSubId(null)}
-                              className="p-2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setGradingSubId(sub._id);
-                            setGradeInput(sub.marks !== undefined && sub.marks !== null ? String(sub.marks) : "");
-                            setFeedbackInput(sub.feedback || "");
-                          }}
-                          className="px-4 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition cursor-pointer"
-                        >
-                          {sub.marks !== undefined && sub.marks !== null ? "Edit Grade" : "Grade Submission"}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -2895,93 +3394,30 @@ export default function TeacherCourseWorkspacePage() {
       {/* ════════════════════════════════════════════════════════════════
           MODAL 6: BROADCAST COURSE NOTICE / ANNOUNCEMENT
           ════════════════════════════════════════════════════════════════ */}
-      {showNoticeModal && (
-        <div
-          data-lenis-prevent
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in overscroll-contain"
-        >
-          <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-5 max-h-[90vh] overflow-y-auto overscroll-contain scrollbar-thin">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 flex items-center justify-center">
-                  <Bell className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-slate-900 dark:text-white">
-                    Broadcast Announcement • {courseCode}
-                  </h3>
-                  <p className="text-xs text-slate-400">Notice for {course?.semester || "Cohort"}</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowNoticeModal(false)}
-                className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handlePublishCourseNotice} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Notice Title</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Class Rescheduled to Wednesday 11:00 AM"
-                  value={noticeForm.title ?? ""}
-                  onChange={(e) => setNoticeForm({ ...noticeForm, title: e.target.value })}
-                  className="w-full h-10 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Priority Level</label>
-                <select
-                  value={noticeForm.priority}
-                  onChange={(e) => setNoticeForm({ ...noticeForm, priority: e.target.value })}
-                  className="w-full h-10 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold outline-none focus:border-indigo-500"
-                >
-                  <option value="Normal">Normal Announcement</option>
-                  <option value="High">High Priority / Urgent</option>
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Detailed Message</label>
-                <textarea
-                  rows={4}
-                  required
-                  placeholder="Write announcement details, room changes, quiz alerts, or exam preparation instructions..."
-                  value={noticeForm.content ?? ""}
-                  onChange={(e) => setNoticeForm({ ...noticeForm, content: e.target.value })}
-                  className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setShowNoticeModal(false)}
-                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300 bg-slate-100/90 dark:bg-slate-800/80 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 border border-slate-200/80 dark:border-slate-700/80 hover:border-indigo-200 dark:hover:border-indigo-800/60 transition-all cursor-pointer shadow-2xs active:scale-95"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isPublishingNotice}
-                  className="inline-flex items-center gap-1.5 px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition cursor-pointer disabled:opacity-50"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>{isPublishingNotice ? "Broadcasting..." : "Broadcast Notice"}</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <CourseNoticeModal
+        isOpen={showNoticeModal}
+        onClose={() => {
+          setShowNoticeModal(false);
+          setEditingNotice(null);
+        }}
+        editingNotice={editingNotice}
+        onNoticeSaved={() => {
+          fetchCourseNotices();
+          window.dispatchEvent(new CustomEvent("refresh-notices"));
+          toast.success(editingNotice ? `Notice for ${courseCode} updated!` : `Course notice for ${courseCode} published!`);
+        }}
+        teacherCourses={[{
+          code: courseCode,
+          title: course?.title || `${courseCode} Module`,
+          semester: course?.semester || "7",
+        }]}
+        currentTeacher={{
+          name: user?.name,
+          email: user?.email,
+          designation: user?.designation || "Course Faculty",
+        }}
+        defaultCourseCode={courseCode}
+      />
 
       {/* ════════════════════════════════════════════════════════════════
           MODAL 7: EDIT PLANNED TOTAL CLASSES TARGET

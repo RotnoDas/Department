@@ -336,7 +336,7 @@ export default function NoticeBoardSection({
             <button
               type="button"
               onClick={handleOpenCourseNotice}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 active:scale-95 text-white text-xs font-bold shadow-md shadow-indigo-600/20 transition cursor-pointer"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold shadow-sm transition-all hover:scale-105 cursor-pointer"
               title="Publish a notice for your course students"
             >
               <Bell className="w-3.5 h-3.5" />

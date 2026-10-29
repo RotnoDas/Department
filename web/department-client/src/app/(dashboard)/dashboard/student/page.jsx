@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { authClient, safeSignOut } from "@/lib/auth-client";
 import { 
   GraduationCap, 
@@ -44,7 +45,8 @@ import {
   CheckCircle,
   Compass,
   Radio,
-  Timer
+  Timer,
+  ChevronRight
 } from "lucide-react";
 import { FaGithub, FaLinkedin } from "react-icons/fa";
 import toast from "react-hot-toast";
@@ -525,6 +527,15 @@ export default function StudentDashboardPage() {
 
       setProfile(data.student);
       setFormData((prev) => ({ ...prev, image: data.student.image || "" }));
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("profile-photo-updated", {
+          detail: {
+            image: data.student.image || "",
+            name: data.student.name || profile?.name,
+            user: data.student,
+          }
+        }));
+      }
       toast.success(photoToSave ? "Profile picture updated successfully!" : "Profile picture removed.");
     } catch (err) {
       console.error("Photo save error:", err);
@@ -539,6 +550,15 @@ export default function StudentDashboardPage() {
     if (profile?.image) {
       handleQuickSavePhoto("");
     } else {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("profile-photo-updated", {
+          detail: {
+            image: "",
+            name: profile?.name || user?.name,
+            user: profile,
+          }
+        }));
+      }
       toast.success("Profile photo cleared.");
     }
   };
@@ -582,6 +602,16 @@ export default function StudentDashboardPage() {
 
       setProfile(data.student);
       syncFormData(data.student);
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("profile-photo-updated", {
+          detail: {
+            image: data.student.image || "",
+            name: data.student.name || profile?.name,
+            user: data.student,
+          }
+        }));
+      }
 
       setIsEditing(false);
       toast.success("Profile updated successfully!");
@@ -2332,22 +2362,30 @@ export default function StudentDashboardPage() {
                         <div className="inline-block">
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                             isLab 
-                              ? "bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800/50"
-                              : "bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50"
+                              ? "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50"
+                              : "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/50"
                           }`}>
                             {c.type || (isLab ? "Sessional / Practical" : "Theory")}
                           </span>
                         </div>
                       </div>
 
-                      <div className="space-y-1.5 text-xs text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
-                        <div className="flex items-center gap-1.5">
-                          <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                      <div className="space-y-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                          <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                           <span className="truncate">{isLab ? "Software / Hardware Lab" : `Room ${400 + enrolledSemester}`}</span>
                         </div>
-                        <div className="text-[11px] text-slate-400 dark:text-slate-500 pt-0.5">
-                          Department Faculty Instructor
-                        </div>
+
+                        <Link
+                          href={`/dashboard/student/courses/${encodeURIComponent(c.code)}`}
+                          className="w-full inline-flex items-center justify-between px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer group"
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <BookOpen className="w-3.5 h-3.5" />
+                            <span>Course Workspace</span>
+                          </span>
+                          <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                        </Link>
                       </div>
                     </div>
                   );

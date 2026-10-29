@@ -102,6 +102,7 @@ export default function TeacherDashboardPage() {
   // Course Notice Modal State (Teacher top button & notice management)
   const [isCourseNoticeModalOpen, setIsCourseNoticeModalOpen] = useState(false);
   const [editingCourseNotice, setEditingCourseNotice] = useState(null);
+  const [defaultNoticeCourse, setDefaultNoticeCourse] = useState("");
 
   // Profile Edit & Photo State
   const [isEditing, setIsEditing] = useState(false);
@@ -456,6 +457,15 @@ export default function TeacherDashboardPage() {
 
       setProfile(data.teacher);
       setFormData((prev) => ({ ...prev, image: data.teacher.image || "" }));
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("profile-photo-updated", {
+          detail: {
+            image: data.teacher.image || "",
+            name: data.teacher.name || profile?.name,
+            user: data.teacher,
+          }
+        }));
+      }
       toast.success(photoToSave ? "Profile picture updated successfully!" : "Profile picture removed.");
     } catch (err) {
       console.error("Photo save error:", err);
@@ -470,6 +480,15 @@ export default function TeacherDashboardPage() {
     if (profile?.image) {
       handleQuickSavePhoto("");
     } else {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("profile-photo-updated", {
+          detail: {
+            image: "",
+            name: profile?.name || user?.name,
+            user: profile,
+          }
+        }));
+      }
       toast.success("Profile photo cleared.");
     }
   };
@@ -502,6 +521,17 @@ export default function TeacherDashboardPage() {
 
       setProfile(data.teacher);
       syncFormData(data.teacher);
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("profile-photo-updated", {
+          detail: {
+            image: data.teacher.image || "",
+            name: data.teacher.name || profile?.name,
+            user: data.teacher,
+          }
+        }));
+      }
+
       setIsEditing(false);
       toast.success("Faculty profile updated successfully!");
     } catch (err) {
@@ -888,13 +918,14 @@ export default function TeacherDashboardPage() {
                 type="button"
                 onClick={() => {
                   setEditingCourseNotice(null);
+                  setDefaultNoticeCourse("");
                   setIsCourseNoticeModalOpen(true);
                 }}
-                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-sky-500 via-indigo-600 to-purple-600 hover:from-sky-400 hover:via-indigo-500 hover:to-purple-500 text-white font-bold text-xs shadow-lg shadow-sky-950/40 border border-white/20 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
                 title="Publish Course Notice for Enrolled Students"
               >
-                <Bell className="w-4 h-4 text-sky-200" />
-                <span>Course Notice</span>
+                <Bell className="w-4 h-4" />
+                <span>Give Course Notice</span>
               </button>
               <DashboardCollapseControls
                 onCollapseAll={collapseAllSections}
@@ -1512,6 +1543,19 @@ export default function TeacherDashboardPage() {
               {assignedCourses.length} Assigned {assignedCourses.length === 1 ? "Course" : "Courses"}
             </span>
             <button
+              type="button"
+              onClick={() => {
+                setEditingCourseNotice(null);
+                setDefaultNoticeCourse("");
+                setIsCourseNoticeModalOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-all hover:scale-105 active:scale-95 cursor-pointer"
+              title="Broadcast notice to students of any course"
+            >
+              <Bell className="w-3.5 h-3.5" />
+              <span>Give Course Notice</span>
+            </button>
+            <button
               onClick={() => loadProfile(true)}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
               title="Refresh Assigned Courses"
@@ -1641,10 +1685,27 @@ export default function TeacherDashboardPage() {
                         <span>Target: {course.totalClasses || 36}</span>
                         <Edit3 className="w-2.5 h-2.5 ml-0.5 text-indigo-400" />
                       </button>
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 font-bold">
+                      <Link
+                        href={`/dashboard/teacher/courses/${encodeURIComponent(course.code)}?tab=assignments`}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/50 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 font-bold transition cursor-pointer"
+                        title="Open course assignments & continuous grading workspace"
+                      >
                         <FileText className="w-3 h-3" />
                         <span>Assignments</span>
-                      </span>
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingCourseNotice(null);
+                          setDefaultNoticeCourse(course.code);
+                          setIsCourseNoticeModalOpen(true);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-bold transition cursor-pointer"
+                        title={`Publish course notice specifically for ${course.code}`}
+                      >
+                        <Bell className="w-3 h-3 text-indigo-500" />
+                        <span>Notice</span>
+                      </button>
                     </div>
                   </div>
 
@@ -2336,6 +2397,7 @@ export default function TeacherDashboardPage() {
         onClose={() => {
           setIsCourseNoticeModalOpen(false);
           setEditingCourseNotice(null);
+          setDefaultNoticeCourse("");
         }}
         onNoticeSaved={() => {
           window.dispatchEvent(new CustomEvent("refresh-notices"));
@@ -2347,6 +2409,7 @@ export default function TeacherDashboardPage() {
           designation: activeDesignation,
         }}
         editingNotice={editingCourseNotice}
+        defaultCourseCode={defaultNoticeCourse}
       />
     </div>
   );

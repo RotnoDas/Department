@@ -3,21 +3,12 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   X,
-  Pencil,
   Bell,
   Send,
   Paperclip,
   Mic,
-  AlertCircle,
-  FileText,
   BookOpen,
-  GraduationCap,
-  Sparkles,
-  CheckCircle2,
-  Calendar,
-  Layers,
-  AlertTriangle,
-  UploadCloud,
+  ChevronDown,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import VoiceRecorder from "./VoiceRecorder";
@@ -29,8 +20,13 @@ const NOTICE_CATEGORIES = [
   "Assignment / Exam",
   "Reschedule Notice",
   "Class Test / Quiz",
-  "Emergency Alert",
-  "Course Syllabus",
+  "General Announcement",
+];
+
+const PRIORITIES = [
+  { id: "normal", label: "Normal" },
+  { id: "important", label: "Important" },
+  { id: "urgent", label: "Urgent" },
 ];
 
 export default function CourseNoticeModal({
@@ -44,25 +40,26 @@ export default function CourseNoticeModal({
 }) {
   const [courseCode, setCourseCode] = useState("");
   const [courseTitle, setCourseTitle] = useState("");
-  const [semester, setSemester] = useState("");
+  const [semester, setSemester] = useState("7");
   const [isCustomCourse, setIsCustomCourse] = useState(false);
 
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [category, setCategory] = useState("Class Update");
-  const [priority, setPriority] = useState("normal"); // "normal" | "important" | "urgent"
+  const [priority, setPriority] = useState("normal");
 
   const [file, setFile] = useState(null);
   const [removeExistingFile, setRemoveExistingFile] = useState(false);
 
-  // Audio message
-  const [audioData, setAudioData] = useState(null); // { file, duration }
+  // Audio announcement
+  const [audioData, setAudioData] = useState(null);
   const [removeExistingAudio, setRemoveExistingAudio] = useState(false);
+  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef(null);
 
-  // Initialize or reset form
+  // Reset or initialize on open
   useEffect(() => {
     if (!isOpen) return;
 
@@ -73,33 +70,39 @@ export default function CourseNoticeModal({
       setPriority(editingNotice.priority || "normal");
       setCourseCode(editingNotice.courseCode || "");
       setCourseTitle(editingNotice.courseTitle || "");
-      setSemester(editingNotice.semester || "");
+      setSemester(String(editingNotice.semester || "7"));
       setFile(null);
       setRemoveExistingFile(false);
       setAudioData(null);
       setRemoveExistingAudio(false);
+      setShowVoiceRecorder(Boolean(editingNotice?.audio?.filePath));
 
-      // Check if course matches assigned list
       const matched = teacherCourses.some(
         (c) => c.code?.toUpperCase() === editingNotice.courseCode?.toUpperCase()
       );
       setIsCustomCourse(!matched && Boolean(editingNotice.courseCode));
     } else {
-      // New notice: select first assigned course or defaultCourseCode
-      const initialCourse = defaultCourseCode
-        ? teacherCourses.find((c) => c.code?.toUpperCase() === defaultCourseCode.toUpperCase())
+      const targetCode = defaultCourseCode || "";
+      const initialCourse = targetCode
+        ? teacherCourses.find((c) => c.code?.toUpperCase() === targetCode.toUpperCase())
         : teacherCourses[0];
 
       if (initialCourse) {
         setCourseCode(initialCourse.code || "");
         setCourseTitle(initialCourse.title || "");
-        setSemester(initialCourse.semester || initialCourse.semesterNum || "7");
+        const semNum = String(initialCourse.semester || initialCourse.semesterNum || "7").replace(/\D/g, "") || "7";
+        setSemester(semNum);
         setIsCustomCourse(false);
+      } else if (targetCode) {
+        setCourseCode(targetCode);
+        setCourseTitle("");
+        setSemester("7");
+        setIsCustomCourse(true);
       } else {
         setCourseCode("");
         setCourseTitle("");
         setSemester("7");
-        setIsCustomCourse(true);
+        setIsCustomCourse(false);
       }
 
       setTitle("");
@@ -110,10 +113,11 @@ export default function CourseNoticeModal({
       setRemoveExistingFile(false);
       setAudioData(null);
       setRemoveExistingAudio(false);
+      setShowVoiceRecorder(false);
     }
   }, [editingNotice, isOpen, teacherCourses, defaultCourseCode]);
 
-  // Handle course dropdown change
+  // Handle dropdown course select
   const handleCourseSelect = (e) => {
     const val = e.target.value;
     if (val === "__custom__") {
@@ -122,17 +126,17 @@ export default function CourseNoticeModal({
       setCourseTitle("");
       return;
     }
-
     setIsCustomCourse(false);
     const selected = teacherCourses.find((c) => c.code === val);
     if (selected) {
       setCourseCode(selected.code || "");
       setCourseTitle(selected.title || "");
-      setSemester(selected.semester || selected.semesterNum || "7");
+      const semNum = String(selected.semester || selected.semesterNum || "7").replace(/\D/g, "") || "7";
+      setSemester(semNum);
     }
   };
 
-  // Keyboard shortcut Ctrl+Enter
+  // Keyboard shortcut Ctrl+Enter to publish
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e) => {
@@ -151,11 +155,6 @@ export default function CourseNoticeModal({
 
   if (!isOpen) return null;
 
-  const resetFileInput = () => {
-    setFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
-
   const hasExistingAttachment =
     (editingNotice?.filePath || editingNotice?.attachments?.length > 0) &&
     !removeExistingFile &&
@@ -168,34 +167,27 @@ export default function CourseNoticeModal({
     e.preventDefault();
 
     if (!courseCode.trim()) {
-      return toast.error("Please specify a course code for this course notice.");
+      return toast.error("Please specify a course code for this notice.");
     }
     if (!title.trim()) {
-      return toast.error("Please enter a notice headline.");
+      return toast.error("Please enter a notice title.");
     }
-    if (
-      !content.trim() &&
-      !file &&
-      !hasExistingAttachment &&
-      !audioData &&
-      !hasExistingAudio
-    ) {
-      return toast.error("Write notice text, attach a document, or record a voice announcement.");
+    if (!content.trim() && !file && !hasExistingAttachment && !audioData && !hasExistingAudio) {
+      return toast.error("Please provide notice details, attach a document, or record audio.");
     }
 
     setSaving(true);
-
     try {
       const formData = new FormData();
       formData.append("title", title.trim());
       formData.append("content", content.trim());
       formData.append("noticeType", "course");
       formData.append("courseCode", courseCode.trim().toUpperCase());
-      formData.append("courseTitle", courseTitle.trim());
+      formData.append("courseTitle", courseTitle.trim() || `${courseCode.trim().toUpperCase()} Course`);
       formData.append("semester", String(semester || "7").trim());
       formData.append("category", category);
       formData.append("priority", priority);
-      formData.append("isPublic", "false"); // Course notices are internal to members/course students
+      formData.append("isPublic", "false");
 
       const authorName = currentTeacher?.name || "Course Teacher";
       const teacherEmail = currentTeacher?.email || "";
@@ -204,7 +196,6 @@ export default function CourseNoticeModal({
       formData.append("teacherEmail", teacherEmail);
       formData.append("authorEmail", teacherEmail);
 
-      // File attachment
       if (file) {
         formData.append("file", file);
       }
@@ -212,7 +203,6 @@ export default function CourseNoticeModal({
         formData.append("removeFile", "true");
       }
 
-      // Audio message
       if (audioData?.file) {
         formData.append("audio", audioData.file);
         if (audioData.duration) {
@@ -254,36 +244,29 @@ export default function CourseNoticeModal({
     }
   };
 
-  const teacherDisplayName = currentTeacher?.name || "Course Instructor";
-  const teacherDesignation = currentTeacher?.designation || "Faculty Member";
-
   return (
     <div
       data-lenis-prevent
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto overscroll-contain"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto overscroll-contain"
     >
-      <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200/90 dark:border-white/10 shadow-2xl overflow-hidden my-6 transition-all">
-        {/* Decorative Top Accent Banner */}
-        <div className="h-2 w-full bg-gradient-to-r from-sky-500 via-indigo-600 to-purple-600" />
+      <div className="relative w-full max-w-xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden my-6 transition-all">
+        {/* Solid Single-Color Top Line */}
+        <div className="h-1 w-full bg-indigo-600" />
 
         {/* Modal Header */}
-        <div className="p-6 sm:p-7 border-b border-slate-100 dark:border-white/10 flex items-start justify-between gap-4">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-sky-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/60 flex items-center justify-center shrink-0 shadow-xs">
-              <Bell className="w-6 h-6 text-indigo-600 dark:text-indigo-400 animate-pulse" />
+        <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm shrink-0">
+              <Bell className="w-5 h-5" />
             </div>
-            <div className="space-y-1">
-              <div className="inline-flex items-center gap-2 px-3 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/80 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60">
-                <GraduationCap className="w-3.5 h-3.5 text-indigo-500" />
-                <span>Course Faculty Notice • Student Broadcast</span>
-              </div>
-              <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">
                 {editingNotice ? "Edit Course Notice" : "Give Course Notice"}
               </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
-                Publish a direct course notice or academic alert to students enrolled in this course (given by course teacher).
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                Publish a direct notice for students enrolled in this course
               </p>
             </div>
           </div>
@@ -292,262 +275,172 @@ export default function CourseNoticeModal({
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="p-2.5 rounded-xl bg-slate-100/90 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition cursor-pointer shrink-0"
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Course Teacher Identity Bar */}
-        <div className="px-6 py-3 bg-gradient-to-r from-indigo-50/80 via-purple-50/40 to-slate-50/60 dark:from-indigo-950/40 dark:via-purple-950/20 dark:to-slate-900/40 border-b border-indigo-100 dark:border-white/5 flex items-center justify-between gap-4 text-xs">
-          <div className="flex items-center gap-2.5">
-            <span className="text-slate-500 dark:text-slate-400 font-medium">Notice Issuer:</span>
-            <span className="font-extrabold text-indigo-700 dark:text-indigo-300 flex items-center gap-1.5">
-              <span>{teacherDisplayName}</span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
-                {teacherDesignation}
-              </span>
-            </span>
-          </div>
-          <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hidden sm:inline-flex items-center gap-1">
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>Course Teacher Verified</span>
-          </span>
-        </div>
-
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 sm:p-7 space-y-5 max-h-[72vh] overflow-y-auto overscroll-contain scrollbar-thin">
-          {/* Course Selection */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-slate-50/90 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/70 space-y-3.5">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                <BookOpen className="w-4 h-4 text-indigo-500" />
-                <span>Select Target Course *</span>
-              </label>
-              {semester && (
-                <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300">
-                  Semester {semester}
-                </span>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[78vh] overflow-y-auto overscroll-contain scrollbar-thin">
+          {/* Target Course & Category Row */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            {/* Target Course */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Target Course *</span>
+                </label>
+                {semester && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                    Sem {semester}
+                  </span>
+                )}
+              </div>
+
+              {teacherCourses.length > 0 && !isCustomCourse ? (
+                <div className="relative">
+                  <select
+                    value={courseCode}
+                    onChange={handleCourseSelect}
+                    className="w-full h-10 px-3 pr-8 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-white outline-none focus:border-indigo-600 appearance-none cursor-pointer"
+                    required
+                  >
+                    <option value="" disabled>-- Select Course --</option>
+                    {teacherCourses.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {c.code} • {c.title}
+                      </option>
+                    ))}
+                    <option value="__custom__">+ Other Course Code...</option>
+                  </select>
+                  <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-3 pointer-events-none" />
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g. CSE 4104"
+                    value={courseCode}
+                    onChange={(e) => setCourseCode(e.target.value)}
+                    className="flex-1 h-10 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-indigo-600"
+                    required
+                  />
+                  {teacherCourses.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setIsCustomCourse(false)}
+                      className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline px-2 py-1 shrink-0"
+                    >
+                      List
+                    </button>
+                  )}
+                </div>
               )}
             </div>
 
-            {teacherCourses.length > 0 && !isCustomCourse ? (
-              <div className="space-y-2">
-                <select
-                  value={courseCode}
-                  onChange={handleCourseSelect}
-                  className="w-full h-11 px-3.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs"
-                  required
-                >
-                  <option value="" disabled>-- Select one of your assigned courses --</option>
-                  {teacherCourses.map((c) => (
-                    <option key={c.code} value={c.code}>
-                      {c.code} • {c.title} (Semester {c.semester || c.semesterNum || "7"})
-                    </option>
-                  ))}
-                  <option value="__custom__">+ Other / Custom Course Code...</option>
-                </select>
-
-                {courseTitle && (
-                  <p className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold px-1">
-                    Course: <span className="font-bold">{courseTitle}</span>
-                  </p>
-                )}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="space-y-1">
-                  <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">Course Code *</span>
-                  <input
-                    type="text"
-                    placeholder="e.g. CSE 4102"
-                    value={courseCode}
-                    onChange={(e) => setCourseCode(e.target.value)}
-                    className="w-full h-10 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
-                    required
-                  />
-                </div>
-                <div className="space-y-1 sm:col-span-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">Course Title</span>
-                    {teacherCourses.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsCustomCourse(false);
-                          if (teacherCourses[0]) {
-                            setCourseCode(teacherCourses[0].code);
-                            setCourseTitle(teacherCourses[0].title);
-                            setSemester(teacherCourses[0].semester || "7");
-                          }
-                        }}
-                        className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-                      >
-                        Choose from assigned list
-                      </button>
-                    )}
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="e.g. Software Project III"
-                    value={courseTitle}
-                    onChange={(e) => setCourseTitle(e.target.value)}
-                    className="w-full h-10 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Headline & Category */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="sm:col-span-2 space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                <span>Notice Headline *</span>
-                <span className="text-[11px] text-slate-400 font-normal">{title.length}/140</span>
-              </label>
-              <input
-                type="text"
-                maxLength={140}
-                placeholder="e.g. Lab Report 2 Submission Deadline & Format"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="w-full h-11 px-4 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                required
-              />
-            </div>
-
+            {/* Category */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                Notice Tag / Category
+                Notice Category
               </label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full h-11 px-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                {NOTICE_CATEGORIES.map((cat) => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
+              <div className="relative">
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="w-full h-10 px-3 pr-8 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-800 dark:text-white outline-none focus:border-indigo-600 appearance-none cursor-pointer"
+                >
+                  {NOTICE_CATEGORIES.map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-3 pointer-events-none" />
+              </div>
             </div>
           </div>
 
-          {/* Priority Pills & Target Semester */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Notice Priority:</span>
-              <div className="flex items-center gap-1.5">
-                {[
-                  { id: "normal", label: "Normal", bg: "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300" },
-                  { id: "important", label: "Important", bg: "bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700" },
-                  { id: "urgent", label: "Urgent Alert", bg: "bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-700" },
-                ].map((p) => (
+          {/* Headline / Title */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+              <span>Notice Title *</span>
+              <span className="text-[11px] text-slate-400 font-normal">{title.length}/120</span>
+            </label>
+            <input
+              type="text"
+              maxLength={120}
+              placeholder="e.g. Lab 2 Submission Guidelines & Rubric"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full h-10 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:border-indigo-600 transition-all"
+              required
+            />
+          </div>
+
+          {/* Priority Selection (Solid Indigo & Slate) */}
+          <div className="flex items-center gap-2 pt-0.5">
+            <span className="text-xs font-bold text-slate-600 dark:text-slate-400 shrink-0">Priority:</span>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {PRIORITIES.map((p) => {
+                const isSelected = priority === p.id;
+                return (
                   <button
                     key={p.id}
                     type="button"
                     onClick={() => setPriority(p.id)}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
-                      priority === p.id
-                        ? `${p.bg} shadow-xs ring-1 ring-indigo-500/50`
-                        : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      isSelected
+                        ? "bg-indigo-600 text-white shadow-xs"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
                     }`}
                   >
                     {p.label}
                   </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 text-xs">
-              <span className="font-bold text-slate-600 dark:text-slate-400">Target Term:</span>
-              <select
-                value={semester}
-                onChange={(e) => setSemester(e.target.value)}
-                className="h-8 px-2.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-200 outline-none"
-              >
-                {["1", "2", "3", "4", "5", "6", "7", "8"].map((s) => (
-                  <option key={s} value={s}>Semester {s}</option>
-                ))}
-              </select>
+                );
+              })}
             </div>
           </div>
 
-          {/* Notice Body */}
+          {/* Notice Content */}
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-              <span>Notice Body / Instructions *</span>
-              <span className="text-[11px] text-slate-400 font-normal">
-                {content.length} characters
-              </span>
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+              Notice Instructions / Details *
             </label>
             <textarea
-              rows={5}
-              placeholder="Write detailed announcements, lab directions, homework guidelines, or classroom changes for your students..."
+              rows={4}
+              placeholder="Write announcement details, room changes, quiz coverage, homework instructions..."
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 leading-relaxed transition-all resize-y"
+              className="w-full p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white outline-none focus:border-indigo-600 leading-relaxed transition-all resize-y"
             />
           </div>
 
-          {/* Attachments & Voice Announcement */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-            {/* File Attachment */}
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                  <Paperclip className="w-3.5 h-3.5 text-indigo-500" />
-                  <span>Document / Slide Attachment</span>
-                </span>
-                <span className="text-[10px] text-slate-400 font-medium">Max 50MB</span>
-              </div>
+          {/* Attachments & Voice Note Toolbar (Clean Slate + Indigo) */}
+          <div className="pt-1 space-y-2.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* File Attachment Trigger Button */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold transition cursor-pointer"
+              >
+                <Paperclip className="w-3.5 h-3.5 text-slate-500" />
+                <span>{file || hasExistingAttachment ? "Change Document" : "Attach Document"}</span>
+              </button>
 
-              {hasExistingAttachment && (
-                <div className="flex items-center justify-between p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate max-w-[200px]">
-                    {editingNotice.originalName || "Existing File"}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setRemoveExistingFile(true)}
-                    className="text-[11px] font-bold text-rose-600 hover:text-rose-700 cursor-pointer"
-                  >
-                    Remove
-                  </button>
-                </div>
-              )}
-
-              {file ? (
-                <div className="flex items-center justify-between p-2.5 rounded-xl bg-indigo-50/80 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/60">
-                  <div className="flex items-center gap-2 truncate">
-                    <AttachmentIcon mime={file.type} />
-                    <span className="text-xs font-bold text-indigo-900 dark:text-indigo-200 truncate">
-                      {file.name}
-                    </span>
-                    <span className="text-[10px] text-indigo-600/80 shrink-0">
-                      ({formatFileSize(file.size)})
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={resetFileInput}
-                    className="p-1 rounded-lg text-slate-400 hover:text-rose-600 transition cursor-pointer shrink-0"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              ) : (
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-500 rounded-xl p-3.5 text-center cursor-pointer transition-all hover:bg-white dark:hover:bg-slate-800/80 group"
-                >
-                  <UploadCloud className="w-5 h-5 mx-auto text-slate-400 group-hover:text-indigo-500 transition-colors mb-1" />
-                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                    Click to attach file
-                  </p>
-                  <p className="text-[10px] text-slate-400">PDF, DOCX, PPTX, XLSX, Images, ZIP</p>
-                </div>
-              )}
+              {/* Voice Note Toggle Button */}
+              <button
+                type="button"
+                onClick={() => setShowVoiceRecorder(!showVoiceRecorder)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                  showVoiceRecorder || audioData || hasExistingAudio
+                    ? "bg-indigo-600 text-white font-bold"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                }`}
+              >
+                <Mic className="w-3.5 h-3.5" />
+                <span>{audioData || hasExistingAudio ? "Voice Note Attached" : "Voice Announcement"}</span>
+              </button>
 
               <input
                 ref={fileInputRef}
@@ -563,64 +456,101 @@ export default function CourseNoticeModal({
               />
             </div>
 
-            {/* Voice Announcement */}
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                  <Mic className="w-3.5 h-3.5 text-purple-500" />
-                  <span>Faculty Audio Announcement</span>
+            {/* Attached File Preview Pill */}
+            {hasExistingAttachment && (
+              <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs">
+                <span className="font-semibold text-slate-700 dark:text-slate-300 truncate max-w-[260px]">
+                  📎 {editingNotice.originalName || "Existing File"}
                 </span>
-                <span className="text-[10px] text-slate-400 font-medium">Optional</span>
+                <button
+                  type="button"
+                  onClick={() => setRemoveExistingFile(true)}
+                  className="text-[11px] font-bold text-rose-600 hover:text-rose-700 cursor-pointer ml-2"
+                >
+                  Remove
+                </button>
               </div>
+            )}
 
-              {hasExistingAudio && (
-                <div className="flex items-center justify-between p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                  <span className="text-xs font-semibold text-purple-700 dark:text-purple-300">
-                    Existing Voice Note
+            {file && (
+              <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs">
+                <div className="flex items-center gap-2 truncate">
+                  <AttachmentIcon mime={file.type} />
+                  <span className="font-bold text-slate-800 dark:text-slate-200 truncate max-w-[260px]">
+                    {file.name}
+                  </span>
+                  <span className="text-[10px] text-slate-500 shrink-0">
+                    ({formatFileSize(file.size)})
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFile(null);
+                    if (fileInputRef.current) fileInputRef.current.value = "";
+                  }}
+                  className="p-1 rounded-md text-slate-400 hover:text-rose-600 transition cursor-pointer shrink-0 ml-2"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* Expandable Voice Recorder */}
+            {showVoiceRecorder && (
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-800 dark:text-slate-200">
+                  <span className="flex items-center gap-1.5">
+                    <Mic className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                    <span>Faculty Voice Note</span>
                   </span>
                   <button
                     type="button"
-                    onClick={() => setRemoveExistingAudio(true)}
-                    className="text-[11px] font-bold text-rose-600 hover:text-rose-700 cursor-pointer"
+                    onClick={() => setShowVoiceRecorder(false)}
+                    className="text-[10px] text-slate-400 hover:text-slate-600"
                   >
-                    Remove
+                    Hide
                   </button>
                 </div>
-              )}
-
-              <VoiceRecorder
-                onAudioReady={(data) => {
-                  setAudioData(data);
-                  setRemoveExistingAudio(false);
-                }}
-                onAudioRemoved={() => {
-                  setAudioData(null);
-                  setRemoveExistingAudio(true);
-                }}
-                existingAudio={editingNotice?.audio}
-              />
-            </div>
+                <VoiceRecorder
+                  onAudioReady={(data) => {
+                    setAudioData(data);
+                    setRemoveExistingAudio(false);
+                  }}
+                  onAudioRemoved={() => {
+                    setAudioData(null);
+                    setRemoveExistingAudio(true);
+                  }}
+                  existingAudio={editingNotice?.audio}
+                />
+              </div>
+            )}
           </div>
 
           {/* Footer Controls */}
-          <div className="pt-4 border-t border-slate-100 dark:border-white/10 flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={saving}
-              className="px-5 py-2.5 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300 border border-slate-200/80 dark:border-slate-700/80 hover:border-indigo-200 dark:hover:border-indigo-800/60 font-bold text-xs transition-all cursor-pointer shadow-2xs active:scale-95"
-            >
-              Cancel
-            </button>
-            <button
-              id="course-notice-submit-button"
-              type="submit"
-              disabled={saving}
-              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 via-indigo-600 to-purple-600 hover:from-sky-500 hover:via-indigo-500 hover:to-purple-500 text-white font-bold text-xs shadow-md shadow-indigo-600/30 transition-all hover:scale-102 active:scale-98 cursor-pointer disabled:opacity-50"
-            >
-              <Send className="w-4 h-4" />
-              <span>{saving ? "Publishing..." : editingNotice ? "Save Notice Changes" : "Publish Course Notice"}</span>
-            </button>
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">
+            <span className="text-[11px] text-slate-400 hidden sm:inline">
+              Press <kbd className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border text-[10px] font-mono">Ctrl+Enter</kbd> to publish
+            </span>
+            <div className="flex items-center gap-2.5 ml-auto">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={saving}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                id="course-notice-submit-button"
+                type="submit"
+                disabled={saving}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs shadow-sm transition-all hover:scale-105 cursor-pointer disabled:opacity-50"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>{saving ? "Publishing..." : editingNotice ? "Save Notice" : "Publish Course Notice"}</span>
+              </button>
+            </div>
           </div>
         </form>
       </div>

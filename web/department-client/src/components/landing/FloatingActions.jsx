@@ -173,24 +173,11 @@ export function FloatingActions() {
         {!isChatOpen && (
           <div
             className={`absolute top-1/2 -translate-y-1/2 ${
-              isLeft ? "left-full ml-3.5" : "right-full mr-3.5"
-            } px-3.5 py-2 rounded-2xl bg-slate-900/95 dark:bg-slate-800/95 backdrop-blur-xl text-white text-xs font-semibold shadow-[0_10px_35px_rgba(0,0,0,0.25)] border border-white/10 opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none whitespace-nowrap flex flex-col gap-0.5 z-50`}
+              isLeft ? "left-full ml-3" : "right-full mr-3"
+            } px-3 py-1.5 rounded-xl bg-slate-900/95 dark:bg-slate-800/95 backdrop-blur-md text-white text-xs font-medium shadow-lg border border-white/10 opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none whitespace-nowrap flex items-center gap-1.5 z-50`}
           >
-            <div className="flex items-center gap-1.5 font-bold text-slate-100">
-              <Sparkles className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-              <span>Ask CSE AI & Voice</span>
-            </div>
-            <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium">
-              <Move className="w-2.5 h-2.5 text-indigo-400 shrink-0" />
-              <span>Drag anywhere on screen</span>
-            </div>
-            <div
-              className={`absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-slate-900 dark:bg-slate-800 ${
-                isLeft
-                  ? "left-[-4.5px] border-l border-b border-white/10 rotate-45"
-                  : "right-[-4.5px] border-r border-t border-white/10 rotate-45"
-              }`}
-            />
+            <Sparkles className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+            <span>CSE AI Assistant</span>
           </div>
         )}
 

@@ -61,6 +61,40 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
   // Dynamic state for student profile & courses
   const [studentProfile, setStudentProfile] = useState(null);
 
+  // Dynamic avatar state with instant custom event sync
+  const [avatarUrl, setAvatarUrl] = useState(() => profile?.image || user?.image || "");
+  const [avatarLoadError, setAvatarLoadError] = useState(false);
+
+  useEffect(() => {
+    const nextImg = profile?.image || user?.image || studentProfile?.image || "";
+    if (nextImg) {
+      setAvatarUrl(nextImg);
+      setAvatarLoadError(false);
+    }
+  }, [profile?.image, user?.image, studentProfile?.image]);
+
+  useEffect(() => {
+    const handlePhotoUpdated = (e) => {
+      if (e?.detail) {
+        setAvatarUrl(e.detail.image || "");
+        setAvatarLoadError(false);
+      }
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("profile-photo-updated", handlePhotoUpdated);
+      return () => window.removeEventListener("profile-photo-updated", handlePhotoUpdated);
+    }
+  }, []);
+
+  const resolvedAvatarSrc = useMemo(() => {
+    if (!avatarUrl || avatarLoadError) return null;
+    if (avatarUrl.startsWith("data:") || avatarUrl.startsWith("http://") || avatarUrl.startsWith("https://")) {
+      return avatarUrl;
+    }
+    const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
+    return `${serverUrl}${avatarUrl.startsWith("/") ? "" : "/"}${avatarUrl}`;
+  }, [avatarUrl, avatarLoadError]);
+
   // Monitor URL hash changes and sync on mount (SSR safe)
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -104,9 +138,15 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
 
   const role = resolveRole();
 
-  // Contextual teacher route detection
+  // Contextual route detection for teacher & student course workspaces
   const isTeacherRoute = pathname?.startsWith("/dashboard/teacher");
-  const isCourseWorkspace = isTeacherRoute && pathname.includes("/courses/");
+  const isTeacherCourseWorkspace = isTeacherRoute && pathname.includes("/courses/");
+
+  const isStudentRoute = pathname?.startsWith("/dashboard/student");
+  const isStudentCourseWorkspace = isStudentRoute && pathname.includes("/courses/");
+
+  const isCourseWorkspace = isTeacherCourseWorkspace || isStudentCourseWorkspace;
+
   const activeCourseCode = useMemo(() => {
     if (!isCourseWorkspace) return null;
     try {
@@ -119,7 +159,7 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
   }, [isCourseWorkspace, pathname]);
 
   // Current active tab when on a course workspace
-  const currentTab = searchParams?.get("tab") || "attendance";
+  const currentTab = searchParams?.get("tab") || (isStudentCourseWorkspace ? "notices" : "attendance");
 
   // Fetch teacher's assigned courses for quick-launcher and navigation badge
   useEffect(() => {
@@ -320,58 +360,78 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
     },
   ], []);
 
-  // Jump handler for student curriculum course cards
+  // Jump handler for student curriculum course cards -> Navigate to dedicated course workspace
   const handleStudentCourseClick = (course) => {
     setIsOpen(false);
-    if (pathname === "/dashboard/student") {
-      setActiveSection("materials");
-      setCurrentHash("#materials");
-      isManualScrollingRef.current = true;
-
-      window.dispatchEvent(new CustomEvent("dashboard-expand-section", { detail: { id: "materials" } }));
-      window.dispatchEvent(new CustomEvent("dashboard-expand-section", { detail: { id: "assignments" } }));
-      window.dispatchEvent(new CustomEvent("dashboard-filter-course", { detail: { courseCode: course.code } }));
-
-      if (typeof window !== "undefined" && window.history.pushState) {
-        window.history.pushState(null, "", "/dashboard/student#materials");
-      }
-
-      const targetEl = document.getElementById("materials");
-      if (targetEl) {
-        gsap.to(window, {
-          duration: 0.6,
-          scrollTo: { y: "#materials", offsetY: 70, autoKill: false },
-          ease: "power2.inOut",
-          onComplete: () => {
-            if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
-            scrollTimeoutRef.current = setTimeout(() => {
-              isManualScrollingRef.current = false;
-            }, 100);
-          }
-        });
-      } else {
-        isManualScrollingRef.current = false;
-      }
-    } else {
-      router.push("/dashboard/student#materials");
+    if (course?.code) {
+      router.push(`/dashboard/student/courses/${encodeURIComponent(course.code)}`);
     }
   };
+
+  // Teacher Navigation Items with section IDs, descriptions, and live badges (mapped exactly to teacher page DOM order)
+  const teacherNavItems = useMemo(() => [
+    { 
+      name: "Faculty Overview", 
+      description: "Bio, designation & department summary",
+      href: "/dashboard/teacher", 
+      hash: "", 
+      scrollTarget: "profile",
+      badge: "Overview",
+      icon: LayoutDashboard 
+    },
+    { 
+      name: "Profile & Settings", 
+      description: "Bio, research interests & contacts",
+      href: "/dashboard/teacher#profile-settings", 
+      hash: "#profile-settings", 
+      scrollTarget: "profile-settings",
+      badge: "Profile",
+      icon: User 
+    },
+    { 
+      name: "My Assigned Courses", 
+      description: "Assigned courses & workspace portals",
+      href: "/dashboard/teacher#assigned-courses", 
+      hash: "#assigned-courses", 
+      scrollTarget: "assigned-courses",
+      badge: assignedCourses.length > 0 ? `${assignedCourses.length} Courses` : "Courses",
+      icon: BookOpen 
+    },
+    { 
+      name: "Academic Routine", 
+      description: "Weekly lecture timetable & rooms",
+      href: "/dashboard/teacher#routine", 
+      hash: "#routine", 
+      scrollTarget: "routine",
+      badge: routineSlotCount > 0 ? `${routineSlotCount} slots` : "Schedule",
+      icon: Clock 
+    },
+    { 
+      name: "Workload Analytics", 
+      description: "Teaching hours & attendance metrics",
+      href: "/dashboard/teacher#analytics", 
+      hash: "#analytics", 
+      scrollTarget: "analytics",
+      badge: "Analytics",
+      icon: BarChart3 
+    },
+    { 
+      name: "Department Notices", 
+      description: "Official circulars & broadcasts",
+      href: "/dashboard/teacher#notices", 
+      hash: "#notices", 
+      scrollTarget: "notices",
+      badge: "Notices",
+      icon: Bell 
+    },
+  ], [assignedCourses.length, routineSlotCount]);
 
   // Dynamic serial navigation mapping IDs for role
   const activeNavItems = useMemo(() => {
     if (role === "student") return studentNavItems;
-    if (role === "teacher") {
-      return [
-        { scrollTarget: "profile" },
-        { scrollTarget: "profile-settings" },
-        { scrollTarget: "assigned-courses" },
-        { scrollTarget: "routine" },
-        { scrollTarget: "analytics" },
-        { scrollTarget: "notices" },
-      ];
-    }
+    if (role === "teacher") return teacherNavItems;
     return [];
-  }, [role, studentNavItems]);
+  }, [role, studentNavItems, teacherNavItems]);
 
   // Active section scroll spy listener (mirroring Navbar.jsx's serial logic with exact viewport checks)
   useEffect(() => {
@@ -550,15 +610,27 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
     "student@student.cse.edu"
   );
 
-  // Course workspace module tabs definition for active course navigation
+  // Course workspace module tabs definition for active teacher course navigation
   const courseWorkspaceModules = useMemo(() => {
     if (!activeCourseCode) return [];
     return [
-      { id: "attendance", name: "Attendance Hub", icon: UserCheck },
-      { id: "materials", name: "Study Materials", icon: BookOpen },
-      { id: "assignments", name: "Continuous Tasks", icon: FileText },
-      { id: "syllabus", name: "Syllabus & Policy", icon: BookMarked },
-      { id: "schedule", name: "Routine Schedule", icon: Calendar },
+      { id: "notices", name: "Course Notices", description: "Teacher announcements & notes", badge: "Notices", icon: Bell },
+      { id: "attendance", name: "Attendance Hub", description: "Biometric & manual records", badge: "Live", icon: UserCheck },
+      { id: "materials", name: "Study Materials", description: "Lectures, slides & notes", badge: "Files", icon: BookOpen },
+      { id: "assignments", name: "Continuous Tasks", description: "Submissions & roll-wise marks", badge: "Grading", icon: FileText },
+      { id: "schedule", name: "Routine Schedule", description: "Assigned class timings", badge: "Timetable", icon: Calendar },
+    ];
+  }, [activeCourseCode]);
+
+  // Student course workspace module tabs definition for active course navigation
+  const studentCourseWorkspaceModules = useMemo(() => {
+    if (!activeCourseCode) return [];
+    return [
+      { id: "notices", name: "Course Notices", description: "Teacher announcements & notes", badge: "Notices", icon: Bell },
+      { id: "materials", name: "Study Materials", description: "Lectures, slides & handouts", badge: "Files", icon: BookOpen },
+      { id: "assignments", name: "Continuous Tasks", description: "Submissions, marks & feedback", badge: "Marks", icon: FileText },
+      { id: "attendance", name: "My Attendance", description: "Presence & eligibility", badge: "Stats", icon: UserCheck },
+      { id: "schedule", name: "Class Schedule", description: "Timetable & classroom", badge: "Routine", icon: Calendar },
     ];
   }, [activeCourseCode]);
 
@@ -608,8 +680,24 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
           {/* User Card */}
           <div className="mt-4 p-3.5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/80 border border-slate-100/80 dark:border-slate-700/80 shadow-xs">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 text-white font-bold text-xs shadow-sm">
-                {displayName.charAt(0).toUpperCase()}
+              <div className="relative h-10 w-10 shrink-0 rounded-xl overflow-hidden ring-1 ring-slate-200/80 dark:ring-white/10 shadow-xs bg-slate-100 dark:bg-slate-800">
+                {resolvedAvatarSrc ? (
+                  <img
+                    src={resolvedAvatarSrc}
+                    alt={displayName}
+                    className="h-full w-full object-cover"
+                    onError={() => setAvatarLoadError(true)}
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-gradient-to-tr from-sky-500 to-indigo-600 text-white font-bold text-xs shadow-sm">
+                    {displayName.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-slate-900 ${
+                  role === "admin" || role === "teacher" || role === "employee" || user?.status === "approved" || studentProfile?.status === "approved"
+                    ? "bg-emerald-500" 
+                    : "bg-amber-500"
+                }`} />
               </div>
               <div className="flex flex-col overflow-hidden">
                 <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
@@ -630,11 +718,21 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
                     #{studentProfile?.studentId || profile?.studentId || user?.studentId}
                   </span>
                 )}
+                {role === "teacher" && (profile?.teacherId || user?.teacherId) && (
+                  <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-700/80 text-slate-700 dark:text-slate-300">
+                    ID: {profile?.teacherId || user?.teacherId}
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-1.5">
                 {role === "student" && (
                   <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-200 dark:ring-indigo-800">
                     Sem {studentSemester}
+                  </span>
+                )}
+                {role === "teacher" && (
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-sky-50 dark:bg-sky-950/80 text-sky-700 dark:text-sky-300 ring-1 ring-sky-200 dark:ring-sky-800">
+                    {assignedCourses.length} Courses
                   </span>
                 )}
                 <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full ${
@@ -662,7 +760,7 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
                 <Link
                   href="/dashboard/teacher"
                   onClick={() => setIsOpen(false)}
-                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-slate-100/90 hover:bg-slate-200/80 dark:bg-slate-800/80 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold transition group border border-slate-200/60 dark:border-white/5 cursor-pointer shadow-xs"
+                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-2xl bg-slate-100/90 hover:bg-slate-200/80 dark:bg-slate-800/80 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold transition group border border-slate-200/60 dark:border-white/5 cursor-pointer shadow-xs"
                 >
                   <ArrowLeft className="w-4 h-4 text-slate-500 group-hover:-translate-x-1 transition-transform" />
                   <div className="flex flex-col min-w-0">
@@ -693,19 +791,53 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
                           href={moduleHref}
                           onClick={() => setIsOpen(false)}
                           className={`
-                            flex items-center justify-between px-3 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer
+                            group relative flex items-center justify-between p-2.5 rounded-2xl transition-all duration-200 cursor-pointer border
                             ${isActive 
-                              ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30 font-bold" 
-                              : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"}
+                              ? "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold border-indigo-200/80 dark:border-indigo-800/60 shadow-xs" 
+                              : "text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 border-transparent hover:border-slate-200/60 dark:hover:border-white/5"}
                           `}
                         >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-white" : "text-slate-400 dark:text-slate-400"}`} />
-                            <span className="truncate">{module.name}</span>
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            <div className={`p-2 rounded-xl transition-all duration-200 shrink-0 ${
+                              isActive 
+                                ? "bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 shadow-xs" 
+                                : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 group-hover:bg-indigo-50 dark:group-hover:bg-indigo-950/40 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"
+                            }`}>
+                              <Icon className="w-4 h-4" />
+                            </div>
+                            <div className="flex flex-col min-w-0 flex-1 text-left">
+                              <span className={`text-xs truncate leading-tight ${
+                                isActive 
+                                  ? "font-bold text-indigo-600 dark:text-indigo-400" 
+                                  : "font-semibold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"
+                              }`}>
+                                {module.name}
+                              </span>
+                              {module.description && (
+                                <span className={`text-[10px] truncate leading-tight mt-0.5 ${
+                                  isActive 
+                                    ? "font-medium text-indigo-500/90 dark:text-indigo-300/90" 
+                                    : "font-normal text-slate-400 dark:text-slate-500"
+                                }`}>
+                                  {module.description}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          {isActive && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0 animate-pulse" />
-                          )}
+                          <div className="flex items-center gap-1.5 shrink-0 ml-1.5">
+                            {module.badge && (
+                              <span className={`text-[9.5px] font-extrabold px-2 py-0.5 rounded-full transition-colors ${
+                                isActive 
+                                  ? "bg-indigo-600 text-white shadow-xs" 
+                                  : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 ring-1 ring-slate-200/60 dark:ring-white/5 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/60 group-hover:text-indigo-600 dark:group-hover:text-indigo-300"
+                              }`}>
+                                {module.badge}
+                              </span>
+                            )}
+                            {isActive && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 shrink-0 animate-pulse" />
+                            )}
+                          </div>
                         </Link>
                       );
                     })}
@@ -726,7 +858,7 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
                             key={c.code}
                             href={`/dashboard/teacher/courses/${encodeURIComponent(c.code)}`}
                             onClick={() => setIsOpen(false)}
-                            className="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-300 transition group border border-transparent hover:border-indigo-100 dark:hover:border-indigo-900/40"
+                            className="flex items-center justify-between p-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-300 transition group border border-transparent hover:border-indigo-100 dark:hover:border-indigo-900/40"
                           >
                             <div className="flex items-center gap-2 min-w-0">
                               <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-700 shrink-0">
@@ -751,8 +883,8 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
                       { name: "All Assigned Courses", href: "/dashboard/teacher#assigned-courses", icon: BookOpen },
                       { name: "My Routine Schedule", href: "/dashboard/teacher#routine", icon: Clock },
                       { name: "Workload Analytics", href: "/dashboard/teacher#analytics", icon: BarChart3 },
-                      { name: "Notice Board", href: "/dashboard/teacher#notices", icon: Bell },
-                      { name: "Faculty Profile", href: "/dashboard/teacher#profile-settings", icon: User },
+                      { name: "Department Notices", href: "/dashboard/teacher#notices", icon: Bell },
+                      { name: "Faculty Profile & Settings", href: "/dashboard/teacher#profile-settings", icon: User },
                     ].map((item) => {
                       const Icon = item.icon;
                       return (
@@ -760,7 +892,7 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
                           key={item.name}
                           href={item.href}
                           onClick={() => setIsOpen(false)}
-                          className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition"
+                          className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
                         >
                           <Icon className="w-3.5 h-3.5 text-slate-400" />
                           <span>{item.name}</span>
@@ -777,95 +909,71 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
                 <div>
                   <div className="px-2 pb-2 flex items-center justify-between">
                     <span className="text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase">
-                      FACULTY WORKSPACE
+                      TEACHER WORKSPACE
                     </span>
-                    {routineSlotCount > 0 && (
-                      <span className="text-[10px] font-semibold text-slate-400">
-                        {routineSlotCount} Total Classes
-                      </span>
-                    )}
+                    <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-full">
+                      {assignedCourses.length} Courses Active
+                    </span>
                   </div>
                   <div className="space-y-1">
-                    {[
-                      { 
-                        name: "Faculty Hub Overview", 
-                        href: "/dashboard/teacher", 
-                        hash: "", 
-                        scrollTarget: "profile",
-                        icon: LayoutDashboard 
-                      },
-                      { 
-                        name: "My Assigned Courses", 
-                        href: "/dashboard/teacher#assigned-courses", 
-                        hash: "#assigned-courses", 
-                        scrollTarget: "assigned-courses",
-                        badge: assignedCourses.length > 0 ? `${assignedCourses.length}` : null,
-                        icon: BookOpen 
-                      },
-                      { 
-                        name: "Academic Routine & Schedule", 
-                        href: "/dashboard/teacher#routine", 
-                        hash: "#routine", 
-                        scrollTarget: "routine",
-                        badge: routineSlotCount > 0 ? `${routineSlotCount} slots` : null,
-                        icon: Clock 
-                      },
-                      { 
-                        name: "Workload Analytics", 
-                        href: "/dashboard/teacher#analytics", 
-                        hash: "#analytics", 
-                        scrollTarget: "analytics",
-                        icon: BarChart3 
-                      },
-                      { 
-                        name: "Department Notice Board", 
-                        href: "/dashboard/teacher#notices", 
-                        hash: "#notices", 
-                        scrollTarget: "notices",
-                        icon: Bell 
-                      },
-                      { 
-                        name: "Faculty Profile & Settings", 
-                        href: "/dashboard/teacher#profile-settings", 
-                        hash: "#profile-settings", 
-                        scrollTarget: "profile-settings",
-                        icon: User 
-                      },
-                    ].map((item) => {
+                    {teacherNavItems.map((item) => {
                       const Icon = item.icon;
-                      const hasHash = Boolean(item.hash);
-                      
-                      // Match either current URL hash or scroll spy position
-                      const isHashActive = hasHash ? currentHash === item.hash : (!currentHash || currentHash === "#");
-                      const isScrollActive = activeSection === item.scrollTarget;
-                      const isActive = isHashActive || isScrollActive;
+                      const isActive = activeSection === item.scrollTarget;
 
                       return (
-                        <Link
+                        <a
                           key={item.name}
                           href={item.href}
                           onClick={(e) => handleNavClick(e, item)}
                           className={`
-                            flex items-center justify-between px-3 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer
+                            group relative flex items-center justify-between p-2.5 rounded-2xl transition-all duration-200 cursor-pointer border
                             ${isActive 
-                              ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30" 
-                              : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"}
+                              ? "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold border-indigo-200/80 dark:border-indigo-800/60 shadow-xs" 
+                              : "text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 border-transparent hover:border-slate-200/60 dark:hover:border-white/5"}
                           `}
                         >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-white" : "text-slate-400 dark:text-slate-400"}`} />
-                            <span className="truncate">{item.name}</span>
-                          </div>
-                          {item.badge && (
-                            <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full shrink-0 ${
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            <div className={`p-2 rounded-xl transition-all duration-200 shrink-0 ${
                               isActive 
-                                ? "bg-white/20 text-white" 
-                                : "bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 ring-1 ring-sky-200 dark:ring-sky-800"
+                                ? "bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 shadow-xs" 
+                                : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 group-hover:bg-indigo-50 dark:group-hover:bg-indigo-950/40 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"
                             }`}>
-                              {item.badge}
-                            </span>
-                          )}
-                        </Link>
+                              <Icon className="w-4 h-4" />
+                            </div>
+                            <div className="flex flex-col min-w-0 flex-1 text-left">
+                              <span className={`text-xs truncate leading-tight ${
+                                isActive 
+                                  ? "font-bold text-indigo-600 dark:text-indigo-400" 
+                                  : "font-semibold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"
+                              }`}>
+                                {item.name}
+                              </span>
+                              {item.description && (
+                                <span className={`text-[10px] truncate leading-tight mt-0.5 ${
+                                  isActive 
+                                    ? "font-medium text-indigo-500/90 dark:text-indigo-300/90" 
+                                    : "font-normal text-slate-400 dark:text-slate-500"
+                                }`}>
+                                  {item.description}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0 ml-1.5">
+                            {item.badge && (
+                              <span className={`text-[9.5px] font-extrabold px-2 py-0.5 rounded-full transition-colors ${
+                                isActive 
+                                  ? "bg-indigo-600 text-white shadow-xs" 
+                                  : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 ring-1 ring-slate-200/60 dark:ring-white/5 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/60 group-hover:text-indigo-600 dark:group-hover:text-indigo-300"
+                              }`}>
+                                {item.badge}
+                              </span>
+                            )}
+                            {isActive && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 shrink-0 animate-pulse" />
+                            )}
+                          </div>
+                        </a>
                       );
                     })}
                   </div>
@@ -877,7 +985,7 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
                     <span className="text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase">
                       COURSE WORKSPACES
                     </span>
-                    <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/60 px-2 py-0.5 rounded-full">
+                    <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-full">
                       {assignedCourses.length} Active
                     </span>
                   </div>
@@ -889,26 +997,40 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
                           key={c.code}
                           href={`/dashboard/teacher/courses/${encodeURIComponent(c.code)}`}
                           onClick={() => setIsOpen(false)}
-                          className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50/70 hover:bg-indigo-50/80 dark:bg-slate-800/50 dark:hover:bg-indigo-950/50 border border-slate-100 dark:border-white/5 hover:border-indigo-200 dark:hover:border-indigo-800/80 transition group cursor-pointer shadow-xs"
+                          className="group relative flex items-center justify-between p-2.5 rounded-2xl bg-slate-50/70 hover:bg-indigo-50/80 dark:bg-slate-800/50 dark:hover:bg-indigo-950/40 border border-slate-100 dark:border-white/5 hover:border-indigo-200 dark:hover:border-indigo-800/80 transition-all duration-200 cursor-pointer shadow-xs"
                         >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-mono font-black text-[10px] shadow-xs">
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-mono font-black text-[10px] shadow-xs group-hover:bg-indigo-200/80 dark:group-hover:bg-indigo-800 transition-colors">
                               {c.code.split(" ")[1] || c.code.slice(0, 4)}
                             </div>
-                            <div className="flex flex-col min-w-0">
-                              <span className="font-bold text-xs truncate text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-300">
-                                {c.code}
-                              </span>
+                            <div className="flex flex-col min-w-0 flex-1 text-left">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-xs truncate text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                                  {c.code}
+                                </span>
+                                {c.semesterNum && (
+                                  <span className="text-[9px] font-semibold px-1 rounded bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 shrink-0">
+                                    Sem {c.semesterNum}
+                                  </span>
+                                )}
+                              </div>
                               <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate font-medium">
                                 {c.title}
                               </span>
                             </div>
                           </div>
-                          <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:translate-x-0.5 transition shrink-0" />
+                          <div className="flex items-center gap-1.5 shrink-0 ml-1.5">
+                            {c.count > 0 && (
+                              <span className="text-[9.5px] font-extrabold px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/60 group-hover:text-indigo-600 dark:group-hover:text-indigo-300 transition-colors">
+                                {c.count} {c.count === 1 ? "cls" : "cls"}
+                              </span>
+                            )}
+                            <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                          </div>
                         </Link>
                       ))
                     ) : (
-                      <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-dashed border-slate-200 dark:border-slate-700 text-center">
+                      <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-dashed border-slate-200 dark:border-slate-700 text-center">
                         <span className="text-[11px] text-slate-400 font-medium">
                           {isLoadingCourses ? "Syncing assigned courses..." : "No courses assigned yet"}
                         </span>
@@ -925,8 +1047,161 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
             data-lenis-prevent
             className="flex-1 overflow-y-auto overscroll-contain px-4 py-5 space-y-5 scrollbar-thin"
           >
-            {/* Student Main Hub Sections */}
-            <div>
+            {/* SUB-VIEW A: INSIDE A SPECIFIC STUDENT COURSE WORKSPACE */}
+            {isStudentCourseWorkspace && activeCourseCode ? (
+              <div className="space-y-4">
+                {/* Back to Student Hub Card */}
+                <Link
+                  href="/dashboard/student"
+                  onClick={() => setIsOpen(false)}
+                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-2xl bg-slate-100/90 hover:bg-slate-200/80 dark:bg-slate-800/80 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold transition group border border-slate-200/60 dark:border-white/5 cursor-pointer shadow-xs"
+                >
+                  <ArrowLeft className="w-4 h-4 text-slate-500 group-hover:-translate-x-1 transition-transform" />
+                  <div className="flex flex-col min-w-0">
+                    <span className="truncate">Return to Student Hub</span>
+                    <span className="text-[10px] font-normal text-slate-400 dark:text-slate-500">All courses & dashboard</span>
+                  </div>
+                </Link>
+
+                {/* Active Student Course Workspace Module Navigation */}
+                <div>
+                  <div className="px-2 pb-2 flex items-center justify-between">
+                    <span className="text-[10px] font-extrabold tracking-widest text-indigo-600 dark:text-indigo-400 uppercase">
+                      COURSE WORKSPACE
+                    </span>
+                    <span className="text-[10px] font-mono font-extrabold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-200 dark:ring-indigo-800">
+                      {activeCourseCode}
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    {studentCourseWorkspaceModules.map((module) => {
+                      const Icon = module.icon;
+                      const isActive = currentTab === module.id;
+                      const moduleHref = `/dashboard/student/courses/${encodeURIComponent(activeCourseCode)}?tab=${module.id}`;
+
+                      return (
+                        <Link
+                          key={module.id}
+                          href={moduleHref}
+                          onClick={() => setIsOpen(false)}
+                          className={`
+                            group relative flex items-center justify-between p-2.5 rounded-2xl transition-all duration-200 cursor-pointer border
+                            ${isActive 
+                              ? "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold border-indigo-200/80 dark:border-indigo-800/60 shadow-xs" 
+                              : "text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 border-transparent hover:border-slate-200/60 dark:hover:border-white/5"}
+                          `}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            <div className={`p-2 rounded-xl transition-all duration-200 shrink-0 ${
+                              isActive 
+                                ? "bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 shadow-xs" 
+                                : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 group-hover:bg-indigo-50 dark:group-hover:bg-indigo-950/40 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"
+                            }`}>
+                              <Icon className="w-4 h-4" />
+                            </div>
+                            <div className="flex flex-col min-w-0 flex-1 text-left">
+                              <span className={`text-xs truncate leading-tight ${
+                                isActive 
+                                  ? "font-bold text-indigo-600 dark:text-indigo-400" 
+                                  : "font-semibold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"
+                              }`}>
+                                {module.name}
+                              </span>
+                              {module.description && (
+                                <span className={`text-[10px] truncate leading-tight mt-0.5 ${
+                                  isActive 
+                                    ? "font-medium text-indigo-500/90 dark:text-indigo-300/90" 
+                                    : "font-normal text-slate-400 dark:text-slate-500"
+                                }`}>
+                                  {module.description}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0 ml-1.5">
+                            {module.badge && (
+                              <span className={`text-[9.5px] font-extrabold px-2 py-0.5 rounded-full transition-colors ${
+                                isActive 
+                                  ? "bg-indigo-600 text-white shadow-xs" 
+                                  : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 ring-1 ring-slate-200/60 dark:ring-white/5 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/60 group-hover:text-indigo-600 dark:group-hover:text-indigo-300"
+                              }`}>
+                                {module.badge}
+                              </span>
+                            )}
+                            {isActive && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 shrink-0 animate-pulse" />
+                            )}
+                          </div>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Other Semester Curriculum Courses Switcher */}
+                {studentSemesterCourses.filter((c) => c.code !== activeCourseCode).length > 0 && (
+                  <div>
+                    <div className="px-2 pt-2 pb-1.5 text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase">
+                      OTHER SEMESTER COURSES
+                    </div>
+                    <div className="space-y-1">
+                      {studentSemesterCourses
+                        .filter((c) => c.code !== activeCourseCode)
+                        .map((c) => (
+                          <Link
+                            key={c.code}
+                            href={`/dashboard/student/courses/${encodeURIComponent(c.code)}`}
+                            onClick={() => setIsOpen(false)}
+                            className="flex items-center justify-between p-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-300 transition group border border-transparent hover:border-indigo-100 dark:hover:border-indigo-900/40"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-700 shrink-0">
+                                {c.code}
+                              </span>
+                              <span className="truncate text-[11px]">{c.title}</span>
+                            </div>
+                            <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                          </Link>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Shortcuts Back to Student Dashboard Sections */}
+                <div>
+                  <div className="px-2 pt-2 pb-1.5 text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase">
+                    STUDENT HUB JUMPS
+                  </div>
+                  <div className="space-y-1">
+                    {[
+                      { name: "My Routine Schedule", href: "/dashboard/student#routine", icon: Clock },
+                      { name: "Continuous Tasks & Marks", href: "/dashboard/student#assignments", icon: FileText },
+                      { name: "All Study Materials", href: "/dashboard/student#materials", icon: BookOpen },
+                      { name: "Department Notices", href: "/dashboard/student#notices", icon: Bell },
+                      { name: "Academic Analytics", href: "/dashboard/student#analytics", icon: BarChart3 },
+                      { name: "Student Profile", href: "/dashboard/student#profile", icon: User },
+                    ].map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <Link
+                          key={item.name}
+                          href={item.href}
+                          onClick={() => setIsOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
+                        >
+                          <Icon className="w-3.5 h-3.5 text-slate-400" />
+                          <span>{item.name}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* SUB-VIEW B: ROOT STUDENT DASHBOARD (/dashboard/student) */
+              <div className="space-y-5">
+                {/* Student Main Hub Sections */}
+                <div>
               <div className="px-2 pb-2 flex items-center justify-between">
                 <span className="text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase">
                   STUDENT WORKSPACE
@@ -1061,7 +1336,9 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
               </div>
             </div>
           </div>
-        ) : (
+        )}
+      </div>
+    ) : (
           /* ── NON-TEACHER NAVIGATION ITEMS ──────────────────────────── */
           <div 
             data-lenis-prevent

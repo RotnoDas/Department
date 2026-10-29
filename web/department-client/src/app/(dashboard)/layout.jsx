@@ -24,6 +24,24 @@ export default function DashboardLayout({ children }) {
     }
   }, [user?.email]);
 
+  React.useEffect(() => {
+    const handleProfilePhotoUpdated = (e) => {
+      if (e?.detail) {
+        const { image, name, user: updatedUser } = e.detail;
+        setDbUser((prev) => ({
+          ...(prev || {}),
+          ...(updatedUser || {}),
+          image: image !== undefined ? image : prev?.image,
+          name: name || prev?.name,
+        }));
+      }
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("profile-photo-updated", handleProfilePhotoUpdated);
+      return () => window.removeEventListener("profile-photo-updated", handleProfilePhotoUpdated);
+    }
+  }, []);
+
   const activeUser = dbUser ? { ...user, ...dbUser } : user;
 
   return (

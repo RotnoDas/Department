@@ -87,7 +87,7 @@ export default function NoticeCard({
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2 flex-wrap">
             {isCourseNotice ? (
-              <span className="inline-flex items-center gap-1.5 text-[11px] font-black px-3 py-1 rounded-full bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/80 dark:to-purple-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/80 shadow-2xs">
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-black px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/80 shadow-2xs">
                 <BookOpen className="w-3.5 h-3.5 text-indigo-500" />
                 <span>{notice.courseCode || "Course Notice"}</span>
                 {notice.semester && <span>• Sem {notice.semester}</span>}
