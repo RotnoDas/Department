@@ -86,7 +86,7 @@ const CAMPUS_LOCATIONS = [
   { name: "University Campus (PUST CSE Building)", lat: 24.01296, lon: 89.280835, id: "univ", label: "University (PUST)" },
   { name: "Authorized Campus Location (Me)", lat: 24.841355, lon: 89.381426, id: "me", label: "Me (Personal)" },
 ];
-const ALLOWED_RADIUS_METERS = 10; // Strict 10m radius
+const ALLOWED_RADIUS_METERS = 200000; // Desirable test radius: 200 km (allows remote testing)
 const ATTENDANCE_WINDOW_MINUTES = 10; // First 10 minutes of class start
 
 // Helper to calculate distance in meters to nearest campus/authorized coordinates
@@ -730,7 +730,7 @@ export default function StudentDashboardPage() {
     const geofence = getGeofenceInfo(coords);
     if (geofence && !geofence.inRange) {
       toast.error(
-        `Location Verification: You are ${geofence.distance}m away from ${geofence.locationName}. Attendance strictly requires being within 10 meters of the classroom.`,
+        `Location Verification: You are ${(geofence.distance / 1000).toFixed(1)} km away from ${geofence.locationName}. Testing radius requires being within 200 km.`,
         { duration: 6000, icon: "📍" }
       );
       return;
@@ -1521,7 +1521,7 @@ export default function StudentDashboardPage() {
             </span>
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-300 ring-1 ring-sky-200 dark:ring-sky-800">
               <Target className="w-3.5 h-3.5 text-sky-500" />
-              <span>10m Radius</span>
+              <span>200 km Testing Range</span>
             </span>
             <button
               onClick={() => loadAttendanceData(true)}
@@ -1616,20 +1616,20 @@ export default function StudentDashboardPage() {
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className={`text-xs font-bold ${inRange ? "text-emerald-800 dark:text-emerald-200" : "text-amber-800 dark:text-amber-200"}`}>
-                          {inRange ? "Hardware Location Verified & Within Range" : "Location Active — Outside 10m Geofence"}
+                          {inRange ? "Hardware Location Verified & Within Range" : "Location Active — Outside 200 km Testing Geofence"}
                         </p>
                         <span className={`text-[10px] font-mono px-2 py-0.5 rounded-md font-semibold ${
                           inRange
                             ? "bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300"
                             : "bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300"
                         }`}>
-                          {geofence ? `${geofence.distance}m from ${geofence.locationName}` : "Measuring distance..."}
+                          {geofence ? `${geofence.distance > 1000 ? `${(geofence.distance / 1000).toFixed(1)} km` : `${geofence.distance}m`} from ${geofence.locationName}` : "Measuring distance..."}
                         </span>
                       </div>
                       <p className={`text-[11px] mt-0.5 ${inRange ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"}`}>
                         {inRange
-                          ? "You are within the 10-meter classroom geofence. Ready to submit attendance."
-                          : `You are currently ${geofence?.distance}m away. Attendance strictly requires being within 10 meters of the classroom.`}
+                          ? "You are within the 200 km testing geofence. Ready to submit attendance."
+                          : `You are currently ${(geofence?.distance / 1000).toFixed(1)} km away. Testing mode allows up to 200 km.`}
                       </p>
                     </div>
                   </div>
@@ -1896,7 +1896,7 @@ export default function StudentDashboardPage() {
                         </div>
                         <div className="flex items-center gap-1.5">
                           <Target className="w-3.5 h-3.5 text-sky-500" />
-                          <span>Radius: 10m Geofence</span>
+                          <span>Radius: 200 km (Testing)</span>
                         </div>
                         <div className="flex items-center gap-1.5">
                           <Clock className="w-3.5 h-3.5 text-slate-400" />
@@ -1954,11 +1954,13 @@ export default function StudentDashboardPage() {
                           </div>
                           <span
                             className={`font-mono font-bold text-xs px-2 py-0.5 rounded-md ${
-                              isGood
+                              stat.totalSessions === 0
+                                ? "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
+                                : isGood
                                 ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400"
                                 : isWarning
-                                  ? "bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400"
-                                  : "bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400"
+                                ? "bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400"
+                                : "bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400"
                             }`}
                           >
                             {pct}%
@@ -1969,11 +1971,13 @@ export default function StudentDashboardPage() {
                         <div className="w-full bg-slate-100 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
                           <div
                             className={`h-full rounded-full transition-all duration-500 ${
-                              isGood
+                              stat.totalSessions === 0
+                                ? "bg-slate-300 dark:bg-slate-600"
+                                : isGood
                                 ? "bg-emerald-500"
                                 : isWarning
-                                  ? "bg-amber-500"
-                                  : "bg-rose-500"
+                                ? "bg-amber-500"
+                                : "bg-rose-500"
                             }`}
                             style={{ width: `${Math.min(pct, 100)}%` }}
                           />
@@ -1981,10 +1985,10 @@ export default function StudentDashboardPage() {
 
                         <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
                           <span>
-                            {stat.attendedSessions} / {stat.totalSessions} Sessions
+                            {stat.attendedSessions} / {stat.targetSessions ? `${stat.targetSessions} Target` : `${stat.totalSessions} Sessions`}
                           </span>
-                          <span className={isGood ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-rose-500 font-bold"}>
-                            {isGood ? "Good Standing" : "Short Attendance"}
+                          <span className={stat.totalSessions === 0 ? "text-slate-400 font-bold" : isGood ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-rose-500 font-bold"}>
+                            {stat.totalSessions === 0 ? "No Classes Held" : isGood ? "Good Standing" : "Short Attendance"}
                           </span>
                         </div>
 

@@ -377,8 +377,12 @@ async function computeStats({ student, userId }) {
     const lateCount = statuses.filter((s) => s === 'late').length;
     const attendedSessions = presentCount + lateCount;
     const conductedSessions = Math.max(conductedByCourse.get(key)?.size || 0, attendedSessions);
+    const targetSessions = course.totalClasses !== undefined && course.totalClasses !== null && Number(course.totalClasses) > 0
+      ? Number(course.totalClasses)
+      : null;
+    const baseTotal = targetSessions || conductedSessions;
     const percentage =
-      conductedSessions > 0 ? Math.min(100, Math.round((attendedSessions / conductedSessions) * 100)) : 0;
+      baseTotal > 0 ? Math.min(100, Math.round((attendedSessions / baseTotal) * 100)) : 0;
     const lab = isLabCourse(course.title);
 
     return {
@@ -386,29 +390,30 @@ async function computeStats({ student, userId }) {
       courseName: course.title,
       courseTitle: course.title,
       credits: course.credits ?? (lab ? 1.5 : 3),
-      targetSessions: lab ? 10 : 14,
+      targetSessions,
       conductedSessions,
-      totalSessions: conductedSessions,
+      totalSessions: targetSessions || conductedSessions,
+      totalPlannedClasses: targetSessions,
       attendedSessions,
       presentCount,
       lateCount,
       percentage,
-      hasData: conductedSessions > 0,
-      status: conductedSessions === 0 ? 'No classes yet' : percentage >= 75 ? 'Good Standing' : 'Low Attendance (< 75%)',
+      hasData: conductedSessions > 0 || (targetSessions !== null && targetSessions > 0),
+      status: (conductedSessions === 0 && !targetSessions) ? 'No classes yet' : percentage >= 75 ? 'Good Standing' : 'Low Attendance (< 75%)',
     };
   });
 
   const totalConducted = stats.reduce((sum, s) => sum + s.conductedSessions, 0);
   const totalAttended = stats.reduce((sum, s) => sum + s.attendedSessions, 0);
-  const totalTarget = stats.reduce((sum, s) => sum + s.targetSessions, 0);
+  const totalTarget = stats.reduce((sum, s) => sum + (s.targetSessions || s.conductedSessions), 0);
 
   return {
     semester,
     stats,
     totalConducted,
     totalAttended,
-    totalTarget,
-    overallPercentage: totalConducted > 0 ? Math.round((totalAttended / totalConducted) * 100) : 0,
+    totalTarget: totalTarget > 0 ? totalTarget : null,
+    overallPercentage: totalTarget > 0 ? Math.round((totalAttended / totalTarget) * 100) : (totalConducted > 0 ? Math.round((totalAttended / totalConducted) * 100) : 0),
   };
 }
 

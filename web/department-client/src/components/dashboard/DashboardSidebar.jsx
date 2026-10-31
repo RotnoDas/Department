@@ -618,6 +618,7 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
       { id: "attendance", name: "Attendance Hub", description: "Biometric & manual records", badge: "Live", icon: UserCheck },
       { id: "materials", name: "Study Materials", description: "Lectures, slides & notes", badge: "Files", icon: BookOpen },
       { id: "assignments", name: "Continuous Tasks", description: "Submissions & roll-wise marks", badge: "Grading", icon: FileText },
+      { id: "class-tests", name: "Class Tests (CT)", description: "Offline marks & roster", badge: "CT", icon: Award },
       { id: "schedule", name: "Routine Schedule", description: "Assigned class timings", badge: "Timetable", icon: Calendar },
     ];
   }, [activeCourseCode]);
@@ -628,7 +629,8 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
     return [
       { id: "notices", name: "Course Notices", description: "Teacher announcements & notes", badge: "Notices", icon: Bell },
       { id: "materials", name: "Study Materials", description: "Lectures, slides & handouts", badge: "Files", icon: BookOpen },
-      { id: "assignments", name: "Continuous Tasks", description: "Submissions, marks & feedback", badge: "Marks", icon: FileText },
+      { id: "assignments", name: "Continuous Tasks", description: "Submissions, marks & feedback", badge: "Tasks", icon: FileText },
+      { id: "class-tests", name: "Class Tests (CT)", description: "Offline CT scores & feedback", badge: "Marks", icon: Award },
       { id: "attendance", name: "My Attendance", description: "Presence & eligibility", badge: "Stats", icon: UserCheck },
       { id: "schedule", name: "Class Schedule", description: "Timetable & classroom", badge: "Routine", icon: Calendar },
     ];

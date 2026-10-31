@@ -22,6 +22,7 @@ const attendanceRoutes = require('./routes/attendance.routes');
 const faceRoutes = require('./routes/face.routes');
 const assignmentRoutes = require('./routes/assignment.routes');
 const materialRoutes = require('./routes/material.routes');
+const classTestRoutes = require('./routes/classTest.routes');
 const supportRoutes = require('./routes/support.routes');
 const attendanceConfig = require('./config/attendance');
 
@@ -103,6 +104,9 @@ app.use('/api/assignments', assignmentRoutes);
 
 // Course Study Materials & Slides (/api/materials)
 app.use('/api/materials', materialRoutes);
+
+// Offline Class Tests & Marks (/api/class-tests)
+app.use('/api/class-tests', classTestRoutes);
 
 // Support & Complaints (/api/support)
 app.use('/api/support', supportRoutes);

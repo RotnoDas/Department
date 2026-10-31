@@ -42,6 +42,7 @@ const connectDB = async () => {
     assignments: db.collection('assignments'),
     assignmentSubmissions: db.collection('assignment_submissions'),
     materials: db.collection('materials'),
+    classTests: db.collection('class_tests'),
     // Employee operations
     maintenanceTasks: db.collection('maintenance_tasks'),
     employeeShifts: db.collection('employee_shifts'),

@@ -115,25 +115,29 @@ export function EventsNotices() {
         if (res.ok) {
           const data = await res.json();
           if (data?.notices && data.notices.length > 0) {
-            const mapped = data.notices.map((n, i) => {
-              const d = n.createdAt ? new Date(n.createdAt) : new Date();
-              const isPub = Boolean(n.isPublic);
-              return {
-                id: String(n._id || n.id || i + 1),
-                date: String(d.getDate()).padStart(2, "0"),
-                month: d.toLocaleString("en-US", { month: "short" }).toUpperCase(),
-                year: String(d.getFullYear()),
-                title: n.title,
-                content: n.content || "",
-                authorName: n.authorName || n.author?.name || "Department Admin",
-                category: n.category || (isPub ? "Public Notice" : "Academic"),
-                priority: n.priority || "Normal",
-                isPublic: isPub,
-                hasAudio: Boolean(n.audio?.filePath),
-                hasAttachment: Boolean(n.filePath || (n.attachments && n.attachments.length > 0)),
-              };
-            });
-            setNotices(mapped);
+            // Exclude course-specific classroom notices from the public landing showcase
+            const publicDeptNotices = data.notices.filter((n) => n.noticeType !== "course" && !n.courseCode);
+            if (publicDeptNotices.length > 0) {
+              const mapped = publicDeptNotices.map((n, i) => {
+                const d = n.createdAt ? new Date(n.createdAt) : new Date();
+                const isPub = Boolean(n.isPublic);
+                return {
+                  id: String(n._id || n.id || i + 1),
+                  date: String(d.getDate()).padStart(2, "0"),
+                  month: d.toLocaleString("en-US", { month: "short" }).toUpperCase(),
+                  year: String(d.getFullYear()),
+                  title: n.title,
+                  content: n.content || "",
+                  authorName: n.authorName || n.author?.name || "Department Admin",
+                  category: n.category || (isPub ? "Public Notice" : "Academic"),
+                  priority: n.priority || "Normal",
+                  isPublic: isPub,
+                  hasAudio: Boolean(n.audio?.filePath),
+                  hasAttachment: Boolean(n.filePath || (n.attachments && n.attachments.length > 0)),
+                };
+              });
+              setNotices(mapped);
+            }
           }
         }
       } catch {

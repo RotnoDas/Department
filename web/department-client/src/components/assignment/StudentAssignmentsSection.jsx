@@ -116,7 +116,7 @@ const getGradeDetails = (score, max) => {
       color: "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800/60",
       badgeColor: "bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/60",
       progressColor: "bg-amber-500",
-      label: "Above Average",
+      label: "Below Satisfactory",
     };
   }
   if (pct >= 50) {
@@ -130,6 +130,17 @@ const getGradeDetails = (score, max) => {
       label: "Average",
     };
   }
+  if (pct >= 45) {
+    return {
+      letter: "C",
+      gpa: 2.25,
+      gpaStr: "2.25",
+      color: "text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/50 border-orange-200 dark:border-orange-800/60",
+      badgeColor: "bg-orange-100 dark:bg-orange-950/80 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800/60",
+      progressColor: "bg-orange-500",
+      label: "Pass",
+    };
+  }
   if (pct >= 40) {
     return {
       letter: "D",
@@ -138,7 +149,7 @@ const getGradeDetails = (score, max) => {
       color: "text-orange-700 dark:text-orange-300 bg-orange-100 dark:bg-orange-950/70 border-orange-300 dark:border-orange-800",
       badgeColor: "bg-orange-100 dark:bg-orange-950/80 text-orange-800 dark:text-orange-300 border-orange-300 dark:border-orange-800",
       progressColor: "bg-orange-500",
-      label: "Pass",
+      label: "Poor",
     };
   }
   return {

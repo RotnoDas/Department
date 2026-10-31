@@ -50,7 +50,9 @@ import {
   Edit3,
   Save,
   CalendarCheck,
-  History
+  History,
+  Lock,
+  Target
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { authClient } from "@/lib/auth-client";
@@ -60,6 +62,23 @@ import CourseNoticeModal from "@/components/notice/CourseNoticeModal";
 import NoticeCard from "@/components/notice/NoticeCard";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
+
+// Helper for Class Test UGC letter grading
+const getCTGradeDetails = (score, max) => {
+  if (score === null || score === undefined || !max || max <= 0) {
+    return { letter: "Ungraded", color: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700" };
+  }
+  const pct = (score / max) * 100;
+  if (pct >= 80) return { letter: "A+", color: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800" };
+  if (pct >= 75) return { letter: "A", color: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800" };
+  if (pct >= 70) return { letter: "A-", color: "bg-indigo-50 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800" };
+  if (pct >= 65) return { letter: "B+", color: "bg-indigo-50 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800" };
+  if (pct >= 60) return { letter: "B", color: "bg-blue-50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800" };
+  if (pct >= 55) return { letter: "B-", color: "bg-amber-50 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800" };
+  if (pct >= 50) return { letter: "C+", color: "bg-amber-50 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800" };
+  if (pct >= 40) return { letter: "D", color: "bg-orange-50 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800" };
+  return { letter: "F", color: "bg-rose-50 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800" };
+};
 
 export default function TeacherCourseWorkspacePage() {
   const params = useParams();
@@ -72,10 +91,10 @@ export default function TeacherCourseWorkspacePage() {
 
   const searchParams = useSearchParams();
   const urlTab = searchParams?.get("tab");
-  const validTabs = useMemo(() => ["attendance", "materials", "assignments", "notices", "schedule"], []);
+  const validTabs = useMemo(() => ["notices", "attendance", "materials", "assignments", "class-tests", "schedule"], []);
 
-  // Active Tab: "attendance" | "materials" | "assignments" | "notices" | "schedule"
-  const [activeTab, setActiveTab] = useState(() => (urlTab && ["attendance", "materials", "assignments", "notices", "schedule"].includes(urlTab) ? urlTab : "attendance"));
+  // Active Tab: "notices" | "attendance" | "materials" | "assignments" | "class-tests" | "schedule"
+  const [activeTab, setActiveTab] = useState(() => (urlTab && validTabs.includes(urlTab) ? urlTab : "attendance"));
 
   useEffect(() => {
     if (urlTab && validTabs.includes(urlTab) && urlTab !== activeTab) {
@@ -114,6 +133,11 @@ export default function TeacherCourseWorkspacePage() {
   const [manualAttendanceMap, setManualAttendanceMap] = useState({}); // studentEmail -> boolean
   const [manualSearch, setManualSearch] = useState("");
   const [isSavingManual, setIsSavingManual] = useState(false);
+
+  // Target Classes Modal State
+  const [showEditClassesModal, setShowEditClassesModal] = useState(false);
+  const [plannedClassesInput, setPlannedClassesInput] = useState("");
+  const [isSavingPlannedClasses, setIsSavingPlannedClasses] = useState(false);
 
   // Past Session Inspection Modal
   const [inspectedSession, setInspectedSession] = useState(null);
@@ -171,11 +195,25 @@ export default function TeacherCourseWorkspacePage() {
   const [noticeSearch, setNoticeSearch] = useState("");
   const [isPublishingNotice, setIsPublishingNotice] = useState(false);
 
-  // Planned Classes Target Modal State
-  const [showEditClassesModal, setShowEditClassesModal] = useState(false);
-  const [plannedClassesInput, setPlannedClassesInput] = useState("");
-  const [isSavingPlannedClasses, setIsSavingPlannedClasses] = useState(false);
+  // Class Tests (CT) & Offline Marks State
+  const [classTests, setClassTests] = useState([]);
+  const [isClassTestsLoading, setIsClassTestsLoading] = useState(true);
+  const [showCTModal, setShowCTModal] = useState(false);
+  const [editingCT, setEditingCT] = useState(null);
+  const [ctForm, setCTForm] = useState({
+    title: "",
+    date: new Date().toISOString().split("T")[0],
+    totalMarks: 20,
+    topic: "",
+    room: "",
+  });
+  const [isSavingCT, setIsSavingCT] = useState(false);
 
+  // Roll-Wise Marks Entry Modal States
+  const [activeCTForGrading, setActiveCTForGrading] = useState(null);
+  const [gradingMarksMap, setGradingMarksMap] = useState([]);
+  const [gradingSearch, setGradingSearch] = useState("");
+  const [isSavingCTMarks, setIsSavingCTMarks] = useState(false);
 
   // Course Sessions History Inspector Modal
   const [showSessionsModal, setShowSessionsModal] = useState(false);
@@ -223,9 +261,12 @@ export default function TeacherCourseWorkspacePage() {
 
   // ── 2. FETCH TEACHER'S ASSIGNED COURSES (FOR QUICK SWITCHER) ──
   const fetchTeacherCourses = useCallback(async () => {
-    if (!user?.name) return;
+    if (!user?.name && !user?.email) return;
     try {
-      const res = await fetch(`/backend/api/teacher/routine?teacherName=${encodeURIComponent(user.name)}`);
+      const params = new URLSearchParams();
+      if (user.name) params.set("teacherName", user.name);
+      if (user.email) params.set("email", user.email);
+      const res = await fetch(`/backend/api/teacher/routine?${params.toString()}`);
       if (res.ok) {
         const slots = await res.json();
         const unique = [];
@@ -245,7 +286,7 @@ export default function TeacherCourseWorkspacePage() {
     } catch (e) {
       console.warn("Could not fetch teacher courses for switcher:", e);
     }
-  }, [user?.name]);
+  }, [user?.name, user?.email]);
 
   // ── 3. FETCH ATTENDANCE ROSTER SPECIFIC TO THIS COURSE ────────
   const fetchCourseRoster = useCallback(async (showFeedback = false) => {
@@ -318,15 +359,32 @@ export default function TeacherCourseWorkspacePage() {
     }
   }, [courseCode]);
 
+  // ── 7. FETCH CLASS TESTS (CT) FOR THIS COURSE ─────────────────
+  const fetchCourseClassTests = useCallback(async () => {
+    setIsClassTestsLoading(true);
+    try {
+      const res = await fetch(`/backend/api/class-tests?courseCode=${encodeURIComponent(courseCode)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setClassTests(data.classTests || []);
+      }
+    } catch (e) {
+      console.warn("Could not fetch course class tests:", e);
+    } finally {
+      setIsClassTestsLoading(false);
+    }
+  }, [courseCode]);
+
   useEffect(() => {
     if (courseCode) {
       fetchCourseDetails();
       fetchCourseMaterials();
       fetchCourseAssignments();
       fetchCourseNotices();
+      fetchCourseClassTests();
       fetchTeacherCourses();
     }
-  }, [courseCode, fetchCourseDetails, fetchCourseMaterials, fetchCourseAssignments, fetchCourseNotices, fetchTeacherCourses]);
+  }, [courseCode, fetchCourseDetails, fetchCourseMaterials, fetchCourseAssignments, fetchCourseNotices, fetchCourseClassTests, fetchTeacherCourses]);
 
   // Listen for global notice refresh events
   useEffect(() => {
@@ -353,13 +411,17 @@ export default function TeacherCourseWorkspacePage() {
     }
   }, [course?.totalClasses, rosterData?.totalPlannedClasses]);
 
-  // ── UPDATE PLANNED TOTAL CLASSES TARGET ──────────────────────
+  // ── UPDATE TARGET TOTAL CLASSES ─────────────────────────────
   const handleUpdatePlannedClasses = async (targetCount) => {
-    const count = parseInt(targetCount ?? plannedClassesInput, 10);
-    if (isNaN(count) || count < 1 || count > 300) {
-      toast.error("Please enter a valid planned classes count between 1 and 300.");
+    const rawVal = targetCount !== undefined ? targetCount : plannedClassesInput;
+    const isReset = rawVal === "" || rawVal === null || rawVal === "0" || Number(rawVal) === 0;
+    const count = isReset ? null : parseInt(rawVal, 10);
+
+    if (!isReset && (isNaN(count) || count < 1 || count > 300)) {
+      toast.error("Please enter a valid target classes count between 1 and 300.");
       return;
     }
+
     setIsSavingPlannedClasses(true);
     try {
       const res = await fetch(`/backend/api/courses/code/${encodeURIComponent(courseCode)}/classes`, {
@@ -369,17 +431,17 @@ export default function TeacherCourseWorkspacePage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Failed to update planned classes");
+        throw new Error(data.error || "Failed to update target classes");
       }
-      toast.success(data.message || `Planned classes target updated to ${count}`);
+      toast.success(data.message || (count ? `Target classes updated to ${count} classes!` : "Target classes reset."));
       setCourse((prev) => (prev ? { ...prev, totalClasses: count } : null));
       setRosterData((prev) => (prev ? { ...prev, totalPlannedClasses: count } : null));
       setShowEditClassesModal(false);
       fetchCourseRoster(false);
       fetchCourseDetails();
     } catch (err) {
-      console.error("Error updating planned classes:", err);
-      toast.error(err.message || "Failed to update planned classes");
+      console.error("Error updating target classes:", err);
+      toast.error(err.message || "Failed to update target classes");
     } finally {
       setIsSavingPlannedClasses(false);
     }
@@ -577,7 +639,8 @@ export default function TeacherCourseWorkspacePage() {
       "Student Name",
       "Email",
       "Attended Classes",
-      "Total Held",
+      courseStats.targetClasses ? "Target Classes" : "Total Held",
+      ...(courseStats.targetClasses ? ["Conducted Sessions"] : []),
       "Attendance %",
       "Eligibility Status",
       ...sessions.map((s) => `${s.date} (${s.timeSlot})`),
@@ -598,7 +661,8 @@ export default function TeacherCourseWorkspacePage() {
         `"${stu.name}"`,
         `"${stu.email}"`,
         stu.attendedCount,
-        stu.totalSessions,
+        courseStats.targetClasses ? courseStats.targetClasses : stu.totalSessions,
+        ...(courseStats.targetClasses ? [stu.totalSessions] : []),
         `${stu.percentage}%`,
         `"${statusText}"`,
         ...sessionStatuses,
@@ -998,7 +1062,56 @@ export default function TeacherCourseWorkspacePage() {
     }
   };
 
+  // ── STRICT COURSE TEACHER PERMISSION CHECK ──────────────────
+  // User requirement:
+  // "for notice for giving in teacher panel for course, if any teacher give notice for course, another teacher can not seee it. It will be see by related course teacher and student."
+  const isRelatedTeacher = useMemo(() => {
+    if (!user) return false;
+    if (user.role === "admin" || (user.email || "").toLowerCase().trim() === "admin@cse.edu") {
+      return true;
+    }
+
+    const normTargetCode = courseCode.replace(/[\s-]/g, "").toUpperCase();
+    const userEmail = (user.email || "").toLowerCase().trim();
+    const userName = (user.name || "").toLowerCase().trim();
+
+    // 1. Is this course in the teacher's assigned routine courses?
+    const hasInRoutineCourses = (teacherCourses || []).some((c) => {
+      const code = c?.code || c?.courseCode;
+      return code && String(code).replace(/[\s-]/g, "").toUpperCase() === normTargetCode;
+    });
+    if (hasInRoutineCourses) return true;
+
+    // 2. Is this teacher assigned to any routine slot for this course?
+    const hasInRoutineSlots = (routineSlots || []).some((slot) => {
+      const slotEmail = (slot.teacherEmail || "").toLowerCase().trim();
+      const slotName = (slot.teacherName || "").toLowerCase().trim();
+      return (userEmail && slotEmail === userEmail) || (userName && slotName === userName);
+    });
+    if (hasInRoutineSlots) return true;
+
+    // 3. Is this teacher listed in the course faculty field?
+    if (course?.faculty) {
+      const fac = String(course.faculty).toLowerCase();
+      if ((userName && fac.includes(userName)) || (userEmail && fac.includes(userEmail))) {
+        return true;
+      }
+    }
+
+    // 4. Did this teacher author any notice for this course?
+    const hasAuthoredNotice = (courseNotices || []).some((n) => {
+      const aEmail = (n.authorEmail || n.teacherEmail || "").toLowerCase().trim();
+      const aName = (n.authorName || "").toLowerCase().trim();
+      return (userEmail && aEmail === userEmail) || (userName && aName === userName);
+    });
+    if (hasAuthoredNotice) return true;
+
+    return false;
+  }, [user, courseCode, teacherCourses, routineSlots, course?.faculty, courseNotices]);
+
   const filteredCourseNotices = useMemo(() => {
+    // If not a related course teacher, another teacher cannot view course notices
+    if (!isRelatedTeacher) return [];
     if (!noticeSearch.trim()) return courseNotices;
     const q = noticeSearch.toLowerCase();
     return courseNotices.filter((n) =>
@@ -1006,7 +1119,273 @@ export default function TeacherCourseWorkspacePage() {
       n.content?.toLowerCase().includes(q) ||
       n.category?.toLowerCase().includes(q)
     );
-  }, [courseNotices, noticeSearch]);
+  }, [isRelatedTeacher, courseNotices, noticeSearch]);
+
+  // ── CLASS TEST (CT) ACTION HANDLERS ─────────────────────────
+  const handleOpenCreateCT = () => {
+    setEditingCT(null);
+    const nextNum = classTests.length + 1;
+    setCTForm({
+      title: `Class Test ${nextNum}`,
+      date: new Date().toISOString().split("T")[0],
+      totalMarks: 20,
+      topic: "",
+      room: routineSlots[0]?.roomNo || "Room 407",
+    });
+    setShowCTModal(true);
+  };
+
+  const handleOpenEditCT = (ct) => {
+    setEditingCT(ct);
+    setCTForm({
+      title: ct.title || "",
+      date: ct.date || new Date().toISOString().split("T")[0],
+      totalMarks: ct.totalMarks || 20,
+      topic: ct.topic || "",
+      room: ct.room || "",
+    });
+    setShowCTModal(true);
+  };
+
+  const handleSaveCT = async (e) => {
+    e.preventDefault();
+    if (!ctForm.title.trim()) {
+      toast.error("Please enter a Class Test title.");
+      return;
+    }
+    const marksNum = Number(ctForm.totalMarks);
+    if (isNaN(marksNum) || marksNum <= 0) {
+      toast.error("Please enter valid total marks (greater than 0).");
+      return;
+    }
+
+    setIsSavingCT(true);
+    try {
+      const url = editingCT ? `/backend/api/class-tests/${editingCT.id || editingCT._id}` : "/backend/api/class-tests";
+      const method = editingCT ? "PUT" : "POST";
+      const payload = {
+        title: ctForm.title.trim(),
+        courseCode,
+        courseTitle: course?.title || `${courseCode} Module`,
+        semester: String(course?.semesterNum || 7),
+        date: ctForm.date,
+        totalMarks: marksNum,
+        topic: ctForm.topic.trim(),
+        room: ctForm.room.trim(),
+        teacherName: user?.name || "Course Instructor",
+        teacherEmail: user?.email || "",
+      };
+
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to save class test.");
+      }
+      toast.success(editingCT ? "Class test updated!" : "Class test created!");
+      setShowCTModal(false);
+      fetchCourseClassTests();
+    } catch (err) {
+      toast.error(err.message || "Network error saving class test.");
+    } finally {
+      setIsSavingCT(false);
+    }
+  };
+
+  const handleDeleteCT = async (ct) => {
+    if (!window.confirm(`Are you sure you want to delete "${ct.title}"? All entered student marks for this test will be removed.`)) return;
+    try {
+      const res = await fetch(`/backend/api/class-tests/${ct.id || ct._id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success("Class test deleted.");
+        fetchCourseClassTests();
+      } else {
+        toast.error(data.error || "Failed to delete class test.");
+      }
+    } catch {
+      toast.error("Network error deleting class test.");
+    }
+  };
+
+  // Open Roll-Wise Marks Entry Interface
+  const handleOpenGradingModal = async (ct) => {
+    setActiveCTForGrading(ct);
+    setGradingSearch("");
+
+    const existingMarks = Array.isArray(ct.marks) ? ct.marks : [];
+    const existingMap = new Map();
+    existingMarks.forEach((m) => {
+      if (m.studentId) existingMap.set(String(m.studentId).trim(), m);
+      if (m.studentEmail) existingMap.set(String(m.studentEmail).trim().toLowerCase(), m);
+    });
+
+    let rosterStudents = rosterData?.roster || [];
+    if (rosterStudents.length === 0) {
+      try {
+        const semesterNum = course?.semesterNum || 7;
+        const res = await fetch(
+          `/backend/api/attendance/teacher/roster-report?courseCode=${encodeURIComponent(courseCode)}&semester=${semesterNum}`
+        );
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.roster) && data.roster.length > 0) {
+            rosterStudents = data.roster;
+            setRosterData(data);
+          }
+        }
+      } catch (err) {
+        console.warn("Could not fetch roster for CT grading:", err);
+      }
+    }
+
+    const merged = [];
+    const seenRolls = new Set();
+
+    if (rosterStudents.length > 0) {
+      rosterStudents.forEach((stu) => {
+        const roll = String(stu.studentId || "").trim();
+        const email = String(stu.email || "").trim().toLowerCase();
+        const existing = (roll ? existingMap.get(roll) : null) || (email ? existingMap.get(email) : null);
+        if (roll) seenRolls.add(roll);
+        merged.push({
+          studentId: stu.studentId || "",
+          studentName: stu.name || existing?.studentName || "Student",
+          studentEmail: stu.email || existing?.studentEmail || "",
+          marks: existing && existing.marks !== null && existing.marks !== undefined ? String(existing.marks) : "",
+          isAbsent: Boolean(existing?.isAbsent),
+          remarks: existing?.remarks || "",
+        });
+      });
+    }
+
+    existingMarks.forEach((m) => {
+      const roll = String(m.studentId || "").trim();
+      if (roll && !seenRolls.has(roll)) {
+        seenRolls.add(roll);
+        merged.push({
+          studentId: m.studentId || "",
+          studentName: m.studentName || "Student",
+          studentEmail: m.studentEmail || "",
+          marks: m.marks !== null && m.marks !== undefined ? String(m.marks) : "",
+          isAbsent: Boolean(m.isAbsent),
+          remarks: m.remarks || "",
+        });
+      }
+    });
+
+    merged.sort((a, b) => {
+      const numA = parseInt(a.studentId, 10);
+      const numB = parseInt(b.studentId, 10);
+      if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+      return (a.studentId || "").localeCompare(b.studentId || "");
+    });
+
+    setGradingMarksMap(merged);
+  };
+
+  // Save All Roll-Wise Marks
+  const handleSaveAllCTMarks = async () => {
+    if (!activeCTForGrading) return;
+    setIsSavingCTMarks(true);
+    try {
+      const maxAllowed = Number(activeCTForGrading.totalMarks) || 20;
+      const formatted = gradingMarksMap.map((entry) => ({
+        studentId: entry.studentId,
+        studentName: entry.studentName,
+        studentEmail: entry.studentEmail,
+        marks: entry.isAbsent
+          ? 0
+          : entry.marks !== "" && !isNaN(Number(entry.marks))
+          ? Math.min(Number(entry.marks), maxAllowed)
+          : null,
+        isAbsent: Boolean(entry.isAbsent),
+        remarks: entry.remarks || "",
+      }));
+
+      const res = await fetch(`/backend/api/class-tests/${activeCTForGrading.id || activeCTForGrading._id}/marks`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ marks: formatted }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to save marks.");
+      }
+      toast.success(`Marks recorded for ${formatted.length} students!`);
+      setActiveCTForGrading(null);
+      fetchCourseClassTests();
+    } catch (err) {
+      toast.error(err.message || "Network error saving marks.");
+    } finally {
+      setIsSavingCTMarks(false);
+    }
+  };
+
+  // Export CT Marksheet as CSV
+  const handleExportCTCSV = (ct) => {
+    const marksList = Array.isArray(ct.marks) ? ct.marks : [];
+    if (marksList.length === 0) {
+      toast.error("No student records found to export.");
+      return;
+    }
+
+    const total = ct.totalMarks || 20;
+    const rows = [
+      [`PUST CSE Department - Class Test Marksheet`],
+      [`Course: ${courseCode} - ${course?.title || ""}`],
+      [`Class Test: ${ct.title}`],
+      [`Date: ${ct.date || "N/A"}, Total Marks: ${total}`],
+      [],
+      ["Roll / Student ID", "Student Name", "Marks Obtained", "Total Marks", "Percentage", "Grade", "Status", "Remarks"],
+    ];
+
+    marksList.forEach((stu) => {
+      const isAbs = Boolean(stu.isAbsent);
+      const score = !isAbs && stu.marks !== null && stu.marks !== undefined ? Number(stu.marks) : (isAbs ? 0 : "N/A");
+      const pct = typeof score === "number" ? `${Math.round((score / total) * 100)}%` : "N/A";
+      const grade = isAbs ? "Absent" : (typeof score === "number" ? getCTGradeDetails(score, total).letter : "Ungraded");
+      const status = isAbs ? "Absent" : (typeof score === "number" ? "Present" : "Ungraded");
+      rows.push([
+        `"${stu.studentId}"`,
+        `"${stu.studentName}"`,
+        score,
+        total,
+        pct,
+        grade,
+        status,
+        `"${(stu.remarks || "").replace(/"/g, '""')}"`,
+      ]);
+    });
+
+    const csvContent = "data:text/csv;charset=utf-8," + rows.map((e) => e.join(",")).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `${courseCode}_${ct.title.replace(/\s+/g, "_")}_Marks.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("CT marksheet exported as CSV!");
+  };
+
+  const handleUpdateGradingEntry = (studentId, field, value) => {
+    setGradingMarksMap((prev) =>
+      prev.map((entry) => {
+        if (entry.studentId === studentId) {
+          const updated = { ...entry, [field]: value };
+          if (field === "isAbsent" && value === true) {
+            updated.marks = "";
+          }
+          return updated;
+        }
+        return entry;
+      })
+    );
+  };
 
 
   // ── FILTERED DATA HOOKS ──────────────────────────────────────
@@ -1102,11 +1481,12 @@ export default function TeacherCourseWorkspacePage() {
 
   const courseStats = useMemo(() => {
     const totalHeld = rosterData?.totalSessions || 0;
-    const rawTarget = (course?.totalClasses !== undefined && course?.totalClasses !== null)
-      ? Number(course.totalClasses)
-      : ((rosterData?.totalPlannedClasses !== undefined && rosterData?.totalPlannedClasses !== null)
+    const rawTarget =
+      course?.totalClasses !== undefined && course?.totalClasses !== null
+        ? Number(course.totalClasses)
+        : rosterData?.totalPlannedClasses !== undefined && rosterData?.totalPlannedClasses !== null
         ? Number(rosterData.totalPlannedClasses)
-        : null);
+        : null;
 
     const hasTarget = rawTarget !== null && !isNaN(rawTarget) && rawTarget > 0;
     const targetClasses = hasTarget ? rawTarget : null;
@@ -1115,10 +1495,13 @@ export default function TeacherCourseWorkspacePage() {
 
     const studentsList = rosterData?.roster || [];
     const totalStudents = studentsList.length;
+
+    // Calculate cohort average attendance % based on target if available
+    const baseTotal = targetClasses || totalHeld;
     const avgPercentage =
-      totalStudents > 0 && totalHeld > 0
+      totalStudents > 0 && baseTotal > 0
         ? Math.round(studentsList.reduce((acc, curr) => acc + (curr.percentage || 0), 0) / totalStudents)
-        : (totalHeld === 0 ? null : 0);
+        : (baseTotal === 0 ? null : 0);
 
     const eligibleCount = studentsList.filter((s) => s.percentage >= 75).length;
     const warningCount = studentsList.filter((s) => s.percentage >= 60 && s.percentage < 75).length;
@@ -1140,9 +1523,10 @@ export default function TeacherCourseWorkspacePage() {
       totalMaterials: materials.length,
       totalAssignments: assignments.length,
       totalSubmissions,
-      totalNotices: courseNotices.length,
+      totalNotices: isRelatedTeacher ? courseNotices.length : 0,
+      totalClassTests: classTests.length,
     };
-  }, [rosterData, materials, assignments, courseNotices, course?.totalClasses]);
+  }, [rosterData, materials, assignments, courseNotices, classTests, isRelatedTeacher, course?.totalClasses]);
 
   // Loading Screen
   if (isLoadingCourse && !course) {
@@ -1199,15 +1583,17 @@ export default function TeacherCourseWorkspacePage() {
 
         {/* Action Controls */}
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleCreateNotice}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-all hover:scale-105 active:scale-95 cursor-pointer"
-            title="Broadcast course notice to students of this course"
-          >
-            <Bell className="w-3.5 h-3.5" />
-            <span>Give Course Notice</span>
-          </button>
+          {isRelatedTeacher && (
+            <button
+              type="button"
+              onClick={handleCreateNotice}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-all hover:scale-105 active:scale-95 cursor-pointer"
+              title="Broadcast course notice to students of this course"
+            >
+              <Bell className="w-3.5 h-3.5" />
+              <span>Give Course Notice</span>
+            </button>
+          )}
 
           <button
             type="button"
@@ -1322,33 +1708,14 @@ export default function TeacherCourseWorkspacePage() {
               <span>Record Attendance (Roll Call)</span>
             </button>
 
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setPlannedClassesInput(courseStats.targetClasses ? String(courseStats.targetClasses) : "");
-                  setShowEditClassesModal(true);
-                }}
-                className={`inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl font-bold text-xs border backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer ${
-                  courseStats.hasTarget
-                    ? "bg-indigo-500/30 hover:bg-indigo-500/50 text-indigo-200 border-indigo-400/40"
-                    : "bg-amber-500/20 hover:bg-amber-500/40 text-amber-200 border-amber-400/50 animate-pulse"
-                }`}
-                title="Edit how many classes will be held for this course"
-              >
-                <Calendar className="w-3.5 h-3.5 text-indigo-300" />
-                <span>{courseStats.hasTarget ? `Target: ${courseStats.targetClasses}` : "Set Target"}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleExportAttendanceCSV}
-                className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 font-bold text-xs border border-emerald-400/30 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>Export CSV</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={handleExportAttendanceCSV}
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 font-bold text-xs border border-emerald-400/30 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Export Attendance CSV</span>
+            </button>
 
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -1379,8 +1746,8 @@ export default function TeacherCourseWorkspacePage() {
         </div>
 
         {/* ── COURSE KEY PERFORMANCE METRICS (INTERACTIVE STAT CARDS) ───────────────────────── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4 mt-8 pt-6 border-t border-white/10">
-          {/* Card 1: Classes Held & Progression */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mt-8 pt-6 border-t border-white/10">
+          {/* Card 1: Classes Held & Semester Target */}
           <div
             onClick={() => setShowSessionsModal(true)}
             role="button"
@@ -1389,92 +1756,68 @@ export default function TeacherCourseWorkspacePage() {
               if (e.key === "Enter" || e.key === " ") setShowSessionsModal(true);
             }}
             className="p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-indigo-400/60 backdrop-blur-md space-y-2 relative group/card cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.99] shadow-sm hover:shadow-indigo-500/10 text-left"
-            title="Click to view full class session history, attendance logs & announced classes"
+            title="Click to view class session history, attendance logs & edit target classes"
           >
             <div className="flex items-center justify-between gap-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block group-hover/card:text-indigo-300 transition-colors">
-                Classes Held & Progress
+                Classes & Target
               </span>
-              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPlannedClassesInput(courseStats.targetClasses ? String(courseStats.targetClasses) : "");
-                    setShowEditClassesModal(true);
-                  }}
-                  className="text-[10px] font-bold text-indigo-300 hover:text-white bg-indigo-500/20 hover:bg-indigo-500/40 px-2 py-0.5 rounded-md border border-indigo-400/30 transition-all flex items-center gap-1 cursor-pointer"
-                  title="Set or edit planned classes target"
-                >
-                  <Edit3 className="w-2.5 h-2.5" />
-                  <span>{courseStats.hasTarget ? "Target" : "Set Target"}</span>
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowEditClassesModal(true);
+                }}
+                className="text-[10px] text-indigo-300 hover:text-white font-bold flex items-center gap-1 bg-white/10 hover:bg-indigo-600 px-2 py-0.5 rounded-lg transition"
+                title="Edit target classes for this semester"
+              >
+                <Edit3 className="w-2.5 h-2.5" />
+                <span>{courseStats.targetClasses ? "Edit Target" : "Set Target"}</span>
+              </button>
             </div>
 
-            {courseStats.totalHeld === 0 ? (
-              <div className="space-y-2 pt-1">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-black text-slate-300">0</span>
-                  <span className="text-xs font-semibold text-slate-400">Classes Held</span>
-                  <span className="text-[10px] text-amber-300 font-bold ml-auto bg-amber-500/20 px-2 py-0.5 rounded-md border border-amber-400/30">
-                    No Sessions Yet
-                  </span>
-                </div>
-                <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
-                  <div className="h-full bg-slate-700/50 rounded-full w-full" />
-                </div>
-                <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium">
-                  <span className="text-indigo-300 font-semibold flex items-center gap-1">
-                    <Sparkles className="w-3 h-3 text-indigo-400" />
-                    <span>Inspect sessions</span>
-                  </span>
-                  <span>{routineSlots.length > 0 ? `${routineSlots.length} weekly slots` : "No timetable"}</span>
-                </div>
-              </div>
-            ) : courseStats.hasTarget ? (
-              <>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-black text-white">{courseStats.totalHeld}</span>
-                  <span className="text-sm font-bold text-slate-400">/ {courseStats.targetClasses}</span>
-                  <span className="text-xs text-indigo-300 font-extrabold ml-auto">
+            <div className="space-y-2 pt-1">
+              <div className="flex items-baseline gap-2">
+                <span className="text-3xl font-black text-white">{courseStats.totalHeld}</span>
+                <span className="text-xs font-semibold text-slate-400">
+                  {courseStats.targetClasses ? `/ ${courseStats.targetClasses} Target` : "Classes Held"}
+                </span>
+                {courseStats.targetClasses ? (
+                  <span className="text-[10px] text-indigo-300 font-bold ml-auto bg-indigo-500/20 px-2 py-0.5 rounded-md border border-indigo-400/30">
                     {courseStats.progressPct}% Held
                   </span>
-                </div>
-                <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-indigo-500 via-sky-400 to-emerald-400 rounded-full transition-all duration-500"
-                    style={{ width: `${courseStats.progressPct}%` }}
-                  />
-                </div>
-                <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium pt-0.5">
-                  <span>{courseStats.remainingClasses} classes left</span>
-                  <span className="text-indigo-300 font-bold group-hover/card:underline flex items-center gap-0.5">
-                    <span>Inspect Sessions</span>
-                    <ChevronRight className="w-2.5 h-2.5" />
-                  </span>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-black text-white">{courseStats.totalHeld}</span>
-                  <span className="text-xs font-semibold text-slate-400">Classes Held</span>
+                ) : courseStats.totalHeld === 0 ? (
                   <span className="text-[10px] text-amber-300 font-bold ml-auto bg-amber-500/20 px-2 py-0.5 rounded-md border border-amber-400/30">
-                    Target: Not Set
+                    No Target Set
                   </span>
-                </div>
-                <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
-                  <div className="h-full bg-indigo-500/50 rounded-full w-full" />
-                </div>
-                <div className="flex items-center justify-between text-[10px] text-amber-200/80 font-medium pt-0.5">
-                  <span className="underline underline-offset-2">Click to set target</span>
-                  <span className="text-indigo-300 font-bold group-hover/card:underline flex items-center gap-0.5">
-                    <span>Inspect Sessions</span>
-                    <ChevronRight className="w-2.5 h-2.5" />
-                  </span>
-                </div>
-              </>
-            )}
+                ) : null}
+              </div>
+              <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    courseStats.targetClasses
+                      ? "bg-indigo-500"
+                      : courseStats.totalHeld > 0
+                      ? "bg-indigo-500 w-full"
+                      : "bg-slate-700/50 w-full"
+                  }`}
+                  style={courseStats.targetClasses ? { width: `${courseStats.progressPct || 0}%` } : undefined}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium">
+                <span>
+                  {courseStats.targetClasses
+                    ? `${courseStats.remainingClasses} classes remaining`
+                    : routineSlots.length > 0
+                    ? `${routineSlots.length} weekly slots`
+                    : "Target not configured"}
+                </span>
+                <span className="text-indigo-300 font-bold group-hover/card:underline flex items-center gap-0.5">
+                  <span>History</span>
+                  <ChevronRight className="w-2.5 h-2.5" />
+                </span>
+              </div>
+            </div>
           </div>
 
           {/* Card 2: Class Avg Attendance */}
@@ -1512,7 +1855,9 @@ export default function TeacherCourseWorkspacePage() {
               <span className="text-xs text-slate-400 font-medium">Cohort Rate</span>
             </div>
             <span className="text-[10px] text-emerald-300 font-semibold block pt-0.5 truncate">
-              {courseStats.totalHeld === 0
+              {courseStats.targetClasses
+                ? `${courseStats.eligibleCount} of ${courseStats.totalStudents} eligible (target-based)`
+                : courseStats.totalHeld === 0
                 ? "No classes held yet"
                 : `${courseStats.eligibleCount} of ${courseStats.totalStudents} students eligible (≥75%)`}
             </span>
@@ -1606,16 +1951,46 @@ export default function TeacherCourseWorkspacePage() {
               {courseStats.totalNotices > 0 ? "Published to students" : "Click to broadcast notice"}
             </span>
           </div>
+
+          {/* Card 6: Class Tests (CT) */}
+          <div
+            onClick={() => handleTabChange("class-tests")}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") handleTabChange("class-tests");
+            }}
+            className="p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-indigo-400/60 backdrop-blur-md space-y-1 relative group/card cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.99] shadow-sm hover:shadow-indigo-500/10 text-left"
+            title="Click to view and input offline Class Test (CT) marks"
+          >
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block group-hover/card:text-indigo-300 transition-colors">
+                Class Tests (CT)
+              </span>
+              <span className="text-[10px] font-bold text-indigo-300 opacity-0 group-hover/card:opacity-100 transition-opacity flex items-center gap-0.5">
+                <span>Marks</span>
+                <ChevronRight className="w-2.5 h-2.5" />
+              </span>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-black text-white">{courseStats.totalClassTests}</span>
+              <span className="text-xs text-slate-400 font-medium">Offline CTs</span>
+            </div>
+            <span className="text-[10px] text-indigo-300 font-semibold block pt-0.5 truncate">
+              {courseStats.totalClassTests > 0 ? "Roll-wise marks recorded" : "Click to record CT marks"}
+            </span>
+          </div>
         </div>
       </div>
 
       {/* ── COURSE WORKSPACE TABS ──────────────────────────────────── */}
       <div className="flex items-center gap-2 border-b border-slate-200 dark:border-white/10 pb-2 overflow-x-auto scrollbar-none">
         {[
-          { id: "notices", label: "Course Notices", icon: Bell, count: courseNotices.length },
+          { id: "notices", label: "Course Notices", icon: Bell, count: isRelatedTeacher ? courseNotices.length : 0 },
           { id: "attendance", label: "Attendance Hub", icon: UserCheck, count: `${courseStats.totalHeld} Sessions` },
           { id: "materials", label: "Study Materials", icon: BookOpen, count: courseStats.totalMaterials },
           { id: "assignments", label: "Continuous Tasks", icon: FileText, count: courseStats.totalAssignments },
+          { id: "class-tests", label: "Class Tests (CT)", icon: Award, count: `${courseStats.totalClassTests} CTs` },
           { id: "schedule", label: "Routine Schedule", icon: Calendar, count: `${routineSlots.length} Classes` },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -1647,94 +2022,110 @@ export default function TeacherCourseWorkspacePage() {
           ════════════════════════════════════════════════════════════════ */}
       {activeTab === "notices" && (
         <div className="p-7 sm:p-8 rounded-[2rem] bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/80 dark:border-white/10 shadow-sm space-y-6 transition-colors">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-white/10">
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
-                  Course Notices & Announcements
-                </h2>
-                <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 border border-indigo-200/80 dark:border-indigo-800/80">
-                  {courseNotices.length} Published
-                </span>
+          {!isRelatedTeacher ? (
+            <div className="py-16 text-center rounded-2xl bg-amber-50/60 dark:bg-amber-950/20 border border-dashed border-amber-200 dark:border-amber-900/40 p-8 space-y-3">
+              <div className="w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center mx-auto text-amber-600 dark:text-amber-400">
+                <Lock className="w-6 h-6" />
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                Broadcast instant guidelines, reschedule alerts, and voice notes to students of {courseCode}. You can view, edit, or remove notices below.
+              <h3 className="font-bold text-slate-900 dark:text-white text-base">
+                Course Notices Restricted
+              </h3>
+              <p className="text-xs text-slate-600 dark:text-slate-400 max-w-md mx-auto">
+                Course notices and student announcements for {courseCode} are strictly private to the assigned course instructor and enrolled students. Another teacher cannot view or publish notices for this course.
               </p>
-            </div>
-
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Search notices..."
-                  value={noticeSearch}
-                  onChange={(e) => setNoticeSearch(e.target.value)}
-                  className="pl-8 pr-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-44 sm:w-56"
-                />
-                {noticeSearch && (
-                  <button
-                    onClick={() => setNoticeSearch("")}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs"
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-
-              <button
-                type="button"
-                onClick={handleCreateNotice}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Give Course Notice</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Notices List */}
-          {isNoticesLoading ? (
-            <div className="py-12 flex flex-col items-center justify-center space-y-3">
-              <RefreshCw className="w-6 h-6 text-indigo-500 animate-spin" />
-              <p className="text-xs text-slate-400 font-medium">Loading course notices...</p>
-            </div>
-          ) : filteredCourseNotices.length > 0 ? (
-            <div className="grid grid-cols-1 gap-4">
-              {filteredCourseNotices.map((notice) => (
-                <NoticeCard
-                  key={notice.id || notice._id}
-                  notice={notice}
-                  isAdmin={true}
-                  onEdit={handleEditNotice}
-                  onDelete={handleDeleteNotice}
-                />
-              ))}
             </div>
           ) : (
-            <div className="py-16 text-center rounded-2xl bg-slate-50/70 dark:bg-slate-800/40 border border-dashed border-slate-200 dark:border-slate-700 space-y-3">
-              <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center mx-auto text-indigo-500">
-                <Bell className="w-6 h-6" />
+            <>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-white/10">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
+                      Course Notices & Announcements
+                    </h2>
+                    <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 border border-indigo-200/80 dark:border-indigo-800/80">
+                      {filteredCourseNotices.length} Published
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Broadcast instant guidelines, reschedule alerts, and voice notes to students of {courseCode}. You can view, edit, or remove notices below.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search notices..."
+                      value={noticeSearch}
+                      onChange={(e) => setNoticeSearch(e.target.value)}
+                      className="pl-8 pr-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-44 sm:w-56"
+                    />
+                    {noticeSearch && (
+                      <button
+                        onClick={() => setNoticeSearch("")}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleCreateNotice}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Give Course Notice</span>
+                  </button>
+                </div>
               </div>
-              <h3 className="font-bold text-slate-900 dark:text-white text-sm">
-                {noticeSearch ? "No matching course notices found" : `No notices posted for ${courseCode} yet`}
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-                {noticeSearch
-                  ? "Try adjusting your search keyword."
-                  : "Post your first notice, guidelines, schedule announcement, or audio voice note for this course."}
-              </p>
-              {!noticeSearch && (
-                <button
-                  type="button"
-                  onClick={handleCreateNotice}
-                  className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Give First Course Notice</span>
-                </button>
+
+              {/* Notices List */}
+              {isNoticesLoading ? (
+                <div className="py-12 flex flex-col items-center justify-center space-y-3">
+                  <RefreshCw className="w-6 h-6 text-indigo-500 animate-spin" />
+                  <p className="text-xs text-slate-400 font-medium">Loading course notices...</p>
+                </div>
+              ) : filteredCourseNotices.length > 0 ? (
+                <div className="grid grid-cols-1 gap-4">
+                  {filteredCourseNotices.map((notice) => (
+                    <NoticeCard
+                      key={notice.id || notice._id}
+                      notice={notice}
+                      isAdmin={user?.role === "admin"}
+                      onEdit={handleEditNotice}
+                      onDelete={handleDeleteNotice}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="py-16 text-center rounded-2xl bg-slate-50/70 dark:bg-slate-800/40 border border-dashed border-slate-200 dark:border-slate-700 space-y-3">
+                  <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center mx-auto text-indigo-500">
+                    <Bell className="w-6 h-6" />
+                  </div>
+                  <h3 className="font-bold text-slate-900 dark:text-white text-sm">
+                    {noticeSearch ? "No matching course notices found" : `No notices posted for ${courseCode} yet`}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                    {noticeSearch
+                      ? "Try adjusting your search keyword."
+                      : "Post your first notice, guidelines, schedule announcement, or audio voice note for this course."}
+                  </p>
+                  {!noticeSearch && (
+                    <button
+                      type="button"
+                      onClick={handleCreateNotice}
+                      className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Give First Course Notice</span>
+                    </button>
+                  )}
+                </div>
               )}
-            </div>
+            </>
           )}
         </div>
       )}
@@ -1744,6 +2135,41 @@ export default function TeacherCourseWorkspacePage() {
           ════════════════════════════════════════════════════════════════ */}
       {activeTab === "attendance" && (
         <div className="space-y-6">
+          {/* Target Classes Quick Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-white/10 shadow-xs">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                <Target className="w-4 h-4" />
+              </div>
+              <div className="flex items-center gap-2 flex-wrap text-xs">
+                <span className="font-semibold text-slate-500 dark:text-slate-400">Target Classes:</span>
+                {courseStats.targetClasses ? (
+                  <span className="font-bold text-slate-900 dark:text-white">
+                    {courseStats.targetClasses} classes
+                  </span>
+                ) : (
+                  <span className="font-medium text-amber-600 dark:text-amber-400">
+                    Not set
+                  </span>
+                )}
+                {courseStats.targetClasses ? (
+                  <span className="text-slate-400 dark:text-slate-500">
+                    • {courseStats.totalHeld} held ({courseStats.remainingClasses} remaining)
+                  </span>
+                ) : null}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowEditClassesModal(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800 text-xs font-bold transition cursor-pointer"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>{courseStats.targetClasses ? "Edit Target" : "Set Target"}</span>
+            </button>
+          </div>
+
           {/* Main Attendance Card */}
           <div className="p-7 sm:p-8 rounded-[2rem] bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/80 dark:border-white/10 shadow-sm space-y-6 transition-colors">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1756,12 +2182,30 @@ export default function TeacherCourseWorkspacePage() {
                   <span>Student Roster & Exam Eligibility Monitor</span>
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
-                  Calculated specifically for <strong>{courseCode}</strong> across {courseStats.totalHeld} conducted class sessions. University rule mandates ≥75% attendance for regular exam eligibility.
+                  {courseStats.targetClasses ? (
+                    <>
+                      Calculated for <strong>{courseCode}</strong> based on target <strong>{courseStats.targetClasses} classes</strong> ({courseStats.totalHeld} held).
+                    </>
+                  ) : (
+                    <>
+                      Calculated for <strong>{courseCode}</strong> across {courseStats.totalHeld} conducted class sessions.
+                    </>
+                  )}
                 </p>
               </div>
 
               {/* Action Buttons */}
               <div className="flex items-center gap-2.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setShowEditClassesModal(true)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-bold transition cursor-pointer"
+                  title="Configure target class count for this course"
+                >
+                  <Target className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                  <span>{courseStats.targetClasses ? `Target: ${courseStats.targetClasses}` : "Set Target"}</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={handleOpenManualModal}
@@ -1844,7 +2288,7 @@ export default function TeacherCourseWorkspacePage() {
                     <tr className="border-b border-slate-100 dark:border-white/10 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                       <th className="pb-3 px-4">Student</th>
                       <th className="pb-3 px-4">Student ID</th>
-                      <th className="pb-3 px-4 text-center">Attended / Held</th>
+                      <th className="pb-3 px-4 text-center">{courseStats.targetClasses ? "Attended / Target" : "Attended / Held"}</th>
                       <th className="pb-3 px-4 text-center">Course Attendance %</th>
                       <th className="pb-3 px-4 text-center">Exam Eligibility</th>
                       <th className="pb-3 px-4 text-right">Latest Session</th>
@@ -1885,10 +2329,17 @@ export default function TeacherCourseWorkspacePage() {
                           <td className="py-4 px-4 text-center font-bold text-slate-800 dark:text-slate-100">
                             <div className="flex flex-col items-center">
                               <div className="flex items-center gap-1">
-                                <span className="text-indigo-600 dark:text-indigo-400 font-mono">{stu.attendedCount}</span>
-                                <span className="text-slate-400 font-mono"> / {stu.totalSessions} Sessions</span>
+                                <span className="text-indigo-600 dark:text-indigo-400 font-mono font-black">{stu.attendedCount}</span>
+                                <span className="text-slate-400 font-mono text-xs">
+                                  {courseStats.targetClasses
+                                    ? ` / ${courseStats.targetClasses} Target`
+                                    : ` / ${stu.totalSessions} Sessions`}
+                                </span>
                               </div>
-                              {stu.remainingClasses > 0 && (
+                              <span className="text-[10px] text-slate-400 font-normal">
+                                ({stu.attendedCount} of {stu.totalSessions} held attended)
+                              </span>
+                              {courseStats.targetClasses && stu.remainingClasses > 0 && (
                                 <span className={`text-[10px] mt-0.5 font-semibold ${
                                   stu.neededFromRemaining === 0
                                     ? "text-emerald-500 dark:text-emerald-400"
@@ -2454,8 +2905,194 @@ export default function TeacherCourseWorkspacePage() {
 
 
       {/* ════════════════════════════════════════════════════════════════
-          TAB 5: CLASS TIMETABLE & ROUTINE SLOTS
+          TAB 4.5: OFFLINE CLASS TESTS (CT) & ROLL-WISE MARKS
           ════════════════════════════════════════════════════════════════ */}
+      {activeTab === "class-tests" && (
+        <div className="p-7 sm:p-8 rounded-[2rem] bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/80 dark:border-white/10 shadow-sm space-y-6 transition-colors">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-white/10">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
+                  Offline Class Tests (CT) & Marks Management
+                </h2>
+                <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 border border-indigo-200/80 dark:border-indigo-800/80">
+                  {classTests.length} Tests Recorded
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                Class Tests take place offline in the classroom. Input and update student CT marks roll-wise here. Scores synchronize automatically with student portals.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleOpenCreateCT}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Create Class Test (CT)</span>
+            </button>
+          </div>
+
+          {/* Class Tests List */}
+          {isClassTestsLoading ? (
+            <div className="py-12 flex flex-col items-center justify-center space-y-3">
+              <RefreshCw className="w-6 h-6 text-indigo-500 animate-spin" />
+              <p className="text-xs text-slate-400 font-medium">Loading course class tests...</p>
+            </div>
+          ) : classTests.length > 0 ? (
+            <div className="grid grid-cols-1 gap-5">
+              {classTests.map((ct) => {
+                const total = ct.totalMarks || 20;
+                const stats = ct.stats || {};
+                const evaluatedCount = stats.evaluatedCount || 0;
+                const totalRoster = stats.totalRoster || (rosterData?.roster?.length || 0);
+                const avg = stats.averageMarks;
+                const highest = stats.highestMarks;
+                const lowest = stats.lowestMarks;
+                const absentCount = stats.absentCount || 0;
+
+                return (
+                  <div
+                    key={ct.id || ct._id}
+                    className="p-6 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 space-y-5 transition"
+                  >
+                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                      <div className="space-y-2 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60">
+                            Max {total} Marks
+                          </span>
+                          {ct.date && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700/80 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-600 flex items-center gap-1">
+                              <Calendar className="w-3 h-3 text-slate-400" />
+                              <span>Exam Date: {new Date(ct.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                            </span>
+                          )}
+                          {ct.room && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700/80 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-600 flex items-center gap-1">
+                              <MapPin className="w-3 h-3 text-slate-400" />
+                              <span>{ct.room}</span>
+                            </span>
+                          )}
+                        </div>
+
+                        <h3 className="text-base font-black text-slate-900 dark:text-white">
+                          {ct.title}
+                        </h3>
+
+                        {ct.topic && (
+                          <p className="text-xs text-slate-600 dark:text-slate-300">
+                            <span className="font-semibold text-slate-500">Syllabus / Topics:</span> {ct.topic}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenGradingModal(ct)}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>Input / Edit Marks</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleExportCTCSV(ct)}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-bold transition cursor-pointer border border-slate-200/80 dark:border-slate-600"
+                          title="Export roll-wise marksheet to CSV"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Export CSV</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditCT(ct)}
+                          className="p-2 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition cursor-pointer"
+                          title="Edit CT details"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCT(ct)}
+                          className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/60 transition cursor-pointer"
+                          title="Delete Class Test"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Class Test Statistics Strip */}
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-3 border-t border-slate-200/60 dark:border-slate-700/60 text-xs">
+                      <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-700/60">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase block">Evaluated</span>
+                        <span className="font-extrabold text-slate-900 dark:text-white">
+                          {evaluatedCount} of {totalRoster} Students
+                        </span>
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-700/60">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase block">Class Average</span>
+                        <span className="font-extrabold text-indigo-600 dark:text-indigo-400">
+                          {avg !== null ? `${avg} / ${total} (${Math.round((avg / total) * 100)}%)` : "—"}
+                        </span>
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-700/60">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase block">Highest Mark</span>
+                        <span className="font-extrabold text-emerald-600 dark:text-emerald-400">
+                          {highest !== null ? `${highest} / ${total}` : "—"}
+                        </span>
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-700/60">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase block">Lowest Mark</span>
+                        <span className="font-extrabold text-slate-600 dark:text-slate-300">
+                          {lowest !== null ? `${lowest} / ${total}` : "—"}
+                        </span>
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-700/60 col-span-2 sm:col-span-1">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase block">Absent Count</span>
+                        <span className="font-extrabold text-rose-600 dark:text-rose-400">
+                          {absentCount} Absent
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="py-16 text-center rounded-2xl bg-slate-50/70 dark:bg-slate-800/40 border border-dashed border-slate-200 dark:border-slate-700 space-y-3">
+              <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center mx-auto text-indigo-500">
+                <Award className="w-6 h-6" />
+              </div>
+              <h3 className="font-bold text-slate-900 dark:text-white text-sm">
+                No offline Class Tests recorded for {courseCode} yet
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                Class Tests take place offline in the classroom. Create a test entry to record roll-wise student marks, calculate grades, and share performance insights with students.
+              </p>
+              <button
+                type="button"
+                onClick={handleOpenCreateCT}
+                className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Create First Class Test</span>
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       {activeTab === "schedule" && (
         <div className="p-7 sm:p-8 rounded-[2rem] bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/80 dark:border-white/10 shadow-sm space-y-6 transition-colors">
           <div>
@@ -3404,7 +4041,6 @@ export default function TeacherCourseWorkspacePage() {
         onNoticeSaved={() => {
           fetchCourseNotices();
           window.dispatchEvent(new CustomEvent("refresh-notices"));
-          toast.success(editingNotice ? `Notice for ${courseCode} updated!` : `Course notice for ${courseCode} published!`);
         }}
         teacherCourses={[{
           code: courseCode,
@@ -3420,158 +4056,116 @@ export default function TeacherCourseWorkspacePage() {
       />
 
       {/* ════════════════════════════════════════════════════════════════
-          MODAL 7: EDIT PLANNED TOTAL CLASSES TARGET
+          MODAL 7: EDIT TARGET TOTAL CLASSES
           ════════════════════════════════════════════════════════════════ */}
       {showEditClassesModal && (
         <div
           data-lenis-prevent
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in overscroll-contain"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in"
         >
-          <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-6 max-h-[90vh] overflow-y-auto overscroll-contain scrollbar-thin">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-                  <Calendar className="w-5 h-5" />
+          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden transition-all">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shadow-xs">
+                  <Target className="w-4 h-4" />
                 </div>
-                <div>
-                  <h3 className="text-base font-black text-slate-900 dark:text-white">
-                    Edit Planned Classes • {courseCode}
-                  </h3>
-                  <p className="text-xs text-slate-400">Configure total target sessions to be held this semester</p>
-                </div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Target Classes
+                </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setShowEditClassesModal(false)}
-                className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
+            {/* Form Body */}
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                handleUpdatePlannedClasses(plannedClassesInput);
+                handleUpdatePlannedClasses();
               }}
-              className="space-y-5"
+              className="p-5 space-y-4"
             >
-              {/* Presets */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Quick Recommended Presets
-                </label>
-                <div className="grid grid-cols-4 gap-2">
-                  {[24, 30, 36, 40].map((preset) => {
-                    const isSelected = Number(plannedClassesInput) === preset;
-                    return (
-                      <button
-                        key={preset}
-                        type="button"
-                        onClick={() => setPlannedClassesInput(preset)}
-                        className={`py-2.5 px-2 rounded-xl text-xs font-extrabold border transition-all cursor-pointer ${
-                          isSelected
-                            ? "bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-600/30 scale-102"
-                            : "bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-400"
-                        }`}
-                      >
-                        {preset} Classes
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="text-[11px] text-slate-400">
-                  Standard university guidelines: 3-credit course ≈ 36 classes (3/wk × 12 wks); 2-credit course ≈ 24 classes.
-                </p>
-              </div>
-
-              {/* Number Input */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Total Target Classes (Held & Remaining)
+              <div>
+                <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1.5">
+                  How many classes should be taken?
                 </label>
                 <div className="relative">
                   <input
                     type="number"
                     min="1"
                     max="300"
-                    required
                     placeholder="e.g. 30"
-                    value={plannedClassesInput ?? ""}
+                    value={plannedClassesInput}
                     onChange={(e) => setPlannedClassesInput(e.target.value)}
-                    className="w-full h-11 px-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-extrabold text-slate-900 dark:text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    className="w-full h-11 px-3.5 pr-20 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-base font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition"
+                    autoFocus
                   />
-                  <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
-                    Sessions Planned
+                  <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400 pointer-events-none">
+                    Classes
                   </span>
                 </div>
               </div>
 
-              {/* Live Preview / Impact Card */}
-              <div className="p-4 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50 space-y-3">
-                <h4 className="text-xs font-black text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                  <span>Semester Projection Preview</span>
-                </h4>
-                {parseInt(plannedClassesInput, 10) > 0 ? (
-                  <>
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                      <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/60 border border-indigo-100/80 dark:border-indigo-900/40">
-                        <span className="text-[10px] font-bold text-slate-400 block uppercase">Conducted</span>
-                        <span className="text-base font-black text-indigo-600 dark:text-indigo-400">
-                          {courseStats.totalHeld}
-                        </span>
-                      </div>
-                      <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/60 border border-indigo-100/80 dark:border-indigo-900/40">
-                        <span className="text-[10px] font-bold text-slate-400 block uppercase">Remaining</span>
-                        <span className="text-base font-black text-slate-700 dark:text-slate-200">
-                          {Math.max(0, (parseInt(plannedClassesInput, 10) || 0) - courseStats.totalHeld)}
-                        </span>
-                      </div>
-                      <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/60 border border-indigo-100/80 dark:border-indigo-900/40">
-                        <span className="text-[10px] font-bold text-slate-400 block uppercase">75% Min Req</span>
-                        <span className="text-base font-black text-emerald-600 dark:text-emerald-400">
-                          {Math.ceil(0.75 * (parseInt(plannedClassesInput, 10) || 0))} Classes
-                        </span>
-                      </div>
-                    </div>
-                    <p className="text-[11px] text-indigo-700 dark:text-indigo-300 leading-relaxed">
-                      Students must attend at least <strong>{Math.ceil(0.75 * (parseInt(plannedClassesInput, 10) || 0))} classes</strong> across the whole semester to maintain regular collegiate exam eligibility.
-                    </p>
-                  </>
-                ) : (
-                  <p className="text-xs text-indigo-700 dark:text-indigo-300 leading-relaxed">
-                    Enter the total number of planned class sessions above. The system will project remaining classes and the required minimum 75% attendance threshold.
-                  </p>
+              {/* Quick Presets & Clear */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {[20, 25, 30, 40].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setPlannedClassesInput(String(preset))}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                      String(plannedClassesInput) === String(preset)
+                        ? "bg-indigo-600 text-white"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                    }`}
+                  >
+                    {preset}
+                  </button>
+                ))}
+                {plannedClassesInput && (
+                  <button
+                    type="button"
+                    onClick={() => setPlannedClassesInput("")}
+                    className="px-2.5 py-1 rounded-lg text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer ml-auto"
+                  >
+                    Clear
+                  </button>
                 )}
               </div>
 
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                Attendance % will be calculated as (Attended ÷ Target) × 100%.
+              </p>
+
               {/* Actions */}
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setShowEditClassesModal(false)}
-                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300 bg-slate-100/90 dark:bg-slate-800/80 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 border border-slate-200/80 dark:border-slate-700/80 hover:border-indigo-200 dark:hover:border-indigo-800/60 transition-all cursor-pointer shadow-2xs active:scale-95"
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSavingPlannedClasses}
-                  className="inline-flex items-center gap-1.5 px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition cursor-pointer shadow-md shadow-indigo-600/30 disabled:opacity-50"
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition cursor-pointer shadow-xs disabled:opacity-50"
                 >
-                  <Save className="w-3.5 h-3.5" />
-                  <span>{isSavingPlannedClasses ? "Saving Changes..." : "Save Planned Classes"}</span>
+                  {isSavingPlannedClasses ? "Saving..." : "Save Target"}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-
-
 
       {/* ════════════════════════════════════════════════════════════════
           MODAL 9: COURSE SESSIONS & HELD HISTORY INSPECTOR
@@ -3735,7 +4329,7 @@ export default function TeacherCourseWorkspacePage() {
             {/* Modal Footer */}
             <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500">
               <span>
-                Total Sessions: <strong>{courseStats.totalHeld}</strong> {courseStats.hasTarget ? `of ${courseStats.targetClasses} planned` : ""}
+                Total Sessions Held: <strong>{courseStats.totalHeld}</strong>
               </span>
               <button
                 type="button"
@@ -3744,6 +4338,463 @@ export default function TeacherCourseWorkspacePage() {
               >
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL 10: CREATE / EDIT CLASS TEST (OFFLINE) ──────────────── */}
+      {showCTModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-7 max-w-lg w-full shadow-2xl space-y-5 animate-scaleUp">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                  <Award className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+                    {editingCT ? "Edit Class Test" : "Create Class Test (Offline)"}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Offline assessment for {courseCode} • Roster auto-linked
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCTModal(false)}
+                className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCT} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  Class Test Title <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Class Test 01 - Theory"
+                  value={ctForm.title}
+                  onChange={(e) => setCTForm({ ...ctForm, title: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-sm focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800 dark:text-slate-100"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    Total Marks <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    required
+                    value={ctForm.totalMarks}
+                    onChange={(e) => setCTForm({ ...ctForm, totalMarks: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-sm focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800 dark:text-slate-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    Exam Date <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={ctForm.date}
+                    onChange={(e) => setCTForm({ ...ctForm, date: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-sm focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800 dark:text-slate-100"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  Exam Classroom / Venue
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Room 407, CSE Academic Building"
+                  value={ctForm.room}
+                  onChange={(e) => setCTForm({ ...ctForm, room: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-sm focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800 dark:text-slate-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  Syllabus / Topics Covered
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="e.g. Lexical Analysis, Syntax Directed Translation, Parsing Algorithms..."
+                  value={ctForm.topic}
+                  onChange={(e) => setCTForm({ ...ctForm, topic: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-sm focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800 dark:text-slate-100 resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowCTModal(false)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingCT}
+                  className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-sm transition cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {isSavingCT ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Saving...
+                    </>
+                  ) : editingCT ? (
+                    "Update Class Test"
+                  ) : (
+                    "Create Class Test"
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL 11: ROLL-WISE CLASS TEST MARKS ENTRY & GRADING SHEET ── */}
+      {activeCTForGrading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-5xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-scaleUp">
+            {/* Modal Header */}
+            <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-4 bg-slate-50/50 dark:bg-slate-800/30">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300">
+                    Offline Assessment Marksheet
+                  </span>
+                  <span className="text-xs text-slate-400">•</span>
+                  <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                    Max Marks: {activeCTForGrading.totalMarks}
+                  </span>
+                  {activeCTForGrading.room && (
+                    <>
+                      <span className="text-xs text-slate-400">•</span>
+                      <span className="text-xs text-slate-500 flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-slate-400" />
+                        {activeCTForGrading.room}
+                      </span>
+                    </>
+                  )}
+                </div>
+                <h3 className="text-xl font-black text-slate-800 dark:text-slate-100">
+                  {activeCTForGrading.title}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Course: <span className="font-semibold text-slate-700 dark:text-slate-300">{courseCode}</span> • Exam Date:{" "}
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">{activeCTForGrading.date || "N/A"}</span>
+                  {activeCTForGrading.topic && ` • Topics: ${activeCTForGrading.topic}`}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveCTForGrading(null)}
+                className="p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Live Benchmarks & Stats Bar */}
+            {(() => {
+              const totalEnrolled = gradingMarksMap.length;
+              const evaluatedStudents = gradingMarksMap.filter(
+                (e) => !e.isAbsent && e.marks !== "" && !isNaN(Number(e.marks))
+              );
+              const absentStudents = gradingMarksMap.filter((e) => e.isAbsent);
+              const validMarks = evaluatedStudents.map((e) => Number(e.marks));
+              const liveAvg =
+                validMarks.length > 0
+                  ? (validMarks.reduce((a, b) => a + b, 0) / validMarks.length).toFixed(1)
+                  : "—";
+              const liveHighest =
+                validMarks.length > 0 ? Math.max(...validMarks).toFixed(1) : "—";
+              const liveLowest =
+                validMarks.length > 0 ? Math.min(...validMarks).toFixed(1) : "—";
+
+              return (
+                <div className="px-6 py-3 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 grid grid-cols-2 sm:grid-cols-5 gap-3 text-center">
+                  <div className="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xs">
+                    <p className="text-[11px] font-semibold text-slate-400 uppercase">Enrolled</p>
+                    <p className="text-base font-extrabold text-slate-800 dark:text-slate-100">{totalEnrolled}</p>
+                  </div>
+                  <div className="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xs">
+                    <p className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase">Evaluated</p>
+                    <p className="text-base font-extrabold text-emerald-700 dark:text-emerald-300">
+                      {evaluatedStudents.length} <span className="text-xs font-normal text-slate-400">/ {totalEnrolled}</span>
+                    </p>
+                  </div>
+                  <div className="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xs">
+                    <p className="text-[11px] font-semibold text-rose-500 uppercase">Absent</p>
+                    <p className="text-base font-extrabold text-rose-600 dark:text-rose-400">{absentStudents.length}</p>
+                  </div>
+                  <div className="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xs">
+                    <p className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 uppercase">Class Avg</p>
+                    <p className="text-base font-extrabold text-indigo-700 dark:text-indigo-300">
+                      {liveAvg} <span className="text-xs font-normal text-slate-400">/ {activeCTForGrading.totalMarks}</span>
+                    </p>
+                  </div>
+                  <div className="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xs">
+                    <p className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 uppercase">Highest</p>
+                    <p className="text-base font-extrabold text-amber-700 dark:text-amber-300">
+                      {liveHighest} <span className="text-xs font-normal text-slate-400">/ {activeCTForGrading.totalMarks}</span>
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Filter and Action Toolbar */}
+            <div className="px-6 py-3 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+              <div className="relative flex-1 min-w-[200px] max-w-sm">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search by student roll or name..."
+                  value={gradingSearch}
+                  onChange={(e) => setGradingSearch(e.target.value)}
+                  className="w-full pl-9 pr-3.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 text-xs focus:ring-2 focus:ring-indigo-500 outline-none text-slate-800 dark:text-slate-100"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleExportCTCSV(activeCTForGrading)}
+                  className="px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                  title="Export student marks to CSV"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Export CSV</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveAllCTMarks}
+                  disabled={isSavingCTMarks}
+                  className="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingCTMarks ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-3.5 h-3.5" />
+                      <span>Save All Marks</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Students Marks Table */}
+            <div className="flex-1 overflow-y-auto px-6 py-3">
+              {(() => {
+                const filtered = gradingMarksMap.filter((entry) => {
+                  if (!gradingSearch.trim()) return true;
+                  const q = gradingSearch.toLowerCase();
+                  return (
+                    entry.studentId?.toLowerCase().includes(q) ||
+                    entry.studentName?.toLowerCase().includes(q) ||
+                    entry.studentEmail?.toLowerCase().includes(q)
+                  );
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="text-center py-12">
+                      <Users className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                      <p className="text-sm font-semibold text-slate-600 dark:text-slate-400">
+                        {gradingMarksMap.length === 0
+                          ? "No enrolled students found in roster for this semester."
+                          : "No students matching your search."}
+                      </p>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Students enrolled in semester {course?.semesterNum || 7} will automatically show up here.
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 font-bold uppercase tracking-wider">
+                          <th className="py-3 px-3.5 w-14">#</th>
+                          <th className="py-3 px-3.5">Roll No</th>
+                          <th className="py-3 px-3.5">Student Name</th>
+                          <th className="py-3 px-3.5 w-32 text-center">Marks (Max {activeCTForGrading.totalMarks})</th>
+                          <th className="py-3 px-3.5 w-24 text-center">Absent?</th>
+                          <th className="py-3 px-3.5 w-28 text-center">Grade</th>
+                          <th className="py-3 px-3.5">Remarks / Feedback</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {filtered.map((entry, idx) => {
+                          const maxMarks = Number(activeCTForGrading.totalMarks) || 20;
+                          const hasScore = !entry.isAbsent && entry.marks !== "" && !isNaN(Number(entry.marks));
+                          const numericScore = hasScore ? Number(entry.marks) : null;
+                          const gradeInfo = hasScore ? getCTGradeDetails(numericScore, maxMarks) : null;
+
+                          return (
+                            <tr
+                              key={entry.studentId || idx}
+                              className={`transition hover:bg-slate-50/70 dark:hover:bg-slate-800/40 ${
+                                entry.isAbsent ? "bg-rose-50/20 dark:bg-rose-950/10" : ""
+                              }`}
+                            >
+                              <td className="py-2.5 px-3.5 text-slate-400 font-mono font-medium">
+                                {idx + 1}
+                              </td>
+                              <td className="py-2.5 px-3.5">
+                                <span className="font-mono font-bold text-xs bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 px-2 py-0.5 rounded-md">
+                                  {entry.studentId || "—"}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3.5">
+                                <div className="font-semibold text-slate-800 dark:text-slate-100">
+                                  {entry.studentName || "Student"}
+                                </div>
+                                <div className="text-[11px] text-slate-400 truncate max-w-xs font-mono">
+                                  {entry.studentEmail || "—"}
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-3.5 text-center">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={maxMarks}
+                                  step="0.5"
+                                  disabled={entry.isAbsent}
+                                  placeholder={entry.isAbsent ? "ABS" : "0"}
+                                  value={entry.isAbsent ? "" : entry.marks}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    handleUpdateGradingEntry(entry.studentId, "marks", val);
+                                  }}
+                                  className={`w-20 px-2.5 py-1.5 text-center font-bold text-xs rounded-xl border outline-none transition ${
+                                    entry.isAbsent
+                                      ? "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 cursor-not-allowed opacity-50"
+                                      : "bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                                  }`}
+                                />
+                              </td>
+                              <td className="py-2.5 px-3.5 text-center">
+                                <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs select-none">
+                                  <input
+                                    type="checkbox"
+                                    checked={Boolean(entry.isAbsent)}
+                                    onChange={(e) =>
+                                      handleUpdateGradingEntry(entry.studentId, "isAbsent", e.target.checked)
+                                    }
+                                    className="w-4 h-4 text-rose-600 rounded border-slate-300 dark:border-slate-700 focus:ring-rose-500"
+                                  />
+                                  <span
+                                    className={`text-[11px] font-bold ${
+                                      entry.isAbsent
+                                        ? "text-rose-600 dark:text-rose-400"
+                                        : "text-slate-400"
+                                    }`}
+                                  >
+                                    {entry.isAbsent ? "Absent" : "Present"}
+                                  </span>
+                                </label>
+                              </td>
+                              <td className="py-2.5 px-3.5 text-center">
+                                {entry.isAbsent ? (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300">
+                                    Absent
+                                  </span>
+                                ) : gradeInfo ? (
+                                  <span
+                                    className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-bold border ${gradeInfo.color}`}
+                                  >
+                                    <span>{gradeInfo.letter}</span>
+                                    <span className="opacity-75 font-mono text-[10px]">
+                                      ({Math.round((numericScore / maxMarks) * 100)}%)
+                                    </span>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-400">
+                                    Unmarked
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3.5">
+                                <input
+                                  type="text"
+                                  placeholder="e.g. Well prepared, clear answers"
+                                  value={entry.remarks || ""}
+                                  onChange={(e) =>
+                                    handleUpdateGradingEntry(entry.studentId, "remarks", e.target.value)
+                                  }
+                                  className="w-full px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-100 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+                                />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-3.5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-center justify-between text-xs text-slate-500">
+              <span>
+                Changes saved here will be immediately published to student course workspaces.
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveCTForGrading(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-semibold transition cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveAllCTMarks}
+                  disabled={isSavingCTMarks}
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold flex items-center gap-1.5 shadow-sm transition cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingCTMarks ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      <span>Save All Student Marks</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>

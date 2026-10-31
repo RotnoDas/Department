@@ -136,16 +136,10 @@ export function StudentAnalyticsCharts({
   const subjectAttendance = (attendanceStats && attendanceStats.length > 0)
     ? attendanceStats.map(s => ({
         code: s.courseCode,
-        name: s.courseName,
-        attendance: s.percentage
+        name: s.courseTitle || s.courseName,
+        attendance: s.percentage || 0
       }))
-    : [
-        { code: "CSE 4101", name: "Software Engineering", attendance: 90 },
-        { code: "CSE 4102", name: "Software Project III", attendance: 80 },
-        { code: "CSE 4103", name: "Compiler Design", attendance: 70 },
-        { code: "CSE 4104", name: "AI Sessional", attendance: 100 },
-        { code: "CSE 4105", name: "Computer Graphics", attendance: 90 },
-      ];
+    : [];
 
   if (!isMounted) return null;
 
@@ -323,26 +317,40 @@ export function StudentAnalyticsCharts({
                 Mandatory presence rate required for semester final exam clearance
               </p>
             </div>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
-              Avg {attendanceSummary?.overallPercentage !== undefined ? `${attendanceSummary.overallPercentage}%` : "88%"}
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+              (attendanceSummary?.overallPercentage ?? 0) >= 75
+                ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400"
+                : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+            }`}>
+              Avg {attendanceSummary?.overallPercentage !== undefined ? `${attendanceSummary.overallPercentage}%` : "0%"}
             </span>
           </div>
 
           <div className="h-52 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={subjectAttendance} layout="vertical" margin={{ top: 5, right: 30, left: 35, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" opacity={0.5} />
-                <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 10, fill: "#64748b" }} unit="%" axisLine={false} tickLine={false} />
-                <YAxis dataKey="code" type="category" tick={{ fontSize: 11, fontWeight: "bold", fill: "#475569" }} axisLine={false} tickLine={false} />
-                <Tooltip content={<CustomChartTooltip unit="%" />} />
-                <ReferenceLine x={75} stroke="#f43f5e" strokeDasharray="3 3" label={{ value: "Min 75%", fill: "#f43f5e", fontSize: 10, position: "insideBottomRight" }} />
-                <Bar dataKey="attendance" name="Class Attendance" fill="#6366f1" radius={[0, 6, 6, 0]} barSize={14} />
-              </BarChart>
-            </ResponsiveContainer>
+            {subjectAttendance.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={subjectAttendance} layout="vertical" margin={{ top: 5, right: 30, left: 35, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" opacity={0.5} />
+                  <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 10, fill: "#64748b" }} unit="%" axisLine={false} tickLine={false} />
+                  <YAxis dataKey="code" type="category" tick={{ fontSize: 11, fontWeight: "bold", fill: "#475569" }} axisLine={false} tickLine={false} />
+                  <Tooltip content={<CustomChartTooltip unit="%" />} />
+                  <ReferenceLine x={75} stroke="#f43f5e" strokeDasharray="3 3" label={{ value: "Min 75%", fill: "#f43f5e", fontSize: 10, position: "insideBottomRight" }} />
+                  <Bar dataKey="attendance" name="Class Attendance" fill="#6366f1" radius={[0, 6, 6, 0]} barSize={14} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full w-full flex flex-col items-center justify-center text-center p-4 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl space-y-1">
+                <CheckCircle2 className="w-7 h-7 text-slate-300 dark:text-slate-600" />
+                <p className="text-xs font-bold text-slate-600 dark:text-slate-300">No attendance sessions recorded yet</p>
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">Your presence rate vs the 75% exam line will plot here as classes are conducted.</p>
+              </div>
+            )}
           </div>
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-100 dark:border-white/10">
             <span>Minimum University Eligibility: <strong>75%</strong></span>
-            <span className="text-emerald-600 dark:text-emerald-400 font-bold">✓ All Courses Exam Cleared</span>
+            <span className={(attendanceSummary?.overallPercentage ?? 0) >= 75 && subjectAttendance.length > 0 ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-slate-400 font-medium"}>
+              {(attendanceSummary?.overallPercentage ?? 0) >= 75 && subjectAttendance.length > 0 ? "✓ All Courses Exam Cleared" : "Awaiting class sessions"}
+            </span>
           </div>
         </div>
       </div>

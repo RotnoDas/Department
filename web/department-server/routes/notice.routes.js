@@ -114,7 +114,13 @@ router.get('/', async (req, res) => {
     }
 
     if (courseCode && courseCode.trim()) {
-      query.courseCode = courseCode.trim().toUpperCase();
+      const trimmed = courseCode.trim().toUpperCase();
+      const compact = trimmed.replace(/[\s-]/g, '');
+      const regexPattern = compact.split('').join('\\s*');
+      query.$or = [
+        { courseCode: trimmed },
+        { courseCode: { $regex: `^${regexPattern}$`, $options: 'i' } }
+      ];
     }
     if (semester && String(semester).trim()) {
       query.semester = String(semester).trim();

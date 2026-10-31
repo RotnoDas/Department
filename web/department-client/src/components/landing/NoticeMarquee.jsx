@@ -30,17 +30,21 @@ export function NoticeMarquee() {
         if (res.ok) {
           const data = await res.json();
           if (data?.notices && data.notices.length > 0) {
-            const mapped = data.notices.map((n, i) => {
-              const isPub = Boolean(n.isPublic);
-              return {
-                id: String(n._id || n.id || i + 1),
-                text: n.title + (n.content ? ` — ${n.content.slice(0, 75)}...` : ""),
-                badge: isPub ? "Public" : (n.priority === "High" ? "Urgent" : n.category || "Notice"),
-                category: n.category || "General",
-                isPublic: isPub,
-              };
-            });
-            setNotices(mapped);
+            // Exclude course-specific notices so classroom announcements stay private
+            const publicDeptNotices = data.notices.filter((n) => n.noticeType !== "course" && !n.courseCode);
+            if (publicDeptNotices.length > 0) {
+              const mapped = publicDeptNotices.map((n, i) => {
+                const isPub = Boolean(n.isPublic);
+                return {
+                  id: String(n._id || n.id || i + 1),
+                  text: n.title + (n.content ? ` — ${n.content.slice(0, 75)}...` : ""),
+                  badge: isPub ? "Public" : (n.priority === "High" ? "Urgent" : n.category || "Notice"),
+                  category: n.category || "General",
+                  isPublic: isPub,
+                };
+              });
+              setNotices(mapped);
+            }
           }
         }
       } catch (err) {

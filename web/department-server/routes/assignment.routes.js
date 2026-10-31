@@ -213,12 +213,13 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// ── POST /api/assignments/:id/submit (Student Submits Work) ───
+// ── POST /api/assignments/:id/submit (Student Submits or Resubmits Work) ───
 router.post('/:id/submit', upload.single('file'), async (req, res) => {
   try {
     const { assignments, assignmentSubmissions } = getCollections();
     const { id } = req.params;
-    const { studentId, studentName, studentEmail, batch, semester, notes } = req.body;
+    const { studentId, studentName, studentEmail, batch, semester } = req.body;
+    const notes = (req.body.notes || req.body.comment || '').trim();
 
     if (!ObjectId.isValid(id)) {
       return res.status(400).json({ error: 'Invalid assignment ID' });
@@ -249,13 +250,17 @@ router.post('/:id/submit', upload.single('file'), async (req, res) => {
 
     // Check if previous submission exists
     const cleanStudentEmail = String(studentEmail).trim();
+    const cleanStudentId = String(studentId || '').trim();
     const existing = await assignmentSubmissions.findOne({
-      assignmentId: new ObjectId(id),
-      studentEmail: { $regex: `^${cleanStudentEmail.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')}$`, $options: 'i' },
+      assignmentId: { $in: [new ObjectId(id), String(id)] },
+      $or: [
+        { studentEmail: { $regex: `^${cleanStudentEmail.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')}$`, $options: 'i' } },
+        ...(cleanStudentId ? [{ studentId: cleanStudentId }] : []),
+      ],
     });
 
     if (existing) {
-      // If replacing file, remove old one
+      // If replacing file with new one, remove old one from disk
       if (filePath && existing.filePath) {
         const oldPath = path.join(__dirname, '..', existing.filePath.replace(/^\//, ''));
         try {
@@ -268,7 +273,7 @@ router.post('/:id/submit', upload.single('file'), async (req, res) => {
         studentName: studentName || existing.studentName,
         batch: batch || existing.batch,
         semester: semester || existing.semester,
-        notes: notes !== undefined ? notes : existing.notes,
+        notes: notes !== '' ? notes : (existing.notes || ''),
         submittedAt: now,
         isLate,
         status: isLate ? 'late' : 'submitted',
@@ -289,9 +294,14 @@ router.post('/:id/submit', upload.single('file'), async (req, res) => {
       const updated = await assignmentSubmissions.findOne({ _id: existing._id });
       return res.json({
         success: true,
-        message: 'Assignment submission updated successfully.',
+        message: 'Assignment resubmitted successfully.',
         submission: updated,
       });
+    }
+
+    // New submission requires file or notes
+    if (!filePath && !notes) {
+      return res.status(400).json({ error: 'Please select a solution file or provide submission notes.' });
     }
 
     // New submission

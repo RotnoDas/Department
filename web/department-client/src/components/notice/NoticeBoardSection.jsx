@@ -98,6 +98,49 @@ export default function NoticeBoardSection({
     return new Set(studentSemesterCourses.map((c) => c.code.toUpperCase().replace(/\s+/g, "")));
   }, [studentSemesterCourses]);
 
+  // Fallback internal teacher routine courses if teacherCourses prop is not yet populated
+  const [internalTeacherCourses, setInternalTeacherCourses] = useState([]);
+
+  useEffect(() => {
+    if (isTeacher && (!teacherCourses || teacherCourses.length === 0) && (user?.email || user?.name)) {
+      const params = new URLSearchParams();
+      if (user.email) params.set("email", user.email);
+      if (user.name) params.set("teacherName", user.name);
+      fetch(`/backend/api/teacher/routine?${params.toString()}`)
+        .then((r) => (r.ok ? r.json() : []))
+        .then((slots) => {
+          if (Array.isArray(slots)) {
+            const list = [];
+            const seen = new Set();
+            slots.forEach((s) => {
+              if (s.courseCode && !seen.has(s.courseCode.toUpperCase())) {
+                seen.add(s.courseCode.toUpperCase());
+                list.push({ code: s.courseCode, title: s.courseTitle });
+              }
+            });
+            setInternalTeacherCourses(list);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isTeacher, teacherCourses, user?.email, user?.name]);
+
+  const activeTeacherCourses = useMemo(() => {
+    if (teacherCourses && teacherCourses.length > 0) return teacherCourses;
+    return internalTeacherCourses;
+  }, [teacherCourses, internalTeacherCourses]);
+
+  const teacherCourseCodesSet = useMemo(() => {
+    const set = new Set();
+    (activeTeacherCourses || []).forEach((c) => {
+      const code = c?.code || c?.courseCode;
+      if (code) {
+        set.add(String(code).toUpperCase().replace(/[\s-]/g, ""));
+      }
+    });
+    return set;
+  }, [activeTeacherCourses]);
+
   const fetchNotices = useCallback(async () => {
     setLoading(true);
     try {
@@ -249,9 +292,53 @@ export default function NoticeBoardSection({
       return { scopedCourseNotices: studentCourses, scopedDeptNotices: studentDept };
     }
 
-    // Teachers, Admins, Employees, Public: see all circulars
-    return { scopedCourseNotices: rawCourses, scopedDeptNotices: rawDept };
-  }, [notices, isStudent, resolvedStudentSemester, studentCourseCodesSet]);
+    if (isTeacher) {
+      // User requirement:
+      // "for notice for giving in teacher panel for course, if any teacher give notice for course, another teacher can not seee it. It will be see by related course teacher and student."
+      const teacherEmail = (teacherProfile?.email || user?.email || "").toLowerCase().trim();
+      const teacherName = (teacherProfile?.name || user?.name || "").toLowerCase().trim();
+
+      const myCourseNotices = rawCourses.filter((n) => {
+        const normCode = n.courseCode ? n.courseCode.toUpperCase().replace(/[\s-]/g, "") : null;
+        const authorEmail = (n.authorEmail || n.teacherEmail || "").toLowerCase().trim();
+        const authorName = (n.authorName || "").toLowerCase().trim();
+
+        // 1. Is this teacher assigned to this course in the routine?
+        const teachesCourse = normCode && teacherCourseCodesSet.has(normCode);
+
+        // 2. Did this teacher author/publish this course notice?
+        const isAuthor =
+          (teacherEmail && authorEmail && authorEmail === teacherEmail) ||
+          (teacherName && authorName && authorName === teacherName);
+
+        // Strict isolation: only related course teacher can see it
+        return teachesCourse || isAuthor;
+      });
+
+      return { scopedCourseNotices: myCourseNotices, scopedDeptNotices: rawDept };
+    }
+
+    if (isAdmin) {
+      // Admin sees all circulars
+      return { scopedCourseNotices: rawCourses, scopedDeptNotices: rawDept };
+    }
+
+    // Public guests, employees: Course notices are private to course teachers and enrolled students
+    return {
+      scopedCourseNotices: [],
+      scopedDeptNotices: rawDept.filter((n) => n.isPublic || user),
+    };
+  }, [
+    notices,
+    isStudent,
+    isTeacher,
+    isAdmin,
+    resolvedStudentSemester,
+    studentCourseCodesSet,
+    teacherCourseCodesSet,
+    teacherProfile,
+    user,
+  ]);
 
   // Filtered Course Notices (scoped to user role/semester, with search query filter)
   const filteredCourseNotices = useMemo(() => {
@@ -667,7 +754,7 @@ export default function NoticeBoardSection({
           setEditingCourseNotice(null);
         }}
         onNoticeSaved={fetchNotices}
-        teacherCourses={teacherCourses}
+        teacherCourses={activeTeacherCourses}
         currentTeacher={teacherProfile || {
           name: user?.name,
           email: user?.email,

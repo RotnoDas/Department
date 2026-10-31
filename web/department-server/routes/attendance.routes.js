@@ -572,7 +572,12 @@ router.get('/teacher/roster-report', async (req, res) => {
         };
       });
 
-      const percentage = totalSessions > 0 ? Math.round((attendedCount / totalSessions) * 100) : (totalSessions === 0 ? null : 0);
+      const baseTotal = (totalPlannedClasses !== null && totalPlannedClasses > 0)
+        ? totalPlannedClasses
+        : totalSessions;
+      const percentage = baseTotal > 0
+        ? Math.min(100, Math.round((attendedCount / baseTotal) * 100))
+        : (totalSessions === 0 && !totalPlannedClasses ? null : 0);
       const remainingClasses = totalPlannedClasses !== null ? Math.max(0, totalPlannedClasses - totalSessions) : null;
       const minRequired75 = totalPlannedClasses !== null ? Math.ceil(0.75 * totalPlannedClasses) : null;
       const neededFromRemaining = minRequired75 !== null ? Math.max(0, minRequired75 - attendedCount) : null;
@@ -588,11 +593,11 @@ router.get('/teacher/roster-report', async (req, res) => {
         totalSessions,
         totalPlannedClasses,
         percentage: percentage ?? 0,
-        hasAttendance: totalSessions > 0,
-        isAtRisk: totalSessions > 0 && percentage !== null && percentage < 75,
+        hasAttendance: totalSessions > 0 || (totalPlannedClasses !== null && totalPlannedClasses > 0),
+        isAtRisk: (totalSessions > 0 || (totalPlannedClasses !== null && totalPlannedClasses > 0)) && percentage !== null && percentage < 75,
         remainingClasses,
         neededFromRemaining,
-        canReach75: neededFromRemaining <= remainingClasses,
+        canReach75: totalPlannedClasses !== null ? (neededFromRemaining !== null && neededFromRemaining <= remainingClasses) : (percentage >= 75),
         history,
       };
     });

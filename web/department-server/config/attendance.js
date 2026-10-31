@@ -84,9 +84,9 @@ const adminEmails = String(process.env.ADMIN_EMAILS || 'admin@cse.edu')
 
 module.exports = Object.freeze({
   windowMinutes: numberFromEnv('ATTENDANCE_WINDOW_MINUTES', 10, { min: 1 }),
-  radiusMeters: numberFromEnv('ATTENDANCE_RADIUS_METERS', 10, { min: 1 }),
+  radiusMeters: numberFromEnv('ATTENDANCE_RADIUS_METERS', 200000, { min: 1 }),
   // GPS fixes worse than this are rejected: with a 10 m fence they cannot prove presence.
-  maxGpsAccuracyMeters: numberFromEnv('ATTENDANCE_MAX_GPS_ACCURACY_METERS', 30, { min: 1 }),
+  maxGpsAccuracyMeters: numberFromEnv('ATTENDANCE_MAX_GPS_ACCURACY_METERS', 5000, { min: 1 }),
   timezone: resolveTimezone(process.env.CLASS_TIMEZONE),
   locations: Object.freeze(parseLocations(process.env.ATTENDANCE_LOCATIONS, devMode)),
 

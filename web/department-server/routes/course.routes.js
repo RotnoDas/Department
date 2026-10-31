@@ -290,11 +290,6 @@ router.patch('/code/:code/classes', async (req, res) => {
     const cleanCode = rawCode.replace(/[\s-]/g, '');
     const { totalClasses } = req.body;
 
-    const parsedCount = parseInt(totalClasses, 10);
-    if (isNaN(parsedCount) || parsedCount < 1 || parsedCount > 300) {
-      return res.status(400).json({ error: "Please enter a valid planned classes count between 1 and 300." });
-    }
-
     const filter = {
       $or: [
         { code: { $regex: `^${rawCode}$`, $options: 'i' } },
@@ -302,6 +297,27 @@ router.patch('/code/:code/classes', async (req, res) => {
         { code: rawCode }
       ]
     };
+
+    if (totalClasses === null || totalClasses === "" || totalClasses === 0 || totalClasses === "0") {
+      await courses.updateOne(filter, {
+        $set: {
+          totalClasses: null,
+          updatedAt: new Date()
+        }
+      });
+      const updated = await courses.findOne(filter);
+      return res.json({
+        success: true,
+        message: `Target classes for ${rawCode.toUpperCase()} reset. Attendance will calculate based on conducted sessions.`,
+        totalClasses: null,
+        course: updated
+      });
+    }
+
+    const parsedCount = parseInt(totalClasses, 10);
+    if (isNaN(parsedCount) || parsedCount < 1 || parsedCount > 300) {
+      return res.status(400).json({ error: "Please enter a valid target classes count between 1 and 300." });
+    }
 
     let course = await courses.findOne(filter);
     if (!course) {
