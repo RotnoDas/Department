@@ -23,7 +23,7 @@ function stateAt(isoLocal, session = null, devMode = false) {
     devMode,
     timeZone: TZ,
   });
-  return evaluateWindow(windows, parts.minutes);
+  return evaluateWindow(windows, parts.minutes, slot);
 }
 
 test('parseTimeSlot reads the routine slot formats used by the department', () => {
@@ -67,20 +67,22 @@ test('class is NOT open before it starts', () => {
   assert.equal(s.secondsToOpen, 1);
 });
 
-test('check-in opens exactly when the class starts', () => {
-  const s = stateAt('2026-10-17T09:00:00');
+test('check-in requires teacher to start attendance', () => {
+  const session = { startedAt: dhaka('2026-10-17T09:00:00') };
+  const s = stateAt('2026-10-17T09:00:00', session);
   assert.equal(s.state, 'open');
-  assert.equal(s.source, 'schedule');
+  assert.equal(s.source, 'teacher');
   assert.equal(s.secondsLeft, 600);
 });
 
 test('check-in stays open for 10 minutes then closes', () => {
-  assert.equal(stateAt('2026-10-17T09:09:59').state, 'open');
-  assert.equal(stateAt('2026-10-17T09:09:59').secondsLeft, 1);
-  assert.equal(stateAt('2026-10-17T09:10:00').state, 'closed', 'closed at exactly 10:00 elapsed');
-  assert.equal(stateAt('2026-10-17T09:10:01').state, 'closed');
-  assert.equal(stateAt('2026-10-17T09:45:00').state, 'closed', 'stays closed for the rest of the class');
-  assert.equal(stateAt('2026-10-17T10:30:00').state, 'closed');
+  const session = { startedAt: dhaka('2026-10-17T09:00:00') };
+  assert.equal(stateAt('2026-10-17T09:09:59', session).state, 'open');
+  assert.equal(stateAt('2026-10-17T09:09:59', session).secondsLeft, 1);
+  assert.equal(stateAt('2026-10-17T09:10:00', session).state, 'closed', 'closed at exactly 10:00 elapsed');
+  assert.equal(stateAt('2026-10-17T09:10:01', session).state, 'closed');
+  assert.equal(stateAt('2026-10-17T09:45:00', session).state, 'closed', 'stays closed for the rest of the class');
+  assert.equal(stateAt('2026-10-17T10:30:00', session).state, 'closed');
 });
 
 test('a class that has not started never reports an open window (other classes are not open)', () => {
@@ -88,7 +90,7 @@ test('a class that has not started never reports an open window (other classes a
   const now = dhaka('2026-10-17T09:05:00');
   const parts = getZonedParts(now, TZ);
   const windows = buildWindows({ slot: later, session: null, today: parts.date, windowMinutes: WINDOW, devMode: false, timeZone: TZ });
-  assert.equal(evaluateWindow(windows, parts.minutes).state, 'upcoming');
+  assert.equal(evaluateWindow(windows, parts.minutes, later).state, 'upcoming');
 });
 
 test('teacher start re-opens a 10 minute window, but only inside the class slot', () => {

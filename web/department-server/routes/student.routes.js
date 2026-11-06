@@ -23,7 +23,37 @@ router.get('/', async (req, res) => {
     }
 
     const studentList = await students.find(query).sort({ createdAt: -1 }).toArray();
-    res.json({ success: true, count: studentList.length, students: studentList });
+
+    // Enrich with biometric face enrollment status
+    const { faceProfiles } = getCollections();
+    const profileMap = new Map();
+    if (faceProfiles) {
+      try {
+        const profiles = await faceProfiles.find({}, { projection: { userId: 1, email: 1, studentId: 1, enrolledAt: 1 } }).toArray();
+        profiles.forEach((p) => {
+          if (p.userId) profileMap.set(String(p.userId), p);
+          if (p.email) profileMap.set(String(p.email).toLowerCase(), p);
+          if (p.studentId) profileMap.set(String(p.studentId), p);
+        });
+      } catch (profileErr) {
+        console.warn("[students] Warning querying face profiles:", profileErr.message);
+      }
+    }
+
+    const enrichedList = studentList.map((s) => {
+      const p =
+        (s.userId && profileMap.get(String(s.userId))) ||
+        (s.email && profileMap.get(String(s.email).toLowerCase())) ||
+        (s.studentId && profileMap.get(String(s.studentId))) ||
+        null;
+      return {
+        ...s,
+        faceEnrolled: Boolean(p),
+        faceEnrolledAt: p?.enrolledAt || null,
+      };
+    });
+
+    res.json({ success: true, count: enrichedList.length, students: enrichedList });
   } catch (err) {
     console.error("Error fetching students:", err);
     res.status(500).json({ error: "Failed to fetch students" });
@@ -36,7 +66,25 @@ router.get('/email/:email', async (req, res) => {
     const { students } = getCollections();
     const student = await students.findOne({ email: req.params.email });
     if (!student) return res.status(404).json({ error: "Student not found" });
-    res.json(student);
+
+    const { faceProfiles } = getCollections();
+    let profile = null;
+    if (faceProfiles) {
+      const identifiers = [student.userId, student.email, student.studentId].filter(Boolean);
+      profile = await faceProfiles.findOne({
+        $or: [
+          { userId: { $in: identifiers } },
+          { email: { $in: [student.email, student.email?.toLowerCase()].filter(Boolean) } },
+          { studentId: student.studentId },
+        ],
+      });
+    }
+
+    res.json({
+      ...student,
+      faceEnrolled: Boolean(profile),
+      faceEnrolledAt: profile?.enrolledAt || null,
+    });
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch student by email" });
   }
@@ -52,7 +100,25 @@ router.get('/:id', async (req, res) => {
 
     const student = await students.findOne(query);
     if (!student) return res.status(404).json({ error: "Student not found" });
-    res.json(student);
+
+    const { faceProfiles } = getCollections();
+    let profile = null;
+    if (faceProfiles) {
+      const identifiers = [student.userId, student.email, student.studentId, id].filter(Boolean);
+      profile = await faceProfiles.findOne({
+        $or: [
+          { userId: { $in: identifiers } },
+          { email: { $in: [student.email, student.email?.toLowerCase()].filter(Boolean) } },
+          { studentId: student.studentId },
+        ],
+      });
+    }
+
+    res.json({
+      ...student,
+      faceEnrolled: Boolean(profile),
+      faceEnrolledAt: profile?.enrolledAt || null,
+    });
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch student" });
   }
@@ -224,10 +290,65 @@ router.post('/profile-picture/:email', handleStudentProfileUpdate);
 router.patch('/profile-picture/:email', handleStudentProfileUpdate);
 router.put('/profile-picture/:email', handleStudentProfileUpdate);
 
+// POST reset student face enrollment (enables re-enrollment)
+router.post('/:id/reset-face', async (req, res) => {
+  try {
+    const { students, faceProfiles, faceChallenges, attendanceAttempts } = getCollections();
+    const { id } = req.params;
+    const query = { $or: [{ userId: id }, { studentId: id }, { email: id }] };
+    try {
+      if (ObjectId.isValid(id)) query.$or.push({ _id: new ObjectId(id) });
+    } catch (e) {}
+
+    const student = await students.findOne(query);
+    const identifiers = [
+      id,
+      student?.userId,
+      student?.email,
+      student?.email?.toLowerCase(),
+      student?.studentId,
+    ].filter(Boolean);
+
+    let deletedCount = 0;
+    if (faceProfiles && identifiers.length > 0) {
+      const delRes = await faceProfiles.deleteMany({
+        $or: [
+          { userId: { $in: identifiers } },
+          { email: { $in: identifiers } },
+          { studentId: { $in: identifiers } },
+        ],
+      });
+      deletedCount = delRes.deletedCount;
+    }
+
+    if (faceChallenges && identifiers.length > 0) {
+      await faceChallenges.deleteMany({ userId: { $in: identifiers } }).catch(() => {});
+    }
+    if (attendanceAttempts && identifiers.length > 0) {
+      await attendanceAttempts.deleteMany({ userId: { $in: identifiers } }).catch(() => {});
+    }
+
+    const studentName = student?.name || student?.email || id;
+    console.log(`[face-reset] Reset face biometric enrollment for ${studentName} (removed ${deletedCount} profiles)`);
+
+    res.json({
+      success: true,
+      reset: true,
+      deletedCount,
+      message: deletedCount > 0
+        ? `Biometric face enrollment successfully reset for ${studentName}. They can now re-enroll.`
+        : `${studentName} did not have an active face profile. Face re-enrollment is available.`,
+    });
+  } catch (err) {
+    console.error("Error resetting student face profile:", err);
+    res.status(500).json({ error: "Failed to reset face biometric enrollment" });
+  }
+});
+
 // DELETE student
 router.delete('/:id', async (req, res) => {
   try {
-    const { students, users } = getCollections();
+    const { students, users, faceProfiles, faceChallenges, attendanceAttempts } = getCollections();
     const { id } = req.params;
     const query = { $or: [{ userId: id }, { studentId: id }, { email: id }] };
     try {
@@ -239,6 +360,12 @@ router.delete('/:id', async (req, res) => {
 
     await students.deleteOne(query);
     await users.deleteOne({ email: student.email });
+    if (faceProfiles) {
+      const cleanIds = [student.userId, student.email, student.studentId, id].filter(Boolean);
+      await faceProfiles.deleteMany({ $or: [{ userId: { $in: cleanIds } }, { email: { $in: cleanIds } }, { studentId: { $in: cleanIds } }] }).catch(() => {});
+      if (faceChallenges) await faceChallenges.deleteMany({ userId: { $in: cleanIds } }).catch(() => {});
+      if (attendanceAttempts) await attendanceAttempts.deleteMany({ userId: { $in: cleanIds } }).catch(() => {});
+    }
     res.json({ success: true, message: "Student record deleted successfully" });
   } catch (err) {
     res.status(500).json({ error: "Failed to delete student" });

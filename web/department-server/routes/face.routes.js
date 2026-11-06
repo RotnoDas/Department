@@ -124,9 +124,8 @@ router.post('/admin/reset', verifyToken, requireAdmin, async (req, res) => {
     const student = await students.findOne({
       $or: [{ email: identifier }, { email: identifier.toLowerCase() }, { studentId: identifier }, { userId: identifier }],
     });
-    if (!student?.userId) throw new AttendanceError('STUDENT_NOT_FOUND', 'No student matches that identifier.', 404);
-
-    const removed = await face.deleteProfile(String(student.userId));
+    const targetKey = student?.userId || student?.studentId || student?.email || identifier;
+    const removed = await face.deleteProfile(targetKey);
     console.log(`[face] Admin ${req.user.email} reset the face enrollment of ${student.email} (removed=${removed}).`);
     res.json({
       success: true,

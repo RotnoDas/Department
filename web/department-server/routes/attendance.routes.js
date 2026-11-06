@@ -276,7 +276,7 @@ router.post('/session/start', verifyToken, requireTeacher, async (req, res) => {
     }
 
     // Criterion 1: Routine Scheduled Day
-    if (routine.day !== local.weekday) {
+    if (routine.day !== local.weekday && !cfg.devMode) {
       throw new AttendanceError(
         'CLASS_NOT_TODAY',
         `${routine.courseCode} is scheduled on ${routine.day}, not today (${local.weekday}). Attendance can only be taken on the routine scheduled day.`,
@@ -291,7 +291,7 @@ router.post('/session/start', verifyToken, requireTeacher, async (req, res) => {
     }
 
     // Teacher can start attendance from 5 minutes before scheduled start time until the class ends
-    if (local.minutes < slot.startMin - 5) {
+    if (local.minutes < slot.startMin - 5 && !cfg.devMode) {
       throw new AttendanceError(
         'CLASS_NOT_STARTED',
         `${routine.courseCode} class starts at ${slot.startLabel}. Attendance cannot be started before class time.`,
@@ -299,7 +299,7 @@ router.post('/session/start', verifyToken, requireTeacher, async (req, res) => {
       );
     }
 
-    if (local.minutes >= slot.endMin) {
+    if (local.minutes >= slot.endMin && !cfg.devMode) {
       throw new AttendanceError(
         'CLASS_ALREADY_ENDED',
         `${routine.courseCode} class ended at ${slot.endLabel}. Attendance cannot be taken after scheduled class hours.`,

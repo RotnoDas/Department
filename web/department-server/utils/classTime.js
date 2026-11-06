@@ -96,23 +96,18 @@ function parseTimeSlot(slot) {
 function buildWindows({ slot, session, today, windowMinutes, devMode, timeZone }) {
   const windows = [];
 
-  if (slot && Number.isFinite(slot.startMin) && Number.isFinite(slot.endMin)) {
-    windows.push({
-      source: 'schedule',
-      startMin: slot.startMin,
-      endMin: Math.min(slot.startMin + windowMinutes, slot.endMin),
-    });
-  }
-
-  const isSessionActive = session?.status === 'active';
+  const isSessionActive = session?.status ? session.status === 'active' : Boolean(session?.startedAt);
   const startedAt = isSessionActive && session?.startedAt ? new Date(session.startedAt) : null;
   if (startedAt && !Number.isNaN(startedAt.getTime())) {
     const started = getZonedParts(startedAt, timeZone);
-    if (started.date === today) {
+    const inSlot = !slot || devMode || (started.minutes >= slot.startMin - 5 && started.minutes < slot.endMin);
+    if ((started.date === today || devMode) && inSlot) {
       windows.push({
         source: 'teacher',
         startMin: started.minutes,
-        endMin: Math.min(started.minutes + windowMinutes, slot ? slot.endMin : started.minutes + windowMinutes),
+        endMin: devMode
+          ? started.minutes + windowMinutes
+          : Math.min(started.minutes + windowMinutes, slot ? slot.endMin : started.minutes + windowMinutes),
       });
     }
   }
@@ -132,7 +127,7 @@ function buildWindows({ slot, session, today, windowMinutes, devMode, timeZone }
  * Decide whether check-in is open at `nowMin` (fractional minutes since local midnight).
  * Returns { state: 'upcoming' | 'open' | 'closed', source, secondsToOpen, secondsLeft }.
  */
-function evaluateWindow(windows, nowMin) {
+function evaluateWindow(windows, nowMin, slot = null) {
   const open = windows.filter((w) => nowMin >= w.startMin && nowMin < w.endMin);
   if (open.length > 0) {
     const best = open.reduce((a, b) => (b.endMin > a.endMin ? b : a));
@@ -151,6 +146,15 @@ function evaluateWindow(windows, nowMin) {
       state: 'upcoming',
       source: next.source,
       secondsToOpen: Math.max(1, Math.ceil((next.startMin - nowMin) * 60)),
+      secondsLeft: 0,
+    };
+  }
+
+  if (slot && nowMin < slot.startMin) {
+    return {
+      state: 'upcoming',
+      source: 'slot',
+      secondsToOpen: Math.max(1, Math.ceil((slot.startMin - nowMin) * 60)),
       secondsLeft: 0,
     };
   }

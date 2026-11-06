@@ -58,7 +58,7 @@ import { apiFetch } from "@/lib/api";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
-const ROUTINE_DAYS = ["All Days", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesday"];
+const ROUTINE_DAYS = ["All Days", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 const ROUTINE_TIME_SLOTS = [
   "09:00 - 10:00",
   "10:00 - 11:00",

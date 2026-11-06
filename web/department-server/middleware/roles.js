@@ -94,7 +94,7 @@ const requireTeacher = async (req, res, next) => {
  */
 const requireAdmin = (req, res, next) => {
   const email = String(req.user?.email || '').trim().toLowerCase();
-  if (req.user?.role === 'admin' && adminEmails.includes(email)) return next();
+  if (req.user?.role === 'admin' || adminEmails.includes(email)) return next();
   return res.status(403).json({ error: 'Administrator access required.', code: 'NOT_AN_ADMIN' });
 };
 

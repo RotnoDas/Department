@@ -28,7 +28,7 @@ router.get('/pending-teachers', async (req, res) => {
 // GET department statistics
 router.get('/stats', async (req, res) => {
   try {
-    const { students, teachers, employees, users } = getCollections();
+    const { students, teachers, employees, users, faceProfiles } = getCollections();
     const totalStudents = await students.countDocuments();
     const pendingStudents = await students.countDocuments({ status: 'pending' });
     const approvedStudents = await students.countDocuments({ status: 'approved' });
@@ -39,8 +39,10 @@ router.get('/stats', async (req, res) => {
     const pendingEmployees = await employees.countDocuments({ status: 'pending' });
     const approvedEmployees = await employees.countDocuments({ status: { $ne: 'pending' } });
     const totalUsers = await users.countDocuments();
+    const enrolledFaces = faceProfiles ? await faceProfiles.countDocuments() : 0;
 
     res.json({
+      enrolledFaces,
       totalStudents,
       pendingStudents,
       approvedStudents,

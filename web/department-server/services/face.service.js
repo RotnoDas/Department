@@ -18,7 +18,7 @@ const { face: cfg } = require('../config/attendance');
 // configured with, a match below this floor is never accepted.
 const SIMILARITY_FLOOR = 0.363;
 const EMBEDDING_DIM = 128;
-const ACTIVE_STEPS = ['left', 'right', 'blink'];
+const ACTIVE_STEPS = ['left', 'right'];
 
 // Outcomes that look like an attack or a failed liveness test and therefore use up the attempt budget.
 // Plain capture-quality problems (no face, too far, not frontal) do not.
@@ -128,7 +128,7 @@ async function issueChallenge({ userId, purpose, scopeKey }) {
     userId,
     purpose,
     scopeKey,
-    steps: ['center', ...shuffled(ACTIVE_STEPS)],
+    steps: ['center', 'left', 'right'],
     createdAt: now,
     expiresAt: new Date(now.getTime() + cfg.challengeTtlSeconds * 1000),
     usedAt: null,
@@ -363,9 +363,27 @@ async function saveProfile({ userId, email, studentId, embedding, metrics }) {
   return now;
 }
 
-async function deleteProfile(userId) {
-  const { faceProfiles } = getCollections();
-  const { deletedCount } = await faceProfiles.deleteOne({ userId });
+async function deleteProfile(identifier) {
+  const { faceProfiles, faceChallenges, attendanceAttempts } = getCollections();
+  const idStr = String(identifier || "").trim();
+  if (!idStr) return false;
+
+  const identifiers = [idStr, idStr.toLowerCase()];
+  const { deletedCount } = await faceProfiles.deleteMany({
+    $or: [
+      { userId: { $in: identifiers } },
+      { email: { $in: identifiers } },
+      { studentId: { $in: identifiers } },
+    ],
+  });
+
+  if (faceChallenges) {
+    await faceChallenges.deleteMany({ userId: { $in: identifiers } }).catch(() => {});
+  }
+  if (attendanceAttempts) {
+    await attendanceAttempts.deleteMany({ userId: { $in: identifiers } }).catch(() => {});
+  }
+
   return deletedCount > 0;
 }
 

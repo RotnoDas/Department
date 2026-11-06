@@ -75,7 +75,7 @@ const LAB_SECTIONS = [
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 
-const ROUTINE_DAYS = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday"];
+const ROUTINE_DAYS = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
 export default function EmployeeDashboardPage() {
   const { data: sessionData, isPending: sessionLoading } = authClient.useSession();

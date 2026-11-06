@@ -69,7 +69,7 @@ import {
   DashboardCollapseControls 
 } from "@/components/dashboard/CollapsibleSection";
 
-const ROUTINE_DAYS = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday"];
+const ROUTINE_DAYS = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 const ROUTINE_TIME_SLOTS = [
   "09:00 - 10:00",
   "10:00 - 11:00",
@@ -1831,6 +1831,13 @@ export default function StudentDashboardPage() {
                                 </span>
                               )}
 
+                              {!isAttended && !isActive && session.state === "waiting_teacher" && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                                  <Clock className="w-3 h-3 text-amber-500" />
+                                  <span>Waiting for Teacher to Start</span>
+                                </span>
+                              )}
+
                               {!isAttended && isPast && (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300">
                                   <span>Missed</span>
@@ -1863,6 +1870,10 @@ export default function StudentDashboardPage() {
                                   <Camera className="w-3.5 h-3.5" />
                                   <span>Mark Present</span>
                                 </button>
+                              ) : session.state === "waiting_teacher" ? (
+                                <span className="text-[10px] font-bold px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/60">
+                                  Waiting for teacher to start
+                                </span>
                               ) : isActive ? (
                                 <span className="text-[10px] font-bold px-3 py-1.5 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
                                   Window Closed (&gt;10m)
@@ -2107,7 +2118,7 @@ export default function StudentDashboardPage() {
           </div>
 
           <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-            {routineTab === "grid" ? "Saturday to Wednesday Academic Routine" : "Syllabus courses & credit distribution"}
+            {routineTab === "grid" ? "Saturday to Friday Academic Routine" : "Syllabus courses & credit distribution"}
           </span>
         </div>
 

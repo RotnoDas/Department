@@ -76,12 +76,44 @@ function describeWindow({ routine, slot, session, local }) {
     devMode: cfg.devMode,
     timeZone: cfg.timezone,
   });
+
   // On another weekday only a dev-opened test window can exist.
-  if (!scheduledToday) windows = windows.filter((w) => w.source === 'dev');
+  if (!scheduledToday && !cfg.devMode) {
+    windows = windows.filter((w) => w.source === 'dev');
+    if (windows.length === 0) {
+      return { state: 'not_today', source: null, secondsToOpen: 0, secondsLeft: 0 };
+    }
+  }
+
   if (windows.length === 0) {
+    if (scheduledToday || cfg.devMode) {
+      if (slot && local.minutes < slot.startMin - 5 && !cfg.devMode) {
+        return {
+          state: 'upcoming',
+          source: null,
+          secondsToOpen: Math.max(1, Math.ceil((slot.startMin - local.minutes) * 60)),
+          secondsLeft: 0,
+        };
+      }
+      if (slot && local.minutes >= slot.endMin && !cfg.devMode) {
+        return { state: 'closed', source: null, secondsToOpen: 0, secondsLeft: 0 };
+      }
+      // If session was completed or expired:
+      if (session?.status === 'completed' || (session?.startedAt && !session?.status)) {
+        return { state: 'closed', source: null, secondsToOpen: 0, secondsLeft: 0 };
+      }
+      // Scheduled today, within class duration, waiting for teacher to start attendance:
+      return {
+        state: 'waiting_teacher',
+        source: null,
+        secondsToOpen: 0,
+        secondsLeft: 0,
+      };
+    }
     return { state: 'not_today', source: null, secondsToOpen: 0, secondsLeft: 0 };
   }
-  return evaluateWindow(windows, local.minutes);
+
+  return evaluateWindow(windows, local.minutes, slot);
 }
 
 /**
@@ -130,12 +162,18 @@ function assertCanCheckIn(ctx) {
         409,
         { secondsToOpen: window.secondsToOpen }
       );
+    case 'waiting_teacher':
+      throw new AttendanceError(
+        'WAITING_TEACHER',
+        `Attendance for ${course} has not been started by the course teacher yet. Please wait for your teacher to start attendance.`,
+        409
+      );
     case 'not_today':
       throw new AttendanceError('CLASS_NOT_TODAY', `${course} is not scheduled today.`, 409);
     default:
       throw new AttendanceError(
         'WINDOW_CLOSED',
-        `Attendance for ${course} is closed. It is only open for the first ${cfg.windowMinutes} minutes of the class.`,
+        `Attendance for ${course} is closed. The 10-minute check-in window has passed.`,
         409
       );
   }
@@ -270,6 +308,8 @@ async function listDaySessions({ student, userId, queryDay, now = new Date() }) 
       state = 'marked';
     } else if (window.state === 'upcoming') {
       state = 'upcoming';
+    } else if (window.state === 'waiting_teacher') {
+      state = 'waiting_teacher';
     } else if (window.state === 'closed') {
       state = 'closed';
     } else {

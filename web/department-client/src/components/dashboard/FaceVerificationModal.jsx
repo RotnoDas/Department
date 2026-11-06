@@ -561,7 +561,7 @@ export default function FaceVerificationModal({
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                 {purpose === "enroll"
-                  ? "Anti-spoof liveness registration (1-to-1 student binding)"
+                  ? "3-step face registration: Look Straight, Left, and Right"
                   : `${routine?.courseCode || "Class"} • Strict Anti-Cheat Attendance`}
               </p>
             </div>
@@ -862,7 +862,7 @@ export default function FaceVerificationModal({
                 ) : (
                   <>
                     <Camera className="w-4 h-4" />
-                    <span>{isLastStep ? "Complete & Verify" : "Capture & Next Step"}</span>
+                    <span>{isLastStep ? (purpose === "enroll" ? "Complete & Enroll" : "Complete & Verify") : "Capture & Next Step"}</span>
                   </>
                 )}
               </button>

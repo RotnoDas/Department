@@ -3,7 +3,7 @@ const { SEMESTER_COURSES, SEMESTER_LABELS } = require('../data/courses');
 // Helper to construct weekly routine for all Semesters (1 to 8) distributed strictly among registered teachers with ZERO room & teacher conflicts
 const buildSampleRoutinesList = (teachersList = []) => {
   const sampleList = [];
-  const days = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday"];
+  const days = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
   const allSlots = [
     "09:00 - 10:00",
     "10:00 - 11:00",
@@ -61,21 +61,28 @@ const buildSampleRoutinesList = (teachersList = []) => {
   let otherOffset = 0;
   const coursePointers = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0 };
 
-  // Map each registered faculty member to 2 distinct specific courses with ~4 slots per week
-  // Faculty workload: realistic 2 courses per teacher, remainder assigned to "Dept Faculty Member"
+  // Map each registered faculty member to specific courses across semesters
   const teacherCourseAssignments = new Map();
   if (registeredPool.length > 0) {
-    // Teacher 0 (e.g. Teacher A): CSE 4101 (Sem 7) and CSE 3101 (Sem 5)
+    // Teacher 0 (e.g. Teacher A): CSE 4101, CSE 4104, CSE 4119, HUM 4101 (Sem 7) and CSE 3101 (Sem 5)
     teacherCourseAssignments.set("7_CSE 4101", registeredPool[0]);
+    teacherCourseAssignments.set("7_CSE 4104", registeredPool[0]);
+    teacherCourseAssignments.set("7_CSE 4119", registeredPool[0]);
+    teacherCourseAssignments.set("7_HUM 4101", registeredPool[0]);
     teacherCourseAssignments.set("5_CSE 3101", registeredPool[0]);
   }
   if (registeredPool.length > 1) {
-    // Teacher 1 (e.g. Teacher B): CSE 1101 (Sem 1) and CSE 3201 (Sem 6)
+    // Teacher 1 (e.g. Teacher B): CSE 4102, CSE 4103 (Sem 7), CSE 1101 (Sem 1) and CSE 3201 (Sem 6)
+    teacherCourseAssignments.set("7_CSE 4102", registeredPool[1]);
+    teacherCourseAssignments.set("7_CSE 4103", registeredPool[1]);
     teacherCourseAssignments.set("1_CSE 1101", registeredPool[1]);
     teacherCourseAssignments.set("6_CSE 3201", registeredPool[1]);
   }
   if (registeredPool.length > 2) {
-    // Teacher 2 (e.g. Teacher C): CSE 2201 (Sem 4) and CSE 4201 (Sem 8)
+    // Teacher 2 (e.g. Teacher C): CSE 4100, CSE 4105, CSE 4106 (Sem 7), CSE 2201 (Sem 4) and CSE 4201 (Sem 8)
+    teacherCourseAssignments.set("7_CSE 4100", registeredPool[2]);
+    teacherCourseAssignments.set("7_CSE 4105", registeredPool[2]);
+    teacherCourseAssignments.set("7_CSE 4106", registeredPool[2]);
     teacherCourseAssignments.set("4_CSE 2201", registeredPool[2]);
     teacherCourseAssignments.set("8_CSE 4201", registeredPool[2]);
   }
@@ -111,6 +118,19 @@ const buildSampleRoutinesList = (teachersList = []) => {
             assignedFaculty = null; // Do not double-book teacher across semesters in the same slot
           } else {
             busyTeachersInSlot.add(teacherKey);
+          }
+        }
+
+        // If no explicit mapping or busy, pick available faculty from registeredPool
+        if (!assignedFaculty && registeredPool.length > 0) {
+          for (let p = 0; p < registeredPool.length; p++) {
+            const cand = registeredPool[(cIdx + p) % registeredPool.length];
+            const candKey = `${day}__${slot}__${cand.name}`.toLowerCase();
+            if (!busyTeachersInSlot.has(candKey)) {
+              assignedFaculty = cand;
+              busyTeachersInSlot.add(candKey);
+              break;
+            }
           }
         }
 

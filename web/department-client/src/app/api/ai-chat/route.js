@@ -29,7 +29,7 @@ CRITICAL DIRECTIVES:
 - Program Duration: 4 Years, 8 Semesters, 160 Total Credits.
 - Location: PUST CSE Building, Pabna - 6600, Bangladesh (GPS: 24.01296° N, 89.280835° E).
 - Office Hotline: +880 1712-345678 | Email: office@cse.pust.ac.bd
-- Official Hours: Saturday to Wednesday, 09:00 AM – 05:00 PM (Thursday & Friday are official university weekend).
+- Official Hours: Saturday to Friday, 09:00 AM – 05:00 PM.
 
 =======================================================
 2. COMPLETE OFFICIAL CURRICULUM (SEMESTERS 1 TO 8)
@@ -145,7 +145,7 @@ Semester 8 (4th Year, 2nd Term):
 =======================================================
 4. ACADEMIC ROUTINE & TIMETABLE
 =======================================================
-- Academic Days: Saturday, Sunday, Monday, Tuesday, Wednesday (Thursday & Friday are weekend).
+- Academic Days: Saturday, Sunday, Monday, Tuesday, Wednesday, Thursday, Friday (Full Weekly Timetable).
 - Daily Time Slots:
   * 09:00 - 10:00
   * 10:00 - 11:00
@@ -268,7 +268,7 @@ The PUST CSE Department attendance system combines **GPS Geofencing** and **Acti
 
 The CSE Department operates on a weekly academic schedule:
 
-- **Class Days:** Saturday to Wednesday (Thursday & Friday are official university weekend).
+- **Class Days:** Saturday to Friday (Complete 7-day academic timetable).
 - **Daily Slots:**
   * Morning: \`09:00 - 10:00\`, \`10:00 - 11:00\`, \`11:00 - 12:00\`, \`12:00 - 01:00\`
   * Break: \`01:00 - 02:00\` (Prayer & Lunch Break)
@@ -447,12 +447,12 @@ function generateInteractionMeta(text, query) {
     followUps = isBangla
       ? [
           "সফটওয়্যার ল্যাব ১ ও এআই ল্যাব কোথায় অবস্থিত?",
-          "বৃহস্পতিবার ও শুক্রবার কি ক্লাস থাকে?",
+          "বৃহস্পতিবার ও শুক্রবারের ক্লাসের রুটিন কি?",
           "শিক্ষকদের সময়সূচি কিভাবে দেখা যায়?"
         ]
       : [
           "Where are Software Lab 1 and AI Lab located?",
-          "What are the Friday and Thursday weekend policies?",
+          "What is the Thursday and Friday class schedule?",
           "How can teachers view their routine?"
         ];
     actionLinks = [

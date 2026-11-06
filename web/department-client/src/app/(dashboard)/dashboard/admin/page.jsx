@@ -2,7 +2,10 @@
 
 import React, { useState, useEffect } from "react";
 import { authClient } from "@/lib/auth-client";
+import { apiFetch } from "@/lib/api";
 import { 
+  ScanFace,
+  RotateCcw,
   Users, 
   UserCheck, 
   UserX, 
@@ -56,7 +59,7 @@ import {
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
-const ROUTINE_DAYS = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday"];
+const ROUTINE_DAYS = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 const ROUTINE_SEMESTERS = [
   { id: 1, label: "1-1", full: "1st Semester" },
   { id: 2, label: "1-2", full: "2nd Semester" },
@@ -102,6 +105,7 @@ export default function AdminDashboardPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("pending");
   const [searchQuery, setSearchQuery] = useState("");
+  const [resettingFaceId, setResettingFaceId] = useState(null);
   const [teacherTab, setTeacherTab] = useState("all");
   const [teacherSearch, setTeacherSearch] = useState("");
   const [employeeTab, setEmployeeTab] = useState("all");
@@ -577,6 +581,59 @@ export default function AdminDashboardPage() {
     }
   };
 
+  // Reset biometric face enrollment for student (allows re-enrollment)
+  const handleResetFaceEnrollment = async (student) => {
+    const name = student.name || student.email || "this student";
+    const roll = student.studentId ? ` (Roll: ${student.studentId})` : "";
+    if (!confirm(`Reset biometric face enrollment for ${name}${roll}?\n\nThis will remove their enrolled face profile and allow them to re-enroll their face for attendance from their student portal.`)) {
+      return;
+    }
+
+    const studentIdentifier = student._id || student.userId || student.studentId || student.email;
+    setResettingFaceId(studentIdentifier);
+    try {
+      let res = await fetch(`${SERVER_URL}/api/students/${studentIdentifier}/reset-face`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      let data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data.success) {
+        const fallbackRes = await apiFetch("/api/face/admin/reset", {
+          method: "POST",
+          body: { identifier: student.studentId || student.email || student.userId || studentIdentifier },
+        });
+        if (fallbackRes.ok && fallbackRes.data?.success) {
+          res = { ok: true };
+          data = fallbackRes.data;
+        }
+      }
+
+      if (res.ok && data.success) {
+        toast.success(data.message || `Face enrollment reset for ${name}.`);
+        setStudents((prev) =>
+          prev.map((s) => {
+            const isMatch =
+              (s._id && s._id === student._id) ||
+              (s.studentId && s.studentId === student.studentId) ||
+              (s.email && s.email === student.email) ||
+              (s.userId && s.userId === student.userId);
+            return isMatch ? { ...s, faceEnrolled: false, faceEnrolledAt: null } : s;
+          })
+        );
+        setStats((prev) => ({
+          ...prev,
+          enrolledFaces: Math.max(0, (prev.enrolledFaces || 1) - 1),
+        }));
+      } else {
+        toast.error(data.error || data.message || "Failed to reset face enrollment.");
+      }
+    } catch (err) {
+      toast.error("Network error while resetting face enrollment.");
+    } finally {
+      setResettingFaceId(null);
+    }
+  };
   // Delete student record
   const handleDeleteStudent = async (studentId, studentName) => {
     if (!confirm(`Are you sure you want to delete student record for ${studentName || 'this student'}?`)) return;
@@ -878,7 +935,7 @@ export default function AdminDashboardPage() {
       toast.error("No student data available to export");
       return;
     }
-    const headers = ["Name", "Email", "Student ID / Roll", "Batch", "Semester", "Session", "Phone", "Status"];
+    const headers = ["Name", "Email", "Student ID / Roll", "Batch", "Semester", "Session", "Phone", "Status", "Face Enrolled"];
     const rows = students.map(s => [
       `"${s.name || ''}"`,
       `"${s.email || ''}"`,
@@ -887,7 +944,8 @@ export default function AdminDashboardPage() {
       `"${s.semester || ''}"`,
       `"${s.session || ''}"`,
       `"${s.phone || ''}"`,
-      `"${s.status || ''}"`
+      `"${s.status || ''}"`,
+      `"${s.faceEnrolled ? 'Enrolled' : 'Not Enrolled'}"`
     ]);
     const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
     const encodedUri = encodeURI(csvContent);
@@ -928,10 +986,13 @@ export default function AdminDashboardPage() {
     toast.success("Faculty directory exported as CSV!");
   };
 
+  const faceEnrolledCount = students.filter((s) => Boolean(s.faceEnrolled)).length;
+
   const filteredStudents = students.filter(s => {
     if (activeTab === "pending") return s.status === "pending";
     if (activeTab === "approved") return s.status === "approved";
     if (activeTab === "rejected") return s.status === "rejected";
+    if (activeTab === "face-enrolled") return Boolean(s.faceEnrolled);
     return true;
   }).filter(s => 
     (s.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1379,6 +1440,18 @@ export default function AdminDashboardPage() {
                 Approved ({stats.approvedStudents})
               </button>
               <button
+                onClick={() => setActiveTab("face-enrolled")}
+                className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === "face-enrolled" 
+                    ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-xs font-bold" 
+                    : "hover:text-slate-900 dark:hover:text-white"
+                }`}
+                title="View students with enrolled biometric face profiles"
+              >
+                <ScanFace className="w-3.5 h-3.5" />
+                <span>Face Enrolled ({faceEnrolledCount})</span>
+              </button>
+              <button
                 onClick={() => setActiveTab("all")}
                 className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
                   activeTab === "all" 
@@ -1420,6 +1493,7 @@ export default function AdminDashboardPage() {
                     <th className="pb-3 px-4">Academic & Roll</th>
                     <th className="pb-3 px-4">Batch & Session</th>
                     <th className="pb-3 px-4">Contact Info</th>
+                    <th className="pb-3 px-4">Face Attendance</th>
                     <th className="pb-3 px-4">Status</th>
                     <th className="pb-3 px-4 text-right">Moderation Actions</th>
                   </tr>
@@ -1494,6 +1568,49 @@ export default function AdminDashboardPage() {
                           </div>
                         </td>
 
+                        {/* Face Biometrics Status & Re-enroll */}
+                        <td className="py-4 px-4">
+                          <div className="flex flex-col gap-1 items-start">
+                            {student.faceEnrolled ? (
+                              <>
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200 dark:ring-emerald-800">
+                                  <ScanFace className="w-3.5 h-3.5" />
+                                  <span>Enrolled</span>
+                                </span>
+                                {student.faceEnrolledAt && (
+                                  <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
+                                    {new Date(student.faceEnrolledAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  disabled={resettingFaceId === studentIdentifier}
+                                  onClick={() => handleResetFaceEnrollment(student)}
+                                  className="mt-1 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 border border-amber-200 dark:border-amber-800/80 transition cursor-pointer disabled:opacity-50 shadow-2xs"
+                                  title="Reset biometric face template so student can re-enroll for attendance"
+                                >
+                                  {resettingFaceId === studentIdentifier ? (
+                                    <RefreshCw className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <RotateCcw className="w-3 h-3" />
+                                  )}
+                                  <span>Re-enroll Face</span>
+                                </button>
+                              </>
+                            ) : (
+                              <div className="flex flex-col gap-0.5">
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                                  <ScanFace className="w-3.5 h-3.5 opacity-60" />
+                                  <span>Not Enrolled</span>
+                                </span>
+                                <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                                  Can enroll anytime
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+
                         {/* Status Badge */}
                         <td className="py-4 px-4">
                           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold tracking-wider uppercase ${
@@ -1536,6 +1653,21 @@ export default function AdminDashboardPage() {
                                 className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
                               >
                                 Reset to {isApproved ? "Pending" : "Approved"}
+                              </button>
+                            )}
+                            {student.faceEnrolled && (
+                              <button
+                                type="button"
+                                disabled={resettingFaceId === studentIdentifier}
+                                onClick={() => handleResetFaceEnrollment(student)}
+                                className="p-1.5 rounded-lg text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors cursor-pointer disabled:opacity-50"
+                                title="Reset / Re-enroll Face Biometrics"
+                              >
+                                {resettingFaceId === studentIdentifier ? (
+                                  <RefreshCw className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <ScanFace className="w-4 h-4" />
+                                )}
                               </button>
                             )}
                             <button

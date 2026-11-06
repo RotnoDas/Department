@@ -52,10 +52,12 @@ import {
   CalendarCheck,
   History,
   Lock,
-  Target
+  Target,
+  Zap,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { authClient } from "@/lib/auth-client";
+import { apiFetch } from "@/lib/api";
 import Loading from "@/components/common/Loading";
 import { SEMESTER_COURSES } from "@/data/courses";
 import CourseNoticeModal from "@/components/notice/CourseNoticeModal";
@@ -146,6 +148,8 @@ export default function TeacherCourseWorkspacePage() {
 
   // Live Attendance Session State
   const [isStartingLive, setIsStartingLive] = useState(false);
+  const [activeLiveSession, setActiveLiveSession] = useState(null);
+  const [liveSecondsLeft, setLiveSecondsLeft] = useState(0);
 
   // Materials State (Specifically for this course)
   const [materials, setMaterials] = useState([]);
@@ -596,28 +600,176 @@ export default function TeacherCourseWorkspacePage() {
     }
   };
 
+  // Routine Slot & Live Session Helpers
+  const parseSlotMinutes = (slotStr) => {
+    if (!slotStr || typeof slotStr !== "string") return null;
+    const m = slotStr.match(
+      /^\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*[-\u2013\u2014]\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*$/i
+    );
+    if (!m) return null;
+    const toMin = (hStr, mStr, meridiem) => {
+      let h = parseInt(hStr, 10);
+      const mm = parseInt(mStr || "0", 10);
+      if (mm > 59 || h > 23) return null;
+      if (meridiem) {
+        if (h < 1 || h > 12) return null;
+        h = h % 12;
+        if (meridiem.toLowerCase() === "pm") h += 12;
+      } else if (h >= 1 && h <= 7) {
+        h += 12;
+      }
+      return h * 60 + mm;
+    };
+    const startMin = toMin(m[1], m[2], m[3]);
+    const endMin = toMin(m[4], m[5], m[6]);
+    if (startMin === null || endMin === null || endMin <= startMin) return null;
+    const pad = (h, mm) => `${String(h).padStart(2, "0")}:${String(mm || "00").padStart(2, "0")}`;
+    return {
+      startMin,
+      endMin,
+      startLabel: pad(m[1], m[2]),
+      endLabel: pad(m[4], m[5]),
+    };
+  };
+
+  const todaySlotTiming = useMemo(() => {
+    const now = new Date();
+    const weekdayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const currentDay = weekdayNames[now.getDay()];
+    const currentMinutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+
+    const slotDoc = (routineSlots || []).find(
+      (s) => (s.day || "").toLowerCase() === currentDay.toLowerCase()
+    );
+
+    if (!slotDoc) {
+      return {
+        hasClassToday: false,
+        currentDay,
+        slotDoc: null,
+        canStart: false,
+        label: `No class today (${currentDay})`,
+        reason: `No routine slot scheduled for ${courseCode} on ${currentDay}.`,
+      };
+    }
+
+    const parsed = parseSlotMinutes(slotDoc.timeSlot);
+    if (!parsed) {
+      return {
+        hasClassToday: true,
+        currentDay,
+        slotDoc,
+        canStart: true,
+        status: "in_session",
+        label: "Scheduled Today",
+        reason: "Class scheduled today.",
+        slot: null,
+      };
+    }
+
+    if (currentMinutes < parsed.startMin - 5) {
+      return {
+        hasClassToday: true,
+        currentDay,
+        slotDoc,
+        canStart: false,
+        status: "upcoming",
+        label: `Class starts at ${parsed.startLabel}`,
+        reason: `Scheduled today: ${parsed.startLabel} - ${parsed.endLabel}. Attendance opens during class hours.`,
+        slot: parsed,
+      };
+    }
+
+    if (currentMinutes >= parsed.endMin) {
+      return {
+        hasClassToday: true,
+        currentDay,
+        slotDoc,
+        canStart: false,
+        status: "ended",
+        label: `Class ended (${parsed.endLabel})`,
+        reason: `Today's class ended at ${parsed.endLabel}.`,
+        slot: parsed,
+      };
+    }
+
+    return {
+      hasClassToday: true,
+      currentDay,
+      slotDoc,
+      canStart: true,
+      status: "in_session",
+      label: "Class in session",
+      reason: `Class is in session (${parsed.startLabel} - ${parsed.endLabel}). Click to launch 10-minute student check-in.`,
+      slot: parsed,
+    };
+  }, [routineSlots, courseCode]);
+
+  const fetchActiveLiveSession = useCallback(async () => {
+    try {
+      const res = await apiFetch("/api/attendance/teacher/active-sessions");
+      if (res.ok && res.data?.sessions) {
+        const curCode = (courseCode || "").toUpperCase().trim();
+        const found = (res.data.sessions || []).find(
+          (s) => (s.courseCode || "").toUpperCase().trim() === curCode && s.isOpen
+        );
+        if (found) {
+          setActiveLiveSession(found);
+          setLiveSecondsLeft(found.secondsLeft || 600);
+        } else {
+          setActiveLiveSession(null);
+          setLiveSecondsLeft(0);
+        }
+      }
+    } catch (_) {}
+  }, [courseCode]);
+
+  useEffect(() => {
+    fetchActiveLiveSession();
+  }, [fetchActiveLiveSession]);
+
+  useEffect(() => {
+    if (!liveSecondsLeft || liveSecondsLeft <= 0) return;
+    const interval = setInterval(() => {
+      setLiveSecondsLeft((prev) => {
+        if (prev <= 1) {
+          fetchActiveLiveSession();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [liveSecondsLeft, fetchActiveLiveSession]);
+
   // Start Live Geofence Session
   const handleStartLiveSession = async (routineId) => {
     setIsStartingLive(true);
     try {
-      const rId = routineId || routineSlots[0]?._id;
+      const rId = routineId || todaySlotTiming.slotDoc?._id || routineSlots[0]?._id;
       if (!rId) {
         toast.error("No routine slot linked for live window. Please use Record Attendance (Roll Call).");
         setIsStartingLive(false);
         return;
       }
 
-      const res = await fetch("/backend/api/attendance/session/start", {
+      const res = await apiFetch("/api/attendance/session/start", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ routineId: rId }),
+        body: { routineId: rId, courseCode },
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        toast.success(data.message || `Check-in window open for ${courseCode}!`);
+      if (res.ok && res.data?.success) {
+        toast.success(
+          res.data.message || `10-minute live attendance window open for ${courseCode}!`,
+          { duration: 6000, icon: "⏱️" }
+        );
+        if (res.data.session) {
+          setActiveLiveSession({ ...res.data.session, isOpen: true });
+          setLiveSecondsLeft(res.data.secondsLeft || 600);
+        }
         fetchCourseRoster();
+        fetchActiveLiveSession();
       } else {
-        toast.error(data.message || data.error || "Could not open live session (check class hour)");
+        toast.error(res.data?.message || res.data?.error || "Could not open live session (check class hour)");
       }
     } catch {
       toast.error("Network error starting live attendance");
@@ -2196,15 +2348,40 @@ export default function TeacherCourseWorkspacePage() {
 
               {/* Action Buttons */}
               <div className="flex items-center gap-2.5 flex-wrap">
-                <button
-                  type="button"
-                  onClick={() => setShowEditClassesModal(true)}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-bold transition cursor-pointer"
-                  title="Configure target class count for this course"
-                >
-                  <Target className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                  <span>{courseStats.targetClasses ? `Target: ${courseStats.targetClasses}` : "Set Target"}</span>
-                </button>
+                {/* Live 10-Minute Attendance Window Control */}
+                {activeLiveSession?.isOpen && liveSecondsLeft > 0 ? (
+                  <div
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-md shadow-emerald-600/30 animate-pulse"
+                    title="Live attendance window is currently open for enrolled students"
+                  >
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
+                    </span>
+                    <span>
+                      Live Open: {Math.floor(liveSecondsLeft / 60)}:{String(liveSecondsLeft % 60).padStart(2, "0")} left
+                    </span>
+                  </div>
+                ) : todaySlotTiming.canStart ? (
+                  <button
+                    type="button"
+                    onClick={() => handleStartLiveSession(todaySlotTiming.slotDoc?._id)}
+                    disabled={isStartingLive}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-md shadow-emerald-600/25 transition-all hover:scale-102 active:scale-98 cursor-pointer disabled:opacity-50"
+                    title={todaySlotTiming.reason}
+                  >
+                    <Zap className="w-4 h-4 text-amber-300" />
+                    <span>{isStartingLive ? "Opening..." : "Start Attendance (10m Window)"}</span>
+                  </button>
+                ) : todaySlotTiming.hasClassToday ? (
+                  <span
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/60 text-xs font-bold"
+                    title={todaySlotTiming.reason}
+                  >
+                    <Clock className="w-3.5 h-3.5 text-amber-500" />
+                    <span>{todaySlotTiming.label}</span>
+                  </span>
+                ) : null}
 
                 <button
                   type="button"
