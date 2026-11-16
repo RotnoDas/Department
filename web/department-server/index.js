@@ -24,6 +24,7 @@ const assignmentRoutes = require('./routes/assignment.routes');
 const materialRoutes = require('./routes/material.routes');
 const classTestRoutes = require('./routes/classTest.routes');
 const supportRoutes = require('./routes/support.routes');
+const resultRoutes = require('./routes/result.routes');
 const attendanceConfig = require('./config/attendance');
 
 const path = require('path');
@@ -110,6 +111,9 @@ app.use('/api/class-tests', classTestRoutes);
 
 // Support & Complaints (/api/support)
 app.use('/api/support', supportRoutes);
+
+// Academic Semester Results & Grade Sheets (/api/results)
+app.use('/api/results', resultRoutes);
 
 // ── ROOT & HEALTH ─────────────────────────────────────────────
 app.get('/', (req, res) => {

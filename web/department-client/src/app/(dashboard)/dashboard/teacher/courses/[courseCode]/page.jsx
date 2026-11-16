@@ -82,6 +82,74 @@ const getCTGradeDetails = (score, max) => {
   return { letter: "F", color: "bg-rose-50 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800" };
 };
 
+// Helper for session date formatting (e.g. "Nov 16, 2026 (Mon)")
+const formatSessionDate = (rawDate) => {
+  if (!rawDate) return "—";
+  try {
+    const s = String(rawDate).trim();
+    const parts = s.split("-");
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      const dt = new Date(year, month, day);
+      if (!isNaN(dt.getTime())) {
+        return dt.toLocaleDateString("en-US", {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        });
+      }
+    }
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    }
+    return s;
+  } catch {
+    return String(rawDate);
+  }
+};
+
+// Helper for check-in timestamp formatting (e.g. "09:36:24 AM")
+const formatCheckInTime = (rawTime) => {
+  if (!rawTime) return "—";
+  try {
+    const dt = new Date(rawTime);
+    if (isNaN(dt.getTime())) return String(rawTime);
+    return dt.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    });
+  } catch {
+    return String(rawTime);
+  }
+};
+
+// Helper for short time formatting (e.g. "09:36 AM")
+const formatShortTime = (rawTime) => {
+  if (!rawTime) return "—";
+  try {
+    const dt = new Date(rawTime);
+    if (isNaN(dt.getTime())) return String(rawTime);
+    return dt.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+  } catch {
+    return String(rawTime);
+  }
+};
+
 export default function TeacherCourseWorkspacePage() {
   const params = useParams();
   const router = useRouter();
@@ -133,6 +201,7 @@ export default function TeacherCourseWorkspacePage() {
   const [manualTimeSlot, setManualTimeSlot] = useState("09:00 - 10:00");
   const [manualTopic, setManualTopic] = useState("");
   const [manualAttendanceMap, setManualAttendanceMap] = useState({}); // studentEmail -> boolean
+  const [autoVerifiedCheckinMap, setAutoVerifiedCheckinMap] = useState({}); // studentEmail -> { markedAt, method, faceVerified, timeSlot }
   const [manualSearch, setManualSearch] = useState("");
   const [isSavingManual, setIsSavingManual] = useState(false);
 
@@ -145,6 +214,16 @@ export default function TeacherCourseWorkspacePage() {
   const [inspectedSession, setInspectedSession] = useState(null);
   const [sessionSearch, setSessionSearch] = useState("");
   const [isDeletingSession, setIsDeletingSession] = useState(false);
+
+  // Student Individual Attendance Record Inspection Modal (Date & Time breakdown)
+  const [inspectingStudent, setInspectingStudent] = useState(null);
+  const [inspectingStudentSearch, setInspectingStudentSearch] = useState("");
+
+  // Attendance Sub-view Mode: "roster" (summary table) vs "log" (chronological date & time records)
+  const [attendanceViewMode, setAttendanceViewMode] = useState("roster");
+  const [logDateFilter, setLogDateFilter] = useState("all");
+  const [logStatusFilter, setLogStatusFilter] = useState("all");
+  const [logSearch, setLogSearch] = useState("");
 
   // Live Attendance Session State
   const [isStartingLive, setIsStartingLive] = useState(false);
@@ -452,17 +531,84 @@ export default function TeacherCourseWorkspacePage() {
   };
 
   // ── MANUAL ATTENDANCE (ROLL CALL) HANDLERS ────────────────────
+  const syncRollCallForDateAndSlot = useCallback((targetDate, targetSlot) => {
+    if (!rosterData?.roster || rosterData.roster.length === 0) return 0;
+
+    // Detect routine slot for that weekday if targetSlot is not provided
+    let slotToUse = targetSlot;
+    if (!slotToUse) {
+      const parts = targetDate.split("-").map(Number);
+      const d = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+      const weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      const weekday = weekdays[d.getUTCDay()];
+      const matchingRoutine = (routineSlots || []).find(
+        (r) => (r.day || "").toLowerCase() === weekday.toLowerCase()
+      );
+      slotToUse = matchingRoutine?.timeSlot || (routineSlots.length > 0 ? routineSlots[0].timeSlot : "09:00 - 10:00");
+      setManualTimeSlot(slotToUse);
+    }
+
+    const autoChecked = {};
+    let autoCheckedCount = 0;
+    const initialMap = {};
+
+    (rosterData?.roster || []).forEach((stu) => {
+      const email = (stu.email || "").toLowerCase().trim();
+      // Check if student has a present record for targetDate and slot
+      const rec = (rosterData?.allRecords || []).find((r) => {
+        const rEmail = (r.studentEmail || "").toLowerCase().trim();
+        if (rEmail !== email) return false;
+        if (r.status === "absent") return false;
+        const rDate = r.sessionDate || r.date;
+        if (rDate !== targetDate) return false;
+        if (slotToUse && r.timeSlot && r.timeSlot.trim() !== slotToUse.trim()) {
+          const dayRoutines = routineSlots.filter((s) => (s.day || "").toLowerCase() === r.day?.toLowerCase());
+          if (dayRoutines.length > 1) return false;
+        }
+        return true;
+      }) || (stu.history || []).find((h) => {
+        if (h.status === "absent") return false;
+        const hDate = h.sessionDate || h.date;
+        return hDate === targetDate;
+      });
+
+      if (rec) {
+        initialMap[stu.email] = true;
+        autoChecked[stu.email] = {
+          markedAt: rec.markedAt,
+          method: rec.method || (rec.faceVerified ? "face_verified" : "manual"),
+          faceVerified: Boolean(rec.faceVerified),
+          timeSlot: rec.timeSlot,
+        };
+        autoCheckedCount++;
+      } else {
+        initialMap[stu.email] = false;
+      }
+    });
+
+    setManualAttendanceMap(initialMap);
+    setAutoVerifiedCheckinMap(autoChecked);
+    return autoCheckedCount;
+  }, [rosterData, routineSlots]);
+
   const handleOpenManualModal = () => {
     if (!rosterData?.roster || rosterData.roster.length === 0) {
       toast.error("No enrolled students found for this course semester yet.");
       return;
     }
-    const map = {};
-    rosterData.roster.forEach((stu) => {
-      // Default to true (present)
-      map[stu.email] = true;
-    });
-    setManualAttendanceMap(map);
+    const todayStr = new Date().toISOString().split("T")[0];
+    setManualDate(todayStr);
+
+    const weekdayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const todayWeekday = weekdayNames[new Date().getDay()];
+    const todaySlot = (routineSlots || []).find((s) => (s.day || "").toLowerCase() === todayWeekday.toLowerCase());
+    const slotToUse = todaySlot?.timeSlot || (routineSlots.length > 0 ? routineSlots[0].timeSlot : "09:00 - 10:00");
+    setManualTimeSlot(slotToUse);
+
+    const autoCount = syncRollCallForDateAndSlot(todayStr, slotToUse);
+    if (autoCount > 0) {
+      toast.success(`⚡ Automatically synced: ${autoCount} student(s) already checked in via Student Portal!`);
+    }
     setManualSearch("");
     setShowManualModal(true);
   };
@@ -528,10 +674,11 @@ export default function TeacherCourseWorkspacePage() {
 
       const data = await res.json();
       if (res.ok && data.success) {
-        toast.success(`Class attendance recorded for ${manualDate}!`);
+        toast.success(data.message || `Class attendance recorded for ${manualDate}!`);
         setShowManualModal(false);
         setManualTopic("");
-        fetchCourseRoster();
+        fetchCourseRoster(false);
+        fetchCourseDetails();
       } else {
         toast.error(data.error || "Failed to record attendance session");
       }
@@ -546,6 +693,11 @@ export default function TeacherCourseWorkspacePage() {
   const handleToggleSingleStudent = async (student, session) => {
     const isCurrentlyPresent = session.status === "present";
     const nextPresent = !isCurrentlyPresent;
+    const studentEmail = (student.email || student.studentEmail || "").toLowerCase();
+    const studentName = student.name || student.studentName || "Student";
+    const studentId = student.studentId || "";
+    const sessionDate = session.date || session.sessionDate || "";
+    const timeSlot = session.timeSlot || "";
 
     try {
       const res = await fetch("/backend/api/attendance/teacher/toggle-student", {
@@ -553,19 +705,45 @@ export default function TeacherCourseWorkspacePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionKey: session.sessionKey,
-          studentEmail: student.email,
-          studentId: student.studentId,
-          studentName: student.name,
+          studentEmail,
+          studentId,
+          studentName,
           courseCode,
-          sessionDate: session.date,
-          timeSlot: session.timeSlot,
+          sessionDate,
+          timeSlot,
           present: nextPresent,
         }),
       });
 
       const data = await res.json();
       if (res.ok && data.success) {
-        toast.success(`${student.name} marked as ${nextPresent ? "Present" : "Absent"}`);
+        toast.success(`${studentName} marked as ${nextPresent ? "Present" : "Absent"}`);
+        // Optimistically update inspectingStudent if viewing this student
+        if (inspectingStudent && (inspectingStudent.email?.toLowerCase() === studentEmail || inspectingStudent.studentId === studentId)) {
+          setInspectingStudent((prev) => {
+            if (!prev) return null;
+            const updatedHistory = (prev.history || []).map((h) => {
+              if (h.sessionKey === session.sessionKey || (h.date === sessionDate && h.timeSlot === timeSlot)) {
+                return {
+                  ...h,
+                  status: nextPresent ? "present" : "absent",
+                  markedAt: nextPresent ? new Date().toISOString() : null,
+                  method: nextPresent ? "manual_override" : h.method,
+                };
+              }
+              return h;
+            });
+            const newAttended = updatedHistory.filter((h) => h.status === "present").length;
+            const baseTotal = prev.totalPlannedClasses || courseStats.targetClasses || prev.totalSessions || updatedHistory.length;
+            const newPct = baseTotal > 0 ? Math.min(100, Math.round((newAttended / baseTotal) * 100)) : 0;
+            return {
+              ...prev,
+              attendedCount: newAttended,
+              percentage: newPct,
+              history: updatedHistory,
+            };
+          });
+        }
         fetchCourseRoster();
       } else {
         toast.error(data.error || "Could not toggle attendance");
@@ -734,13 +912,27 @@ export default function TeacherCourseWorkspacePage() {
       setLiveSecondsLeft((prev) => {
         if (prev <= 1) {
           fetchActiveLiveSession();
+          fetchCourseRoster(false);
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
     return () => clearInterval(interval);
-  }, [liveSecondsLeft, fetchActiveLiveSession]);
+  }, [liveSecondsLeft, fetchActiveLiveSession, fetchCourseRoster]);
+
+  // Auto-refresh roster & live attendance while viewing course workspace
+  // Every 8s if a live check-in session is open (so student face verifications show up live), or every 20s normally
+  useEffect(() => {
+    const pollIntervalMs = (liveSecondsLeft && liveSecondsLeft > 0) ? 8000 : 20000;
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        fetchCourseRoster(false);
+        fetchActiveLiveSession();
+      }
+    }, pollIntervalMs);
+    return () => clearInterval(interval);
+  }, [liveSecondsLeft, fetchCourseRoster, fetchActiveLiveSession]);
 
   // Start Live Geofence Session
   const handleStartLiveSession = async (routineId) => {
@@ -748,7 +940,7 @@ export default function TeacherCourseWorkspacePage() {
     try {
       const rId = routineId || todaySlotTiming.slotDoc?._id || routineSlots[0]?._id;
       if (!rId) {
-        toast.error("No routine slot linked for live window. Please use Record Attendance (Roll Call).");
+        toast.error("No routine slot linked for live window. Please check the course routine schedule.");
         setIsStartingLive(false);
         return;
       }
@@ -1560,6 +1752,63 @@ export default function TeacherCourseWorkspacePage() {
     });
   }, [rosterData, studentSearch, statusFilter]);
 
+  // Unique session dates for filter dropdown
+  const uniqueSessionDates = useMemo(() => {
+    const dates = new Set();
+    (rosterData?.sessions || []).forEach((s) => {
+      if (s.date || s.sessionDate) dates.add(s.date || s.sessionDate);
+    });
+    (rosterData?.allRecords || []).forEach((r) => {
+      if (r.date || r.sessionDate) dates.add(r.date || r.sessionDate);
+    });
+    return Array.from(dates).sort().reverse();
+  }, [rosterData?.sessions, rosterData?.allRecords]);
+
+  // Filtered Chronological Records for "log" view
+  const filteredLogRecords = useMemo(() => {
+    let list = rosterData?.allRecords || [];
+    if (!list.length && rosterData?.roster?.length) {
+      const flattened = [];
+      rosterData.roster.forEach((stu) => {
+        (stu.history || []).forEach((h) => {
+          flattened.push({
+            id: `${h.sessionKey || h.date}_${stu.email}`,
+            sessionKey: h.sessionKey,
+            sessionDate: h.date || h.sessionDate,
+            date: h.date || h.sessionDate,
+            timeSlot: h.timeSlot,
+            studentId: stu.studentId,
+            studentName: stu.name,
+            studentEmail: stu.email,
+            status: h.status,
+            method: h.method,
+            markedAt: h.markedAt,
+            faceVerified: h.faceVerified,
+            faceSimilarity: h.faceSimilarity,
+            distanceMeters: h.distance || h.distanceMeters,
+            closestLocationName: h.closestLocationName,
+          });
+        });
+      });
+      list = flattened;
+    }
+
+    return list.filter((r) => {
+      const dateVal = r.date || r.sessionDate;
+      const matchesDate = logDateFilter === "all" || dateVal === logDateFilter;
+      const matchesStatus = logStatusFilter === "all" || r.status === logStatusFilter;
+      const matchesSearch =
+        !logSearch.trim() ||
+        r.studentName?.toLowerCase().includes(logSearch.toLowerCase()) ||
+        r.studentId?.toLowerCase().includes(logSearch.toLowerCase()) ||
+        r.studentEmail?.toLowerCase().includes(logSearch.toLowerCase()) ||
+        r.timeSlot?.toLowerCase().includes(logSearch.toLowerCase()) ||
+        r.method?.toLowerCase().includes(logSearch.toLowerCase()) ||
+        (dateVal && dateVal.includes(logSearch));
+      return matchesDate && matchesStatus && matchesSearch;
+    });
+  }, [rosterData?.allRecords, rosterData?.roster, logDateFilter, logStatusFilter, logSearch]);
+
   const filteredMaterials = useMemo(() => {
     return materials.filter((m) => {
       const matchesCat = materialCategory === "all" || m.type === materialCategory;
@@ -1851,14 +2100,17 @@ export default function TeacherCourseWorkspacePage() {
 
           {/* Quick Action Hub in Banner */}
           <div className="flex flex-col sm:flex-row lg:flex-col gap-2.5 w-full lg:w-auto shrink-0">
-            <button
-              type="button"
-              onClick={handleOpenManualModal}
-              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-black text-xs shadow-xl shadow-indigo-600/30 transition-all hover:scale-105 active:scale-95 cursor-pointer border border-indigo-400/30"
-            >
-              <UserCheck className="w-4 h-4 text-white" />
-              <span>Record Attendance (Roll Call)</span>
-            </button>
+            {todaySlotTiming.canStart && !activeLiveSession ? (
+              <button
+                type="button"
+                onClick={() => handleStartLiveSession()}
+                disabled={isStartingLive}
+                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-xl shadow-emerald-600/30 transition-all hover:scale-105 active:scale-95 cursor-pointer border border-emerald-400/30 disabled:opacity-50"
+              >
+                <Zap className="w-4 h-4 text-amber-300" />
+                <span>{isStartingLive ? "Opening Window..." : "Launch 10m Student Check-In"}</span>
+              </button>
+            ) : null}
 
             <button
               type="button"
@@ -1981,7 +2233,7 @@ export default function TeacherCourseWorkspacePage() {
               if (e.key === "Enter" || e.key === " ") handleTabChange("attendance");
             }}
             className="p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-400/60 backdrop-blur-md space-y-1 relative group/card cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.99] shadow-sm hover:shadow-emerald-500/10 text-left"
-            title="Click to view full attendance roster & roll call"
+            title="Click to view full attendance roster & records"
           >
             <div className="flex items-center justify-between gap-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block group-hover/card:text-emerald-300 transition-colors">
@@ -2385,15 +2637,6 @@ export default function TeacherCourseWorkspacePage() {
 
                 <button
                   type="button"
-                  onClick={handleOpenManualModal}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/25 transition-all hover:scale-102 active:scale-98 cursor-pointer"
-                >
-                  <UserCheck className="w-4 h-4 text-white" />
-                  <span>Take Attendance (Roll Call)</span>
-                </button>
-
-                <button
-                  type="button"
                   onClick={handleExportAttendanceCSV}
                   className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 dark:bg-emerald-400/10 dark:hover:bg-emerald-400/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 hover:border-emerald-500/50 text-xs font-bold transition-all hover:scale-102 active:scale-98 shadow-xs hover:shadow-emerald-500/10 cursor-pointer backdrop-blur-md"
                   title="Download complete attendance & eligibility sheet as CSV spreadsheet"
@@ -2405,221 +2648,471 @@ export default function TeacherCourseWorkspacePage() {
               </div>
             </div>
 
-            {/* Filter & Search Bar */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-100 dark:border-white/10">
-              <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1">
-                {[
-                  { id: "all", label: `All Students (${courseStats.totalStudents})` },
-                  { id: "eligible", label: `Eligible ≥75% (${courseStats.eligibleCount})` },
-                  { id: "warning", label: `Collegiate 60-74% (${courseStats.warningCount})` },
-                  { id: "risk", label: `At Risk <60% (${courseStats.atRiskCount})` },
-                ].map((f) => (
-                  <button
-                    key={f.id}
-                    onClick={() => setStatusFilter(f.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
-                      statusFilter === f.id
-                        ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xs"
-                        : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200"
-                    }`}
-                  >
-                    {f.label}
-                  </button>
-                ))}
+            {/* View Mode Switcher: Roster Summary vs Detailed Date & Time Records */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 border-t border-slate-100 dark:border-white/10">
+              <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl w-fit">
+                <button
+                  type="button"
+                  onClick={() => setAttendanceViewMode("roster")}
+                  className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    attendanceViewMode === "roster"
+                      ? "bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>Student Roster & Eligibility ({rosterStudents.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAttendanceViewMode("log")}
+                  className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    attendanceViewMode === "log"
+                      ? "bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                  }`}
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>Attendance Records Log ({filteredLogRecords.length})</span>
+                </button>
               </div>
 
-              <div className="relative w-full sm:w-80">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search student ID, name, email..."
-                  value={studentSearch ?? ""}
-                  onChange={(e) => setStudentSearch(e.target.value)}
-                  className="w-full h-10 pl-9 pr-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 outline-none focus:ring-1 focus:ring-indigo-500"
-                />
-              </div>
+              <span className="text-xs text-slate-400 font-medium hidden sm:inline">
+                {attendanceViewMode === "roster"
+                  ? "Click any student to inspect session dates & timestamps"
+                  : "Every attendance check-in logged with date & time"}
+              </span>
             </div>
 
-            {/* Roster Table with Isolated Scrolling and Sticky Header */}
-            <div 
-              data-lenis-prevent
-              className="max-h-[580px] overflow-auto overscroll-contain rounded-2xl border border-slate-200/80 dark:border-white/10 shadow-xs scrollbar-thin smart-scroll-container"
-            >
-              {isRosterLoading ? (
-                <div className="py-16 text-center text-xs text-slate-400 animate-pulse">
-                  Calculating individual student attendance records for {courseCode}...
+            {/* ── SUB-VIEW A: STUDENT ROSTER & ELIGIBILITY ──────────────── */}
+            {attendanceViewMode === "roster" && (
+              <div className="space-y-4">
+                {/* Filter & Search Bar */}
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1">
+                    {[
+                      { id: "all", label: `All Students (${courseStats.totalStudents})` },
+                      { id: "eligible", label: `Eligible ≥75% (${courseStats.eligibleCount})` },
+                      { id: "warning", label: `Collegiate 60-74% (${courseStats.warningCount})` },
+                      { id: "risk", label: `At Risk <60% (${courseStats.atRiskCount})` },
+                    ].map((f) => (
+                      <button
+                        key={f.id}
+                        onClick={() => setStatusFilter(f.id)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                          statusFilter === f.id
+                            ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xs"
+                            : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200"
+                        }`}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="relative w-full sm:w-80">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search student ID, name, email..."
+                      value={studentSearch ?? ""}
+                      onChange={(e) => setStudentSearch(e.target.value)}
+                      className="w-full h-10 pl-9 pr-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
                 </div>
-              ) : rosterStudents.length === 0 ? (
-                <div className="py-14 text-center rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-200 dark:border-slate-700 space-y-2">
-                  <Users className="w-8 h-8 text-slate-400 mx-auto" />
-                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                    No enrolled students match your search or filter.
-                  </p>
-                  <p className="text-[11px] text-slate-400">
-                    Students registered in {course?.semester || `Semester ${course?.semesterNum || 7}`} automatically appear here.
-                  </p>
-                </div>
-              ) : (
-                <table className="w-full text-left border-collapse">
-                  <thead className="sticky top-0 z-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-xs">
-                    <tr className="border-b border-slate-100 dark:border-white/10 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                      <th className="pb-3 px-4">Student</th>
-                      <th className="pb-3 px-4">Student ID</th>
-                      <th className="pb-3 px-4 text-center">{courseStats.targetClasses ? "Attended / Target" : "Attended / Held"}</th>
-                      <th className="pb-3 px-4 text-center">Course Attendance %</th>
-                      <th className="pb-3 px-4 text-center">Exam Eligibility</th>
-                      <th className="pb-3 px-4 text-right">Latest Session</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-white/5 text-xs font-medium text-slate-700 dark:text-slate-200">
-                    {rosterStudents.map((stu) => {
-                      const pct = stu.percentage;
-                      const isEligible = pct >= 75;
-                      const isWarning = pct >= 60 && pct < 75;
-                      const latestSession = stu.history && stu.history.length > 0 ? stu.history[0] : null;
 
-                      return (
-                        <tr
-                          key={stu.id || stu.studentId}
-                          className="hover:bg-slate-50/60 dark:hover:bg-slate-800/50 transition-colors"
-                        >
-                          <td className="py-4 px-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-600 to-sky-500 text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-xs">
-                                {stu.name ? stu.name.charAt(0).toUpperCase() : "S"}
-                              </div>
-                              <div>
-                                <span className="font-bold text-slate-900 dark:text-white block">
-                                  {stu.name}
-                                </span>
-                                <span className="text-[11px] text-slate-400 block truncate max-w-[180px]">
-                                  {stu.email}
-                                </span>
-                              </div>
-                            </div>
-                          </td>
-
-                          <td className="py-4 px-4 font-mono font-bold text-indigo-600 dark:text-indigo-400">
-                            {stu.studentId}
-                          </td>
-
-                          <td className="py-4 px-4 text-center font-bold text-slate-800 dark:text-slate-100">
-                            <div className="flex flex-col items-center">
-                              <div className="flex items-center gap-1">
-                                <span className="text-indigo-600 dark:text-indigo-400 font-mono font-black">{stu.attendedCount}</span>
-                                <span className="text-slate-400 font-mono text-xs">
-                                  {courseStats.targetClasses
-                                    ? ` / ${courseStats.targetClasses} Target`
-                                    : ` / ${stu.totalSessions} Sessions`}
-                                </span>
-                              </div>
-                              <span className="text-[10px] text-slate-400 font-normal">
-                                ({stu.attendedCount} of {stu.totalSessions} held attended)
-                              </span>
-                              {courseStats.targetClasses && stu.remainingClasses > 0 && (
-                                <span className={`text-[10px] mt-0.5 font-semibold ${
-                                  stu.neededFromRemaining === 0
-                                    ? "text-emerald-500 dark:text-emerald-400"
-                                    : stu.canReach75
-                                    ? "text-sky-600 dark:text-sky-400"
-                                    : "text-rose-500 font-bold"
-                                }`}>
-                                  {stu.neededFromRemaining === 0
-                                    ? "✓ Guaranteed ≥75%"
-                                    : stu.canReach75
-                                    ? `Needs ≥${stu.neededFromRemaining} of ${stu.remainingClasses} left`
-                                    : "⚠ Cannot reach 75%"}
-                                </span>
-                              )}
-                            </div>
-                          </td>
-
-                          <td className="py-4 px-4 text-center">
-                            <div className="inline-flex items-center gap-2">
-                              <div className="w-20 h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                                <div
-                                  className={`h-full rounded-full transition-all ${
-                                    isEligible ? "bg-emerald-500" : isWarning ? "bg-amber-500" : "bg-rose-500"
-                                  }`}
-                                  style={{ width: `${Math.min(pct, 100)}%` }}
-                                />
-                              </div>
-                              <span className={`font-mono font-extrabold text-xs ${
-                                isEligible ? "text-emerald-600 dark:text-emerald-400" : isWarning ? "text-amber-600 dark:text-amber-400" : "text-rose-600 dark:text-rose-400"
-                              }`}>
-                                {pct}%
-                              </span>
-                            </div>
-                          </td>
-
-                          <td className="py-4 px-4 text-center">
-                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold ${
-                              isEligible
-                                ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200 dark:ring-emerald-800"
-                                : isWarning
-                                ? "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 ring-1 ring-amber-200 dark:ring-amber-800"
-                                : "bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 ring-1 ring-rose-200 dark:ring-rose-800"
-                            }`}>
-                              {isEligible ? (
-                                <>
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                                  <span>Eligible (≥75%)</span>
-                                </>
-                              ) : isWarning ? (
-                                <>
-                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                                  <span>Collegiate (60-74%)</span>
-                                </>
-                              ) : (
-                                <>
-                                  <XCircle className="w-3.5 h-3.5 text-rose-500" />
-                                  <span>Non-Collegiate (&lt;60%)</span>
-                                </>
-                              )}
-                            </span>
-                          </td>
-
-                          <td className="py-4 px-4 text-right">
-                            {latestSession ? (
-                              <button
-                                type="button"
-                                onClick={() => handleToggleSingleStudent(stu, latestSession)}
-                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-xs ${
-                                  latestSession.status === "present"
-                                    ? "bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
-                                    : "bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300"
-                                }`}
-                                title={`Toggle presence for latest session (${latestSession.date})`}
-                              >
-                                {latestSession.status === "present" ? (
-                                  <>
-                                    <Check className="w-3.5 h-3.5 text-emerald-600" />
-                                    <span>Present</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <X className="w-3.5 h-3.5 text-rose-600" />
-                                    <span>Absent</span>
-                                  </>
-                                )}
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={handleOpenManualModal}
-                                className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer"
-                              >
-                                Take Roll Call
-                              </button>
-                            )}
-                          </td>
+                {/* Roster Table with Isolated Scrolling and Sticky Header */}
+                <div 
+                  data-lenis-prevent
+                  className="max-h-[580px] overflow-auto overscroll-contain rounded-2xl border border-slate-200/80 dark:border-white/10 shadow-xs scrollbar-thin smart-scroll-container"
+                >
+                  {isRosterLoading ? (
+                    <div className="py-16 text-center text-xs text-slate-400 animate-pulse">
+                      Calculating individual student attendance records for {courseCode}...
+                    </div>
+                  ) : rosterStudents.length === 0 ? (
+                    <div className="py-14 text-center rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-200 dark:border-slate-700 space-y-2">
+                      <Users className="w-8 h-8 text-slate-400 mx-auto" />
+                      <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        No enrolled students match your search or filter.
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        Students registered in {course?.semester || `Semester ${course?.semesterNum || 7}`} automatically appear here.
+                      </p>
+                    </div>
+                  ) : (
+                    <table className="w-full text-left border-collapse">
+                      <thead className="sticky top-0 z-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-xs">
+                        <tr className="border-b border-slate-100 dark:border-white/10 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                          <th className="pb-3 px-4">Student</th>
+                          <th className="pb-3 px-4">Student ID</th>
+                          <th className="pb-3 px-4 text-center">{courseStats.targetClasses ? "Attended / Target" : "Attended / Held"}</th>
+                          <th className="pb-3 px-4 text-center">Attendance %</th>
+                          <th className="pb-3 px-4 text-center">Exam Eligibility</th>
+                          <th className="pb-3 px-4 text-right">Latest Attendance Record</th>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-white/5 text-xs font-medium text-slate-700 dark:text-slate-200">
+                        {rosterStudents.map((stu) => {
+                          const pct = stu.percentage;
+                          const isEligible = pct >= 75;
+                          const isWarning = pct >= 60 && pct < 75;
+                          const latest = stu.latestRecord;
+
+                          return (
+                            <tr
+                              key={stu.id || stu.studentId}
+                              className="hover:bg-slate-50/60 dark:hover:bg-slate-800/50 transition-colors"
+                            >
+                              <td className="py-4 px-4">
+                                <div 
+                                  onClick={() => setInspectingStudent(stu)}
+                                  className="flex items-center gap-3 cursor-pointer group/stu"
+                                  title="Click to view detailed attendance date & time log"
+                                >
+                                  <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-600 to-sky-500 text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-xs group-hover/stu:scale-105 transition-transform">
+                                    {stu.name ? stu.name.charAt(0).toUpperCase() : "S"}
+                                  </div>
+                                  <div>
+                                    <span className="font-bold text-slate-900 dark:text-white block group-hover/stu:text-indigo-600 dark:group-hover/stu:text-indigo-400 transition-colors">
+                                      {stu.name}
+                                    </span>
+                                    <span className="text-[11px] text-slate-400 block truncate max-w-[180px]">
+                                      {stu.email}
+                                    </span>
+                                  </div>
+                                </div>
+                              </td>
+
+                              <td className="py-4 px-4 font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                                {stu.studentId}
+                              </td>
+
+                              <td className="py-4 px-4 text-center font-bold text-slate-800 dark:text-slate-100">
+                                <div className="flex flex-col items-center">
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-indigo-600 dark:text-indigo-400 font-mono font-black">{stu.attendedCount}</span>
+                                    <span className="text-slate-400 font-mono text-xs">
+                                      {courseStats.targetClasses
+                                        ? ` / ${courseStats.targetClasses} Target`
+                                        : ` / ${stu.totalSessions} Sessions`}
+                                    </span>
+                                  </div>
+                                  <span className="text-[10px] text-slate-400 font-normal">
+                                    ({stu.attendedCount} of {stu.totalSessions} held attended)
+                                  </span>
+                                  {courseStats.targetClasses && stu.remainingClasses > 0 && (
+                                    <span className={`text-[10px] mt-0.5 font-semibold ${
+                                      stu.neededFromRemaining === 0
+                                        ? "text-emerald-500 dark:text-emerald-400"
+                                        : stu.canReach75
+                                        ? "text-sky-600 dark:text-sky-400"
+                                        : "text-rose-500 font-bold"
+                                    }`}>
+                                      {stu.neededFromRemaining === 0
+                                        ? "✓ Guaranteed ≥75%"
+                                        : stu.canReach75
+                                        ? `Needs ≥${stu.neededFromRemaining} of ${stu.remainingClasses} left`
+                                        : "⚠ Cannot reach 75%"}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+
+                              <td className="py-4 px-4 text-center">
+                                <div className="inline-flex items-center gap-2">
+                                  <div className="w-20 h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full transition-all ${
+                                        isEligible ? "bg-emerald-500" : isWarning ? "bg-amber-500" : "bg-rose-500"
+                                      }`}
+                                      style={{ width: `${Math.min(pct, 100)}%` }}
+                                    />
+                                  </div>
+                                  <span className={`font-mono font-extrabold text-xs ${
+                                    isEligible ? "text-emerald-600 dark:text-emerald-400" : isWarning ? "text-amber-600 dark:text-amber-400" : "text-rose-600 dark:text-rose-400"
+                                  }`}>
+                                    {pct}%
+                                  </span>
+                                </div>
+                              </td>
+
+                              <td className="py-4 px-4 text-center">
+                                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold ${
+                                  isEligible
+                                    ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200 dark:ring-emerald-800"
+                                    : isWarning
+                                    ? "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 ring-1 ring-amber-200 dark:ring-amber-800"
+                                    : "bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 ring-1 ring-rose-200 dark:ring-rose-800"
+                                }`}>
+                                  {isEligible ? (
+                                    <>
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                      <span>Eligible (≥75%)</span>
+                                    </>
+                                  ) : isWarning ? (
+                                    <>
+                                      <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                                      <span>Collegiate (60-74%)</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <XCircle className="w-3.5 h-3.5 text-rose-500" />
+                                      <span>Non-Collegiate (&lt;60%)</span>
+                                    </>
+                                  )}
+                                </span>
+                              </td>
+
+                              <td className="py-4 px-4 text-right">
+                                <div className="flex flex-col items-end gap-1">
+                                  {latest ? (
+                                    <div className="text-right">
+                                      <div className="flex items-center justify-end gap-1 font-bold text-xs text-slate-800 dark:text-slate-200">
+                                        <Calendar className="w-3 h-3 text-indigo-500" />
+                                        <span>{formatSessionDate(latest.date)}</span>
+                                      </div>
+                                      <div className="flex items-center justify-end gap-1.5 text-[10px] text-slate-400 font-mono mt-0.5">
+                                        <Clock className="w-2.5 h-2.5 text-emerald-500" />
+                                        <span>{formatCheckInTime(latest.markedAt)}</span>
+                                        <span>•</span>
+                                        <span>{latest.timeSlot}</span>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <span className="text-[11px] text-slate-400 italic">No attendance recorded</span>
+                                  )}
+
+                                  <button
+                                    type="button"
+                                    onClick={() => setInspectingStudent(stu)}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/70 dark:hover:bg-indigo-900/80 text-indigo-600 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800 text-xs font-bold transition cursor-pointer mt-1"
+                                    title="View student's date-by-date attendance records"
+                                  >
+                                    <History className="w-3 h-3" />
+                                    <span>Records ({stu.attendedCount || 0})</span>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ── SUB-VIEW B: CHRONOLOGICAL ATTENDANCE RECORDS WITH DATE & TIME ── */}
+            {attendanceViewMode === "log" && (
+              <div className="space-y-4">
+                {/* Filters Toolbar for Log View */}
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+                    {/* Date Dropdown */}
+                    <div className="relative">
+                      <select
+                        value={logDateFilter}
+                        onChange={(e) => setLogDateFilter(e.target.value)}
+                        className="h-9 px-3 pr-8 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 outline-none cursor-pointer"
+                      >
+                        <option value="all">All Dates ({uniqueSessionDates.length})</option>
+                        {uniqueSessionDates.map((d) => (
+                          <option key={d} value={d}>
+                            {formatSessionDate(d)} ({d})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Status Filter Pills */}
+                    <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+                      {[
+                        { id: "all", label: "All Records" },
+                        { id: "present", label: "Present" },
+                        { id: "absent", label: "Absent" },
+                      ].map((sf) => (
+                        <button
+                          key={sf.id}
+                          type="button"
+                          onClick={() => setLogStatusFilter(sf.id)}
+                          className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                            logStatusFilter === sf.id
+                              ? "bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs"
+                              : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
+                          }`}
+                        >
+                          {sf.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Search inside log */}
+                  <div className="relative w-full sm:w-80">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search student ID, name, time..."
+                      value={logSearch}
+                      onChange={(e) => setLogSearch(e.target.value)}
+                      className="w-full h-9 pl-9 pr-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Log Records Table */}
+                <div 
+                  data-lenis-prevent
+                  className="max-h-[580px] overflow-auto overscroll-contain rounded-2xl border border-slate-200/80 dark:border-white/10 shadow-xs scrollbar-thin smart-scroll-container"
+                >
+                  {filteredLogRecords.length === 0 ? (
+                    <div className="py-14 text-center rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-200 dark:border-slate-700 space-y-2">
+                      <Clock className="w-8 h-8 text-slate-400 mx-auto" />
+                      <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        No attendance records match your filter criteria.
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        When attendance is recorded via 10m live window or roll-call, detailed records appear here.
+                      </p>
+                    </div>
+                  ) : (
+                    <table className="w-full text-left border-collapse">
+                      <thead className="sticky top-0 z-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-xs">
+                        <tr className="border-b border-slate-100 dark:border-white/10 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                          <th className="pb-3 px-4">Date & Day</th>
+                          <th className="pb-3 px-4">Class Time & Check-in</th>
+                          <th className="pb-3 px-4">Student</th>
+                          <th className="pb-3 px-4">Verification & Method</th>
+                          <th className="pb-3 px-4 text-center">Status</th>
+                          <th className="pb-3 px-4 text-right">Quick Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-white/5 text-xs font-medium text-slate-700 dark:text-slate-200">
+                        {filteredLogRecords.map((rec, idx) => {
+                          const isPresent = rec.status === "present";
+                          return (
+                            <tr
+                              key={rec.id || `${rec.sessionKey || rec.date}_${rec.studentEmail}_${idx}`}
+                              className="hover:bg-slate-50/60 dark:hover:bg-slate-800/50 transition-colors"
+                            >
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                                    <Calendar className="w-3.5 h-3.5" />
+                                  </div>
+                                  <div>
+                                    <span className="font-bold text-slate-900 dark:text-white block">
+                                      {formatSessionDate(rec.date || rec.sessionDate)}
+                                    </span>
+                                    <span className="font-mono text-[10px] text-slate-400">
+                                      {rec.date || rec.sessionDate}
+                                    </span>
+                                  </div>
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-4">
+                                <div className="space-y-0.5">
+                                  <span className="font-mono font-bold text-xs text-slate-800 dark:text-slate-200 block">
+                                    {rec.timeSlot || "Scheduled Slot"}
+                                  </span>
+                                  {rec.markedAt ? (
+                                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono flex items-center gap-1">
+                                      <Clock className="w-3 h-3" />
+                                      <span>Marked: {formatCheckInTime(rec.markedAt)}</span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] text-slate-400 italic">Not logged</span>
+                                  )}
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-[11px] flex items-center justify-center shrink-0">
+                                    {rec.studentName ? rec.studentName.charAt(0).toUpperCase() : "S"}
+                                  </div>
+                                  <div>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-bold text-slate-900 dark:text-white">
+                                        {rec.studentName}
+                                      </span>
+                                      <span className="font-mono font-bold text-[10px] text-indigo-600 dark:text-indigo-400">
+                                        {rec.studentId}
+                                      </span>
+                                    </div>
+                                    <span className="text-[10px] text-slate-400 block truncate max-w-[160px]">
+                                      {rec.studentEmail}
+                                    </span>
+                                  </div>
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-4">
+                                <div className="space-y-0.5">
+                                  {rec.faceVerified ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold">
+                                      <UserCheck className="w-3 h-3 text-emerald-500" />
+                                      <span>Face Verified {rec.faceSimilarity ? `(${Math.round(rec.faceSimilarity * 100)}%)` : ""}</span>
+                                    </span>
+                                  ) : rec.method === "manual" || rec.method === "manual_rollcall" || rec.method === "manual_override" ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold">
+                                      <Edit3 className="w-3 h-3 text-indigo-500" />
+                                      <span>Teacher Verified</span>
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] font-medium">
+                                      <span>Standard Check-in</span>
+                                    </span>
+                                  )}
+                                  {rec.distanceMeters !== null && rec.distanceMeters !== undefined && (
+                                    <span className="text-[9px] text-slate-400 font-mono block">
+                                      {Math.round(rec.distanceMeters)}m from campus
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-4 text-center">
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                                  isPresent
+                                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                                    : "bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300"
+                                }`}>
+                                  {isPresent ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                                  <span>{isPresent ? "Present" : "Absent"}</span>
+                                </span>
+                              </td>
+
+                              <td className="py-3 px-4 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleSingleStudent(
+                                    { email: rec.studentEmail, studentId: rec.studentId, name: rec.studentName },
+                                    { sessionKey: rec.sessionKey, date: rec.date || rec.sessionDate, timeSlot: rec.timeSlot, status: rec.status }
+                                  )}
+                                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold transition cursor-pointer shadow-xs ${
+                                    isPresent
+                                      ? "bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300"
+                                      : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                                  }`}
+                                  title={`Toggle student status for ${rec.date || rec.sessionDate}`}
+                                >
+                                  {isPresent ? <span>Mark Absent</span> : <span>Mark Present</span>}
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Past Conducted Sessions History Cards */}
@@ -3318,16 +3811,9 @@ export default function TeacherCourseWorkspacePage() {
                       <MapPin className="w-3.5 h-3.5 text-indigo-500" />
                       <span>{slot.room || "Room 407"}</span>
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setManualTimeSlot(slot.timeSlot);
-                        handleOpenManualModal();
-                      }}
-                      className="font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-                    >
-                      Take Roll Call
-                    </button>
+                    <span className="font-mono text-[11px] text-slate-400 font-bold">
+                      {slot.timeSlot}
+                    </span>
                   </div>
                 </div>
               ))}
@@ -3383,7 +3869,13 @@ export default function TeacherCourseWorkspacePage() {
                     type="date"
                     required
                     value={manualDate ?? ""}
-                    onChange={(e) => setManualDate(e.target.value)}
+                    onChange={(e) => {
+                      const newDate = e.target.value;
+                      setManualDate(newDate);
+                      if (newDate) {
+                        syncRollCallForDateAndSlot(newDate);
+                      }
+                    }}
                     className="w-full h-10 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold outline-none focus:border-indigo-500"
                   />
                 </div>
@@ -3392,7 +3884,11 @@ export default function TeacherCourseWorkspacePage() {
                   <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Class Time Slot</label>
                   <select
                     value={manualTimeSlot}
-                    onChange={(e) => setManualTimeSlot(e.target.value)}
+                    onChange={(e) => {
+                      const newSlot = e.target.value;
+                      setManualTimeSlot(newSlot);
+                      syncRollCallForDateAndSlot(manualDate, newSlot);
+                    }}
                     className="w-full h-10 px-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold outline-none focus:border-indigo-500"
                   >
                     {[
@@ -3409,6 +3905,23 @@ export default function TeacherCourseWorkspacePage() {
                   </select>
                 </div>
               </div>
+
+              {/* Automatic Sync Banner */}
+              {Object.keys(autoVerifiedCheckinMap).length > 0 ? (
+                <div className="flex items-center gap-2.5 p-3 rounded-2xl bg-emerald-50/90 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-900 dark:text-emerald-200">
+                  <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 animate-pulse" />
+                  <div className="leading-tight">
+                    <strong className="font-bold">⚡ Automatic Attendance Detected:</strong> {Object.keys(autoVerifiedCheckinMap).length} student(s) already marked attendance via Student Portal (Face & Geofence). They are automatically pre-checked as <strong>Present</strong> below.
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2.5 p-3 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800/50 text-xs text-indigo-900 dark:text-indigo-200">
+                  <Clock className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                  <div className="leading-tight">
+                    Scheduled routine slot for <strong>{courseCode}</strong>. Students who give attendance in their portal will auto-sync here in real-time.
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Lecture Topic / Chapter (Optional)</label>
@@ -3477,6 +3990,15 @@ export default function TeacherCourseWorkspacePage() {
                 >
                   {filteredManualStudents.map((stu) => {
                     const isChecked = Boolean(manualAttendanceMap[stu.email]);
+                    const autoInfo = autoVerifiedCheckinMap[stu.email];
+                    const formatCheckinTime = (iso) => {
+                      if (!iso) return "";
+                      try {
+                        return new Date(iso).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+                      } catch {
+                        return "";
+                      }
+                    };
                     return (
                       <div
                         key={stu.email}
@@ -3502,13 +4024,21 @@ export default function TeacherCourseWorkspacePage() {
                           </div>
                         </div>
 
-                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${
-                          isChecked
-                            ? "bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300"
-                            : "bg-slate-200 dark:bg-slate-700 text-slate-500"
-                        }`}>
-                          {isChecked ? "Present" : "Absent"}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          {isChecked && autoInfo && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/60 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
+                              <Sparkles className="w-2.5 h-2.5 text-emerald-600 dark:text-emerald-400" />
+                              <span>Auto-verified {autoInfo.markedAt ? `(${formatCheckinTime(autoInfo.markedAt)})` : ""}</span>
+                            </span>
+                          )}
+                          <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${
+                            isChecked
+                              ? "bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300"
+                              : "bg-slate-200 dark:bg-slate-700 text-slate-500"
+                          }`}>
+                            {isChecked ? "Present" : "Absent"}
+                          </span>
+                        </div>
                       </div>
                     );
                   })}
@@ -3538,6 +4068,227 @@ export default function TeacherCourseWorkspacePage() {
       )}
 
       {/* ════════════════════════════════════════════════════════════════
+          MODAL: INSPECT INDIVIDUAL STUDENT ATTENDANCE RECORDS (DATE & TIME)
+          ════════════════════════════════════════════════════════════════ */}
+      {inspectingStudent && (
+        <div 
+          data-lenis-prevent
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in overscroll-contain"
+        >
+          <div 
+            data-lenis-prevent
+            className="relative w-full max-w-3xl bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-6 max-h-[90vh] overflow-y-auto overscroll-contain scrollbar-thin"
+          >
+            {/* Header */}
+            <div className="flex items-start justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 to-sky-500 text-white font-black text-lg flex items-center justify-center shrink-0 shadow-md">
+                  {inspectingStudent.name ? inspectingStudent.name.charAt(0).toUpperCase() : "S"}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-lg font-black text-slate-900 dark:text-white">
+                      {inspectingStudent.name}
+                    </h3>
+                    <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
+                      ID: {inspectingStudent.studentId}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {inspectingStudent.email} • {courseCode} • Semester {inspectingStudent.semester || course?.semesterNum || 7}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setInspectingStudent(null)}
+                className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quick Stats Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Classes Attended</span>
+                <span className="text-xl font-black text-indigo-600 dark:text-indigo-400">
+                  {inspectingStudent.attendedCount}
+                </span>
+                <span className="text-[10px] text-slate-400 block">
+                  of {courseStats.targetClasses ? `${courseStats.targetClasses} Target` : `${inspectingStudent.totalSessions} Sessions`}
+                </span>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Attendance Rate</span>
+                <span className={`text-xl font-black ${
+                  inspectingStudent.percentage >= 75 ? "text-emerald-600 dark:text-emerald-400" : inspectingStudent.percentage >= 60 ? "text-amber-600" : "text-rose-600"
+                }`}>
+                  {inspectingStudent.percentage}%
+                </span>
+                <span className="text-[10px] text-slate-400 block">PUST Curriculum</span>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Exam Eligibility</span>
+                <span className={`text-xs font-black block mt-1 ${
+                  inspectingStudent.percentage >= 75 ? "text-emerald-600" : inspectingStudent.percentage >= 60 ? "text-amber-600" : "text-rose-600"
+                }`}>
+                  {inspectingStudent.percentage >= 75 ? "Eligible (≥75%)" : inspectingStudent.percentage >= 60 ? "Collegiate (60-74%)" : "Non-Collegiate (<60%)"}
+                </span>
+                <span className="text-[10px] text-slate-400 block">Final Exam Status</span>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Recorded Sessions</span>
+                <span className="text-xl font-black text-slate-900 dark:text-white">
+                  {(inspectingStudent.history || []).length}
+                </span>
+                <span className="text-[10px] text-slate-400 block">Course Lecture Slots</span>
+              </div>
+            </div>
+
+            {/* Sessions Table with Date, Time & Verification */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>Session Records with Date & Time ({(inspectingStudent.history || []).length})</span>
+                </h4>
+                <div className="relative w-48 sm:w-60">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search session date..."
+                    value={inspectingStudentSearch}
+                    onChange={(e) => setInspectingStudentSearch(e.target.value)}
+                    className="w-full h-8 pl-8 pr-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="max-h-72 overflow-y-auto rounded-2xl border border-slate-200/80 dark:border-slate-700/80 divide-y divide-slate-100 dark:divide-slate-800">
+                {(inspectingStudent.history || []).filter((h) => {
+                  if (!inspectingStudentSearch.trim()) return true;
+                  const q = inspectingStudentSearch.toLowerCase();
+                  return (
+                    (h.date || h.sessionDate || "").includes(q) ||
+                    (h.timeSlot || "").toLowerCase().includes(q) ||
+                    (h.topic || "").toLowerCase().includes(q)
+                  );
+                }).length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-400">
+                    No sessions match your search.
+                  </div>
+                ) : (
+                  (inspectingStudent.history || []).filter((h) => {
+                    if (!inspectingStudentSearch.trim()) return true;
+                    const q = inspectingStudentSearch.toLowerCase();
+                    return (
+                      (h.date || h.sessionDate || "").includes(q) ||
+                      (h.timeSlot || "").toLowerCase().includes(q) ||
+                      (h.topic || "").toLowerCase().includes(q)
+                    );
+                  }).map((h, idx) => {
+                    const isPresent = h.status === "present";
+                    return (
+                      <div
+                        key={h.sessionKey || idx}
+                        className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-xs text-slate-900 dark:text-white flex items-center gap-1.5">
+                              <Calendar className="w-3.5 h-3.5 text-indigo-500" />
+                              {formatSessionDate(h.date || h.sessionDate)}
+                            </span>
+                            <span className="font-mono text-[10px] text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
+                              {h.timeSlot}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2 text-[10px] text-slate-500 flex-wrap">
+                            {isPresent && h.markedAt ? (
+                              <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-mono font-medium">
+                                <Clock className="w-3 h-3" />
+                                Checked in: {formatCheckInTime(h.markedAt)}
+                              </span>
+                            ) : isPresent ? (
+                              <span className="text-emerald-600 dark:text-emerald-400 font-medium">Recorded Present</span>
+                            ) : (
+                              <span className="text-rose-500 font-medium">Absent</span>
+                            )}
+
+                            <span>•</span>
+                            <span>
+                              {h.faceVerified ? (
+                                <span className="font-bold text-emerald-600">
+                                  Face Biometric Verified {h.faceSimilarity ? `(${Math.round(h.faceSimilarity * 100)}%)` : ""}
+                                </span>
+                              ) : h.method === "manual" || h.method === "manual_rollcall" || h.method === "manual_override" ? (
+                                <span className="text-indigo-600 font-medium">Teacher Verified</span>
+                              ) : (
+                                <span>Class Session Check-in</span>
+                              )}
+                            </span>
+
+                            {h.distanceMeters !== null && h.distanceMeters !== undefined && (
+                              <>
+                                <span>•</span>
+                                <span className="font-mono">{Math.round(h.distanceMeters)}m from campus</span>
+                              </>
+                            )}
+
+                            {h.topic && (
+                              <>
+                                <span>•</span>
+                                <span className="italic text-slate-400 truncate max-w-[200px]">{h.topic}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Toggle Button */}
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSingleStudent(
+                            inspectingStudent,
+                            { sessionKey: h.sessionKey, date: h.date || h.sessionDate, timeSlot: h.timeSlot, status: h.status }
+                          )}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer self-start sm:self-center shrink-0 ${
+                            isPresent
+                              ? "bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300"
+                              : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300"
+                          }`}
+                          title={`Click to mark student as ${isPresent ? "Absent" : "Present"} for this session`}
+                        >
+                          {isPresent ? (
+                            <>
+                              <X className="w-3.5 h-3.5 text-rose-600" />
+                              <span>Mark Absent</span>
+                            </>
+                          ) : (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Mark Present</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════
           MODAL 2: INSPECT CONDUCTED SESSION
           ════════════════════════════════════════════════════════════════ */}
       {inspectedSession && (
@@ -3554,10 +4305,14 @@ export default function TeacherCourseWorkspacePage() {
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div>
                 <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-                  <span>Session Roster: {inspectedSession.date}</span>
+                  <Calendar className="w-4 h-4 text-indigo-500" />
+                  <span>Session Roster: {formatSessionDate(inspectedSession.date)}</span>
                 </h3>
-                <p className="text-xs text-slate-400">
-                  {inspectedSession.timeSlot} • {courseCode}
+                <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5">
+                  <Clock className="w-3 h-3 text-emerald-500" />
+                  <span>{inspectedSession.timeSlot}</span>
+                  <span>•</span>
+                  <span>{courseCode}</span>
                 </p>
               </div>
 
@@ -3614,12 +4369,36 @@ export default function TeacherCourseWorkspacePage() {
                       className="p-3 flex items-center justify-between hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
                     >
                       <div>
-                        <span className="font-bold text-xs text-slate-900 dark:text-white block">
-                          {stu.name}
-                        </span>
-                        <span className="font-mono text-[10px] text-indigo-600 dark:text-indigo-400">
-                          {stu.studentId} • {stu.email}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-xs text-slate-900 dark:text-white">
+                            {stu.name}
+                          </span>
+                          <span className="font-mono text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                            {stu.studentId}
+                          </span>
+                        </div>
+                        {isPresent ? (
+                          <div className="flex items-center gap-2 text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-mono font-medium">
+                              <Clock className="w-3 h-3" />
+                              {rec?.markedAt ? formatCheckInTime(rec.markedAt) : "Present"}
+                            </span>
+                            <span>•</span>
+                            <span>
+                              {rec?.faceVerified ? "Face Verified" : rec?.method === "manual" ? "Teacher Verified" : "Logged"}
+                            </span>
+                            {rec?.distanceMeters !== null && rec?.distanceMeters !== undefined && (
+                              <>
+                                <span>•</span>
+                                <span className="font-mono">{Math.round(rec.distanceMeters)}m</span>
+                              </>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-rose-500 font-medium block mt-0.5">
+                            Absent from this session
+                          </span>
+                        )}
                       </div>
 
                       <button
@@ -3632,12 +4411,12 @@ export default function TeacherCourseWorkspacePage() {
                         })}
                         className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                           isPresent
-                            ? "bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-200"
-                            : "bg-rose-100 dark:bg-rose-950/80 text-rose-800 dark:text-rose-300 hover:bg-rose-200"
+                            ? "bg-rose-100 dark:bg-rose-950/80 text-rose-800 dark:text-rose-300 hover:bg-rose-200"
+                            : "bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-200"
                         }`}
                       >
-                        {isPresent ? <Check className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
-                        <span>{isPresent ? "Present" : "Absent"}</span>
+                        {isPresent ? <X className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+                        <span>{isPresent ? "Mark Absent" : "Mark Present"}</span>
                       </button>
                     </div>
                   );
@@ -4372,17 +5151,6 @@ export default function TeacherCourseWorkspacePage() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowSessionsModal(false);
-                    handleOpenManualModal();
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition shadow-xs cursor-pointer"
-                >
-                  <UserCheck className="w-3.5 h-3.5" />
-                  <span>+ Record Roll Call</span>
-                </button>
-                <button
-                  type="button"
                   onClick={() => setShowSessionsModal(false)}
                   className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
                 >
@@ -4402,20 +5170,9 @@ export default function TeacherCourseWorkspacePage() {
                     No Class Sessions Held Yet
                   </h4>
                   <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                    This course has no conducted class sessions yet. When you take roll call or launch an attendance session, it will appear here.
+                    This course has no conducted class sessions yet. When students give attendance or a live session is launched, it will appear here.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowSessionsModal(false);
-                    handleOpenManualModal();
-                  }}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold text-xs shadow-md shadow-indigo-600/30 transition-all cursor-pointer"
-                >
-                  <UserCheck className="w-4 h-4" />
-                  <span>Record First Roll Call</span>
-                </button>
               </div>
             ) : (
               <div className="space-y-3">
@@ -4449,7 +5206,7 @@ export default function TeacherCourseWorkspacePage() {
                                 : "bg-indigo-500/20 text-indigo-300 border-indigo-400/40"
                             }`}
                           >
-                            {isLive ? "Live Check-In Active" : isAnnounced ? "Announced" : "Roll Call Saved"}
+                            {isLive ? "Live Check-In Active" : isAnnounced ? "Announced" : "Completed"}
                           </span>
                         </div>
 
@@ -4475,17 +5232,14 @@ export default function TeacherCourseWorkspacePage() {
                         <button
                           type="button"
                           onClick={() => {
-                            setManualDate(sess.date || new Date().toISOString().split("T")[0]);
-                            setManualTimeSlot(sess.timeSlot || "09:00 - 10:00");
-                            setManualTopic(sess.topic || "");
                             setShowSessionsModal(false);
-                            handleOpenManualModal();
+                            setInspectedSession(sess);
                           }}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-xs font-bold transition cursor-pointer"
-                          title="Review or edit student attendance roll call for this session"
+                          title="Inspect attendees for this session"
                         >
-                          <UserCheck className="w-3.5 h-3.5" />
-                          <span>Roll Call</span>
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>View Attendees</span>
                         </button>
 
                         <button

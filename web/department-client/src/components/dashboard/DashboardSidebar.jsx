@@ -350,6 +350,15 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
       icon: FileText 
     },
     { 
+      name: "Academic Results", 
+      description: "Semester grade sheets & CGPA",
+      href: "/dashboard/student#results", 
+      hash: "#results", 
+      scrollTarget: "results",
+      badge: "CGPA",
+      icon: Award 
+    },
+    { 
       name: "Department Notice Board", 
       description: "Official circulars & audio alerts",
       href: "/dashboard/student#notices", 
@@ -546,6 +555,7 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
         return [
           { name: "Overview", href: "/dashboard/admin", icon: LayoutDashboard },
           { name: "Institutional Analytics", href: "/dashboard/admin#analytics", icon: BarChart3 },
+          { name: "Semester Results", href: "/dashboard/admin#results", icon: Award },
           { name: "Support & Complaints", href: "/dashboard/admin#support-complaints", icon: LifeBuoy },
           { name: "Student Approvals", href: "/dashboard/admin#pending", icon: UserCheck },
           { name: "Faculty Approvals", href: "/dashboard/admin#faculty", icon: Presentation },

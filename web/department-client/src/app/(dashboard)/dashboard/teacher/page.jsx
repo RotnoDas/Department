@@ -1601,10 +1601,14 @@ export default function TeacherDashboardPage() {
 
                     {/* Dedicated Capabilities */}
                     <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center gap-2 text-[10px] font-semibold text-slate-500 dark:text-slate-400 flex-wrap">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 font-bold">
+                      <Link
+                        href={`/dashboard/teacher/courses/${encodeURIComponent(course.code)}?tab=attendance`}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 font-bold transition cursor-pointer"
+                        title="View student attendance records with exact dates & timestamps"
+                      >
                         <UserCheck className="w-3 h-3" />
-                        <span>Individual Attendance</span>
-                      </span>
+                        <span>Attendance Records</span>
+                      </Link>
                       <Link
                         href={`/dashboard/teacher/courses/${encodeURIComponent(course.code)}?tab=assignments`}
                         className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/50 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 font-bold transition cursor-pointer"

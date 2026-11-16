@@ -50,6 +50,8 @@ const connectDB = async () => {
     // Support & Complaints system
     complaints: db.collection('complaints'),
     supportTickets: db.collection('support_tickets'),
+    // Academic Semester Results & Transcripts
+    results: db.collection('semester_results'),
   };
 
   const ensureIndex = async (collection, spec, options = {}) => {
@@ -91,6 +93,12 @@ const connectDB = async () => {
   await ensureIndex(attendanceAttempts, { userId: 1, scopeKey: 1, at: -1 });
   await ensureIndex(attendanceAttempts, { frameHashes: 1 });
   await ensureIndex(attendanceAttempts, { at: 1 }, { expireAfterSeconds: 30 * DAY });
+
+  if (collections.results) {
+    await ensureIndex(collections.results, { studentId: 1, semester: 1 }, { unique: true });
+    await ensureIndex(collections.results, { studentEmail: 1, semester: 1 });
+    await ensureIndex(collections.results, { semester: 1 });
+  }
 
   console.log('Successfully connected to MongoDB!');
   return { db, collections };

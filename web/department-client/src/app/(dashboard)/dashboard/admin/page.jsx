@@ -51,6 +51,7 @@ import { SEMESTER_COURSES, SEMESTER_LABELS, SEMESTER_KEYS } from "@/data/courses
 import Loading from "@/components/common/Loading";
 import { AdminAnalyticsCharts } from "@/components/dashboard/DashboardCharts";
 import NoticeBoardSection from "@/components/notice/NoticeBoardSection";
+import AdminResultsSection from "@/components/results/AdminResultsSection";
 import { 
   SectionCollapseToggle, 
   CollapsibleBody, 
@@ -115,6 +116,7 @@ export default function AdminDashboardPage() {
   const [collapsedSections, setCollapsedSections] = useState({
     kpi: false,
     analytics: false,
+    results: false,
     students: false,
     faculty: false,
     routine: false,
@@ -132,6 +134,7 @@ export default function AdminDashboardPage() {
     setCollapsedSections({
       kpi: true,
       analytics: true,
+      results: true,
       students: true,
       faculty: true,
       routine: true,
@@ -146,6 +149,7 @@ export default function AdminDashboardPage() {
     setCollapsedSections({
       kpi: false,
       analytics: false,
+      results: false,
       students: false,
       faculty: false,
       routine: false,
@@ -163,6 +167,7 @@ export default function AdminDashboardPage() {
       const hash = window.location.hash.replace("#", "");
       if (!hash) return;
       if (hash === "analytics") setCollapsedSections((p) => ({ ...p, analytics: false }));
+      if (hash === "results") setCollapsedSections((p) => ({ ...p, results: false }));
       if (hash === "pending" || hash === "students") setCollapsedSections((p) => ({ ...p, students: false }));
       if (hash === "faculty") setCollapsedSections((p) => ({ ...p, faculty: false }));
       if (hash === "routine") setCollapsedSections((p) => ({ ...p, routine: false }));
@@ -1361,6 +1366,28 @@ export default function AdminDashboardPage() {
           isCollapsed={collapsedSections.analytics}
           onToggle={() => toggleSection("analytics")}
         />
+      </div>
+
+      {/* Academic Semester Results & CGPA Studio */}
+      <div id="results" className="scroll-mt-6">
+        <div className="flex items-center justify-between gap-3 mb-3 px-1">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Examination Records & Results Studio
+          </span>
+          <SectionCollapseToggle
+            isCollapsed={collapsedSections.results}
+            onToggle={() => toggleSection("results")}
+            label="Semester Results"
+            size="sm"
+          />
+        </div>
+        <CollapsibleBody
+          isCollapsed={collapsedSections.results}
+          onExpand={() => toggleSection("results")}
+          sectionName="Semester Results & CGPA Studio"
+        >
+          <AdminResultsSection />
+        </CollapsibleBody>
       </div>
 
       {/* ── Student Admissions & Verification Hub ─────────────────── */}

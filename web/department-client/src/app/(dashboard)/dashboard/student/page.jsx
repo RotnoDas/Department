@@ -62,6 +62,7 @@ import { apiFetch } from "@/lib/api";
 import FaceVerificationModal from "@/components/dashboard/FaceVerificationModal";
 import StudentAssignmentsSection from "@/components/assignment/StudentAssignmentsSection";
 import StudentMaterialsSection from "@/components/materials/StudentMaterialsSection";
+import StudentResultsSection from "@/components/results/StudentResultsSection";
 import NoticeBoardSection from "@/components/notice/NoticeBoardSection";
 import { 
   SectionCollapseToggle, 
@@ -154,12 +155,13 @@ export default function StudentDashboardPage() {
     routine: false,
     materials: false,
     assignments: false,
+    results: false,
     notices: false,
   });
 
   const toggleSection = (key) => setCollapsedSections((p) => ({ ...p, [key]: !p[key] }));
-  const collapseAllSections = () => setCollapsedSections({ profile: true, analytics: true, attendance: true, routine: true, materials: true, assignments: true, notices: true });
-  const expandAllSections = () => setCollapsedSections({ profile: false, analytics: false, attendance: false, routine: false, materials: false, assignments: false, notices: false });
+  const collapseAllSections = () => setCollapsedSections({ profile: true, analytics: true, attendance: true, routine: true, materials: true, assignments: true, results: true, notices: true });
+  const expandAllSections = () => setCollapsedSections({ profile: false, analytics: false, attendance: false, routine: false, materials: false, assignments: false, results: false, notices: false });
   const allCollapsed = Object.values(collapsedSections).every(Boolean);
 
   useEffect(() => {
@@ -172,6 +174,7 @@ export default function StudentDashboardPage() {
       if (hash === "routine" || hash === "courses") setCollapsedSections((p) => ({ ...p, routine: false }));
       if (hash === "materials") setCollapsedSections((p) => ({ ...p, materials: false }));
       if (hash === "assignments") setCollapsedSections((p) => ({ ...p, assignments: false }));
+      if (hash === "results") setCollapsedSections((p) => ({ ...p, results: false }));
       if (hash === "notices") setCollapsedSections((p) => ({ ...p, notices: false }));
     };
     handleHash();
@@ -2484,6 +2487,28 @@ export default function StudentDashboardPage() {
             student={profile || user}
             semester={enrolledSemester}
           />
+        </CollapsibleBody>
+      </div>
+
+      {/* ── Academic Semester Results & Grade Sheets ────────────────── */}
+      <div id="results" className="scroll-mt-6">
+        <div className="flex items-center justify-between gap-3 mb-3 px-1">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Official Academic Results & Transcripts
+          </span>
+          <SectionCollapseToggle
+            isCollapsed={collapsedSections.results}
+            onToggle={() => toggleSection("results")}
+            label="Semester Results"
+            size="sm"
+          />
+        </div>
+        <CollapsibleBody
+          isCollapsed={collapsedSections.results}
+          onExpand={() => toggleSection("results")}
+          sectionName="Academic Results & Transcripts"
+        >
+          <StudentResultsSection student={profile || user} />
         </CollapsibleBody>
       </div>
 

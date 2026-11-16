@@ -493,20 +493,35 @@ router.post(
 // Detailed course-wise student attendance roster with attendance percentage & session logs
 router.get('/teacher/roster-report', async (req, res) => {
   try {
-    const { students, attendanceSessions, attendanceRecords } = getCollections();
+    const { students, attendanceSessions, attendanceRecords, courses } = getCollections();
     const { courseCode, semester } = req.query;
+
+    const rawCourse = String(courseCode || '').trim();
+    const cleanCourse = rawCourse.replace(/[\s\-_]+/g, '');
+    const letters = cleanCourse.replace(/[^A-Za-z]/g, '');
+    const digits = cleanCourse.replace(/\D/g, '');
+    const courseRegex = (letters && digits)
+      ? new RegExp(`^${letters}\\s*[-_]?\\s*${digits}$`, 'i')
+      : new RegExp(`^${rawCourse.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
 
     const sessionQuery = {
       status: { $ne: 'scheduled' },
     };
     if (courseCode && courseCode !== 'all') {
-      sessionQuery.courseCode = { $regex: `^${courseCode.trim()}$`, $options: 'i' };
+      sessionQuery.courseCode = courseRegex;
     }
 
     // Find all sessions held or announced for this course
-    const sessions = await attendanceSessions
+    const dbSessions = await attendanceSessions
       .find(sessionQuery)
       .sort({ sessionDate: -1, timeSlot: 1 })
+      .toArray();
+
+    // Query records for this course
+    const recordQuery = (courseCode && courseCode !== 'all') ? { courseCode: courseRegex } : {};
+    const allRecords = await attendanceRecords
+      .find(recordQuery)
+      .sort({ sessionDate: -1, markedAt: -1, createdAt: -1 })
       .toArray();
 
     // Student filter (approved students in this semester if provided)
@@ -522,36 +537,93 @@ router.get('/teacher/roster-report', async (req, res) => {
 
     const studentList = await students.find(studentQuery).sort({ studentId: 1 }).toArray();
 
-    // Map records for quick lookup: sessionKey -> Set of student emails
-    const sessionKeys = sessions.map((s) => s.sessionKey).filter(Boolean);
-    const records = await attendanceRecords
-      .find({ sessionKey: { $in: sessionKeys } })
-      .toArray();
+    // Combine and deduplicate sessions from attendanceSessions and attendanceRecords
+    // Canonical occurrence key is date + normalized courseCode + normalized timeSlot
+    const cleanNormCode = (code) => String(code || '').replace(/[\s\-_]+/g, '').toUpperCase();
+    const occurrenceMap = new Map();
 
-    const recordMap = new Map(); // key: `${sessionKey}_${studentEmail}` -> record
-    records.forEach((r) => {
+    const registerSession = (s, fallbackMethod) => {
+      const cCode = s.courseCode || rawCourse;
+      const cNorm = cleanNormCode(cCode);
+      const slot = (s.timeSlot || 'Scheduled Slot').trim();
+      const date = s.sessionDate || (s.markedAt ? new Date(s.markedAt).toISOString().split('T')[0] : 'Unknown Date');
+      const occKey = `${date}|${cNorm}|${slot}`;
+
+      const sessionKey = s.sessionKey || occKey;
+      const existing = occurrenceMap.get(occKey);
+
+      if (!existing) {
+        occurrenceMap.set(occKey, {
+          sessionKey,
+          matchingKeys: [sessionKey],
+          courseCode: cCode,
+          sessionDate: date,
+          date,
+          timeSlot: slot,
+          topic: s.topic || '',
+          room: s.room || '',
+          method: s.method || fallbackMethod || (s.faceVerified ? 'face_verified' : 'announced_session'),
+          status: s.status || 'completed',
+          teacherName: s.teacherName || '',
+          notes: s.notes || '',
+          announcedAt: s.announcedAt || s.createdAt || s.markedAt || null,
+        });
+      } else {
+        if (!existing.matchingKeys.includes(sessionKey)) {
+          existing.matchingKeys.push(sessionKey);
+        }
+        // Prefer routine-based or existing primary key
+        if (s.sessionKey && s.sessionKey.includes('|') && s.sessionKey.split('|')[1]?.length === 24) {
+          existing.sessionKey = s.sessionKey;
+        }
+        if (!existing.topic && s.topic) existing.topic = s.topic;
+        if (!existing.room && s.room) existing.room = s.room;
+        if (!existing.teacherName && s.teacherName) existing.teacherName = s.teacherName;
+        if (s.method && s.method !== 'announced_session') existing.method = s.method;
+        if (s.announcedAt && (!existing.announcedAt || s.announcedAt < existing.announcedAt)) {
+          existing.announcedAt = s.announcedAt;
+        }
+      }
+    };
+
+    dbSessions.forEach((s) => registerSession(s, 'announced_session'));
+    allRecords.forEach((r) => registerSession(r, r.faceVerified ? 'face_verified' : 'manual'));
+
+    const sessions = Array.from(occurrenceMap.values()).sort((a, b) => {
+      const dateA = a.sessionDate || '';
+      const dateB = b.sessionDate || '';
+      if (dateA !== dateB) return dateB.localeCompare(dateA);
+      return (b.timeSlot || '').localeCompare(a.timeSlot || '');
+    });
+
+    // Map records for quick lookup:
+    // Support lookup by key_email, by date|slot_email, and by date_email
+    const recordMap = new Map();
+    allRecords.forEach((r) => {
       const email = (r.studentEmail || '').toLowerCase();
-      if (r.sessionKey && email) {
+      if (!email) return;
+      if (r.sessionKey) {
         recordMap.set(`${r.sessionKey}_${email}`, r);
+      }
+      if (r.sessionDate && r.timeSlot) {
+        recordMap.set(`${r.sessionDate}|${r.timeSlot.trim()}_${email}`, r);
+      }
+      if (r.sessionDate && !recordMap.has(`${r.sessionDate}_${email}`)) {
+        recordMap.set(`${r.sessionDate}_${email}`, r);
       }
     });
 
     const totalSessions = sessions.length;
 
     let courseDoc = null;
-    if (courseCode) {
-      const { courses } = getCollections();
-      const rawCode = String(courseCode).trim();
-      const cleanCode = rawCode.replace(/[\s\-_]+/g, '');
-      const letters = cleanCode.replace(/[^A-Za-z]/g, '');
-      const digits = cleanCode.replace(/\D/g, '');
+    if (courseCode && courseCode !== 'all') {
       const or = [
-        { code: rawCode },
-        { code: rawCode.toUpperCase() },
-        { code: cleanCode },
-        { code: cleanCode.toUpperCase() },
-        { code: { $regex: `^${rawCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } },
-        { code: { $regex: `^${cleanCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } },
+        { code: rawCourse },
+        { code: rawCourse.toUpperCase() },
+        { code: cleanCourse },
+        { code: cleanCourse.toUpperCase() },
+        { code: { $regex: `^${rawCourse.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } },
+        { code: { $regex: `^${cleanCourse.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } },
       ];
       if (letters && digits) {
         or.push({ code: { $regex: `^${letters}\\s*[-_]?\\s*${digits}$`, $options: 'i' } });
@@ -565,19 +637,50 @@ router.get('/teacher/roster-report', async (req, res) => {
     const roster = studentList.map((stu) => {
       const email = (stu.email || '').toLowerCase();
       let attendedCount = 0;
+      let latestRecord = null;
+
       const history = sessions.map((s) => {
-        const rec = recordMap.get(`${s.sessionKey}_${email}`);
-        const present = Boolean(rec);
-        if (present) attendedCount++;
+        let rec = null;
+        if (s.matchingKeys && Array.isArray(s.matchingKeys)) {
+          for (const k of s.matchingKeys) {
+            rec = recordMap.get(`${k}_${email}`);
+            if (rec) break;
+          }
+        }
+        if (!rec) {
+          rec = recordMap.get(`${s.sessionKey}_${email}`) ||
+                recordMap.get(`${s.sessionDate}|${(s.timeSlot || '').trim()}_${email}`) ||
+                recordMap.get(`${s.sessionDate}_${email}`);
+        }
+        const present = Boolean(rec && rec.status !== 'absent');
+        if (present) {
+          attendedCount++;
+          if (!latestRecord && rec?.markedAt) {
+            latestRecord = {
+              date: s.sessionDate,
+              timeSlot: s.timeSlot,
+              markedAt: rec.markedAt,
+              method: rec.method || (rec.faceVerified ? 'face_verified' : 'manual'),
+              faceVerified: Boolean(rec.faceVerified),
+              distanceMeters: rec.distanceMeters ?? null,
+            };
+          }
+        }
         return {
           sessionKey: s.sessionKey,
           date: s.sessionDate,
+          sessionDate: s.sessionDate,
           timeSlot: s.timeSlot,
           topic: s.topic || '',
           status: present ? 'present' : 'absent',
-          method: rec?.method || s.method || 'announced_session',
-          markedAt: rec?.markedAt || null,
-          distance: rec?.distanceMeters || null,
+          method: rec?.method || (rec?.faceVerified ? 'face_verified' : s.method) || 'session',
+          markedAt: rec?.markedAt || rec?.createdAt || null,
+          distance: rec?.distanceMeters ?? null,
+          distanceMeters: rec?.distanceMeters ?? null,
+          faceVerified: Boolean(rec?.faceVerified),
+          faceSimilarity: rec?.faceSimilarity ?? null,
+          closestLocationName: rec?.closestLocationName || null,
+          devMode: Boolean(rec?.devMode),
         };
       });
 
@@ -607,9 +710,31 @@ router.get('/teacher/roster-report', async (req, res) => {
         remainingClasses,
         neededFromRemaining,
         canReach75: totalPlannedClasses !== null ? (neededFromRemaining !== null && neededFromRemaining <= remainingClasses) : (percentage >= 75),
+        latestRecord,
         history,
       };
     });
+
+    // Detailed chronological session records
+    const formattedRecords = allRecords.map((r) => ({
+      id: String(r._id),
+      sessionKey: r.sessionKey,
+      sessionDate: r.sessionDate || (r.markedAt ? new Date(r.markedAt).toISOString().split('T')[0] : 'Unknown Date'),
+      date: r.sessionDate || (r.markedAt ? new Date(r.markedAt).toISOString().split('T')[0] : 'Unknown Date'),
+      timeSlot: r.timeSlot || 'Routine Slot',
+      courseCode: r.courseCode,
+      courseTitle: r.courseTitle || '',
+      studentId: r.studentId,
+      studentName: r.studentName,
+      studentEmail: r.studentEmail,
+      status: r.status || 'present',
+      method: r.method || (r.faceVerified ? 'face_verified' : 'manual'),
+      markedAt: r.markedAt || r.createdAt || null,
+      faceVerified: Boolean(r.faceVerified),
+      faceSimilarity: r.faceSimilarity ?? null,
+      distanceMeters: r.distanceMeters ?? null,
+      closestLocationName: r.closestLocationName || null,
+    }));
 
     res.json({
       success: true,
@@ -618,7 +743,17 @@ router.get('/teacher/roster-report', async (req, res) => {
       totalPlannedClasses,
       studentCount: roster.length,
       sessions: sessions.map((s) => {
-        const attendees = records.filter((r) => r.sessionKey === s.sessionKey && r.status === 'present');
+        const attendeeEmails = new Set();
+        allRecords.forEach((r) => {
+          if (r.status === 'present') {
+            const matchesKey = s.matchingKeys ? s.matchingKeys.includes(r.sessionKey) : r.sessionKey === s.sessionKey;
+            const matchesDateSlot = (r.sessionDate === s.sessionDate && (r.timeSlot || '').trim() === (s.timeSlot || '').trim());
+            if (matchesKey || matchesDateSlot) {
+              attendeeEmails.add((r.studentEmail || '').toLowerCase());
+            }
+          }
+        });
+        const attendedCount = attendeeEmails.size;
         return {
           sessionKey: s.sessionKey,
           courseCode: s.courseCode,
@@ -630,13 +765,14 @@ router.get('/teacher/roster-report', async (req, res) => {
           status: s.status || 'completed',
           teacherName: s.teacherName || '',
           notes: s.notes || '',
-          attendedCount: attendees.length,
+          attendedCount,
           totalStudents: roster.length,
-          turnoutPct: roster.length > 0 ? Math.round((attendees.length / roster.length) * 100) : 0,
-          announcedAt: s.announcedAt || s.createdAt || null,
+          turnoutPct: roster.length > 0 ? Math.round((attendedCount / roster.length) * 100) : 0,
+          announcedAt: s.announcedAt || null,
         };
       }),
       roster,
+      allRecords: formattedRecords,
     });
   } catch (err) {
     console.error('Error fetching roster report:', err);
@@ -647,9 +783,10 @@ router.get('/teacher/roster-report', async (req, res) => {
 
 // ── POST /api/attendance/teacher/manual-session ────────────────────────
 // Allows teacher to record a complete roll-call attendance session for a course
+// Ensures single canonical session per class occurrence and prevents duplicate attendances in a day
 router.post('/teacher/manual-session', async (req, res) => {
   try {
-    const { attendanceSessions, attendanceRecords, students } = getCollections();
+    const { attendanceSessions, attendanceRecords, students, routines } = getCollections();
     const { courseCode, semester, sessionDate, timeSlot, topic, records, teacherName, teacherEmail } = req.body || {};
 
     if (!courseCode || !sessionDate) {
@@ -657,82 +794,162 @@ router.post('/teacher/manual-session', async (req, res) => {
     }
 
     const cleanCourse = courseCode.trim().toUpperCase();
-    const cleanSlot = timeSlot || '09:00 - 10:00';
+    const cleanSlot = (timeSlot || '09:00 - 10:00').trim();
     const now = new Date();
-    const sessionKey = `${sessionDate}|${cleanCourse}|${cleanSlot}`;
 
-    // 1. Upsert attendance session
+    // 1. Resolve routine slot and canonical session key
+    // Calculate weekday from sessionDate (e.g., 2026-11-16 -> 'Monday')
+    const dateParts = sessionDate.split('-').map(Number);
+    const dateObj = new Date(Date.UTC(dateParts[0], dateParts[1] - 1, dateParts[2]));
+    const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const weekday = weekdays[dateObj.getUTCDay()];
+
+    const letters = cleanCourse.replace(/[^A-Za-z]/g, '');
+    const digits = cleanCourse.replace(/\D/g, '');
+    const courseRegex = (letters && digits)
+      ? new RegExp(`^${letters}\\s*[-_]?\\s*${digits}$`, 'i')
+      : new RegExp(`^${cleanCourse.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+
+    let routine = null;
+    if (routines) {
+      const candidates = await routines.find({
+        $or: [{ courseCode: courseRegex }, { courseCode: cleanCourse }]
+      }).toArray();
+
+      routine = candidates.find(r => r.day?.toLowerCase() === weekday.toLowerCase() && (r.timeSlot === cleanSlot || r.timeSlot?.trim() === cleanSlot)) ||
+                candidates.find(r => r.day?.toLowerCase() === weekday.toLowerCase()) ||
+                candidates.find(r => r.timeSlot === cleanSlot || r.timeSlot?.trim() === cleanSlot) ||
+                candidates[0] ||
+                null;
+    }
+
+    let canonicalSessionKey = routine ? `${sessionDate}|${routine._id}` : `${sessionDate}|${cleanCourse}|${cleanSlot}`;
+
+    // 2. Check if a session already exists for this date and course / routine
+    const existingSession = await attendanceSessions.findOne({
+      $or: [
+        { sessionKey: canonicalSessionKey },
+        { sessionKey: `${sessionDate}|${cleanCourse}|${cleanSlot}` },
+        { sessionDate, courseCode: courseRegex, timeSlot: cleanSlot },
+        ...(routine ? [{ sessionDate, routineId: String(routine._id) }] : [])
+      ]
+    });
+
+    if (existingSession && existingSession.sessionKey) {
+      canonicalSessionKey = existingSession.sessionKey;
+    }
+
+    // Upsert the single canonical attendance session (never create duplicates)
     await attendanceSessions.updateOne(
-      { sessionKey },
+      { sessionKey: canonicalSessionKey },
       {
         $set: {
-          sessionKey,
+          sessionKey: canonicalSessionKey,
+          routineId: routine ? String(routine._id) : (existingSession?.routineId || null),
           courseCode: cleanCourse,
-          semester: Number(semester) || 1,
+          semester: Number(semester) || routine?.semester || existingSession?.semester || 1,
           sessionDate,
           timeSlot: cleanSlot,
-          topic: topic || '',
-          teacherName: teacherName || 'Course Instructor',
-          teacherEmail: teacherEmail || '',
-          method: 'manual_rollcall',
+          topic: topic || existingSession?.topic || '',
+          teacherName: teacherName || existingSession?.teacherName || 'Course Instructor',
+          teacherEmail: teacherEmail || existingSession?.teacherEmail || '',
           status: 'completed',
           updatedAt: now,
         },
         $setOnInsert: {
+          method: 'manual_rollcall',
           createdAt: now,
         }
       },
       { upsert: true }
     );
 
-    // 2. Process records array
+    // 3. Process records: Idempotent and Deduplicated
     if (Array.isArray(records)) {
       for (const item of records) {
-        const studentEmail = (item.studentEmail || '').toLowerCase();
+        const studentEmail = (item.studentEmail || '').toLowerCase().trim();
         if (!studentEmail) continue;
 
-        if (item.present) {
-          const st = students ? await students.findOne({
-            $or: [
-              { email: studentEmail },
-              ...(item.studentId ? [{ studentId: item.studentId }] : [])
-            ]
-          }) : null;
+        // Find if this student already has a record for this class occurrence
+        const existingRecord = await attendanceRecords.findOne({
+          $or: [
+            { sessionKey: canonicalSessionKey, studentEmail },
+            { sessionDate, courseCode: courseRegex, timeSlot: cleanSlot, studentEmail },
+            { sessionKey: `${sessionDate}|${cleanCourse}|${cleanSlot}`, studentEmail }
+          ]
+        });
 
-          await attendanceRecords.updateOne(
-            { sessionKey, studentEmail },
-            {
-              $set: {
-                sessionKey,
-                userId: st ? String(st.userId || st._id) : item.userId || null,
-                studentEmail,
-                studentId: item.studentId || (st ? st.studentId : '') || '',
-                studentName: item.studentName || (st ? st.name : '') || '',
-                courseCode: cleanCourse,
-                sessionDate,
-                timeSlot: cleanSlot,
-                status: 'present',
-                method: 'manual',
-                markedAt: now,
-                updatedAt: now,
-              },
-              $setOnInsert: {
-                createdAt: now,
+        if (item.present) {
+          if (existingRecord) {
+            // Update to canonical key and present status, keeping face verification details intact
+            await attendanceRecords.updateOne(
+              { _id: existingRecord._id },
+              {
+                $set: {
+                  sessionKey: canonicalSessionKey,
+                  courseCode: cleanCourse,
+                  sessionDate,
+                  timeSlot: cleanSlot,
+                  status: 'present',
+                  updatedAt: now,
+                }
               }
-            },
-            { upsert: true }
-          );
+            );
+          } else {
+            // New record insertion
+            const st = students ? await students.findOne({
+              $or: [
+                { email: studentEmail },
+                ...(item.studentId ? [{ studentId: item.studentId }] : [])
+              ]
+            }) : null;
+
+            await attendanceRecords.insertOne({
+              sessionKey: canonicalSessionKey,
+              userId: st ? String(st.userId || st._id) : item.userId || null,
+              studentEmail,
+              studentId: item.studentId || (st ? st.studentId : '') || '',
+              studentName: item.studentName || (st ? st.name : '') || '',
+              courseCode: cleanCourse,
+              sessionDate,
+              timeSlot: cleanSlot,
+              status: 'present',
+              method: 'manual',
+              markedAt: now,
+              createdAt: now,
+              updatedAt: now,
+            });
+          }
         } else {
-          // If marked absent, remove any present record for this session
-          await attendanceRecords.deleteOne({ sessionKey, studentEmail });
+          // If marked absent in roll call:
+          if (existingRecord) {
+            await attendanceRecords.deleteOne({ _id: existingRecord._id });
+          }
         }
+
+        // Clean up any extra duplicate records for this student on this day/slot
+        await attendanceRecords.deleteMany({
+          sessionDate,
+          courseCode: courseRegex,
+          timeSlot: cleanSlot,
+          studentEmail,
+          sessionKey: { $ne: canonicalSessionKey }
+        });
       }
     }
 
+    // Clean up any orphan duplicate session documents for the same day/slot
+    await attendanceSessions.deleteMany({
+      sessionDate,
+      courseCode: courseRegex,
+      timeSlot: cleanSlot,
+      sessionKey: { $ne: canonicalSessionKey }
+    });
+
     res.json({
       success: true,
-      message: `Attendance recorded for ${cleanCourse} on ${sessionDate}!`,
-      sessionKey
+      message: `Class attendance successfully saved for ${cleanCourse} on ${sessionDate}!`,
+      sessionKey: canonicalSessionKey
     });
   } catch (err) {
     console.error('Error saving manual attendance session:', err);
@@ -751,40 +968,60 @@ router.post('/teacher/toggle-student', async (req, res) => {
       return res.status(400).json({ error: 'sessionKey and studentEmail are required' });
     }
 
-    const email = studentEmail.toLowerCase();
+    const email = studentEmail.toLowerCase().trim();
+    const cleanCourse = (courseCode || '').toUpperCase().trim();
     const now = new Date();
 
     if (present) {
-      const st = students ? await students.findOne({
+      const existing = await attendanceRecords.findOne({
         $or: [
-          { email: email },
-          ...(studentId ? [{ studentId: String(studentId) }] : [])
+          { sessionKey, studentEmail: email },
+          ...(sessionDate && cleanCourse && timeSlot ? [{ sessionDate, courseCode: cleanCourse, timeSlot, studentEmail: email }] : [])
         ]
-      }) : null;
+      });
 
-      await attendanceRecords.updateOne(
-        { sessionKey, studentEmail: email },
-        {
-          $set: {
-            sessionKey,
-            userId: st ? String(st.userId || st._id) : req.body?.userId || null,
-            studentEmail: email,
-            studentId: studentId || (st ? st.studentId : '') || '',
-            studentName: studentName || (st ? st.name : '') || '',
-            courseCode: (courseCode || '').toUpperCase(),
-            sessionDate: sessionDate || '',
-            timeSlot: timeSlot || '',
-            status: 'present',
-            method: 'manual_override',
-            markedAt: now,
-            updatedAt: now,
-          },
-          $setOnInsert: { createdAt: now }
-        },
-        { upsert: true }
-      );
+      if (existing) {
+        await attendanceRecords.updateOne(
+          { _id: existing._id },
+          {
+            $set: {
+              sessionKey,
+              status: 'present',
+              updatedAt: now,
+            }
+          }
+        );
+      } else {
+        const st = students ? await students.findOne({
+          $or: [
+            { email: email },
+            ...(studentId ? [{ studentId: String(studentId) }] : [])
+          ]
+        }) : null;
+
+        await attendanceRecords.insertOne({
+          sessionKey,
+          userId: st ? String(st.userId || st._id) : req.body?.userId || null,
+          studentEmail: email,
+          studentId: studentId || (st ? st.studentId : '') || '',
+          studentName: studentName || (st ? st.name : '') || '',
+          courseCode: cleanCourse,
+          sessionDate: sessionDate || '',
+          timeSlot: timeSlot || '',
+          status: 'present',
+          method: 'manual_override',
+          markedAt: now,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
     } else {
-      await attendanceRecords.deleteOne({ sessionKey, studentEmail: email });
+      await attendanceRecords.deleteMany({
+        $or: [
+          { sessionKey, studentEmail: email },
+          ...(sessionDate && cleanCourse && timeSlot ? [{ sessionDate, courseCode: cleanCourse, timeSlot, studentEmail: email }] : [])
+        ]
+      });
     }
 
     res.json({ success: true, present: Boolean(present) });
@@ -800,10 +1037,26 @@ router.delete('/teacher/session/:sessionKey', async (req, res) => {
     const { attendanceSessions, attendanceRecords } = getCollections();
     const sessionKey = decodeURIComponent(req.params.sessionKey);
 
-    await attendanceRecords.deleteMany({ sessionKey });
-    const result = await attendanceSessions.deleteOne({ sessionKey });
+    const session = await attendanceSessions.findOne({ sessionKey });
+    if (session) {
+      await attendanceRecords.deleteMany({
+        $or: [
+          { sessionKey },
+          { sessionDate: session.sessionDate, courseCode: session.courseCode, timeSlot: session.timeSlot }
+        ]
+      });
+      await attendanceSessions.deleteMany({
+        $or: [
+          { sessionKey },
+          { sessionDate: session.sessionDate, courseCode: session.courseCode, timeSlot: session.timeSlot }
+        ]
+      });
+    } else {
+      await attendanceRecords.deleteMany({ sessionKey });
+      await attendanceSessions.deleteOne({ sessionKey });
+    }
 
-    res.json({ success: true, deleted: result.deletedCount > 0, message: 'Session deleted successfully' });
+    res.json({ success: true, message: 'Session deleted successfully' });
   } catch (err) {
     console.error('Error deleting attendance session:', err);
     res.status(500).json({ error: 'Failed to delete session' });
