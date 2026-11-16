@@ -104,18 +104,6 @@ export function StudentAnalyticsCharts({
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => setIsMounted(true), []);
 
-  // GPA Trend across semesters up to enrolled semester
-  const semGpaData = [
-    { semester: "Sem 1", sgpa: 3.65, cgpa: 3.65, credits: 21 },
-    { semester: "Sem 2", sgpa: 3.72, cgpa: 3.68, credits: 20 },
-    { semester: "Sem 3", sgpa: 3.80, cgpa: 3.72, credits: 22 },
-    { semester: "Sem 4", sgpa: 3.75, cgpa: 3.73, credits: 20 },
-    { semester: "Sem 5", sgpa: 3.85, cgpa: 3.75, credits: 21.5 },
-    { semester: "Sem 6", sgpa: 3.90, cgpa: 3.78, credits: 21 },
-    { semester: "Sem 7", sgpa: 3.92, cgpa: 3.80, credits: 22 },
-    { semester: "Sem 8", sgpa: 3.95, cgpa: 3.82, credits: 20 }
-  ].slice(0, Math.max(3, enrolledSemester));
-
   // Course credit breakdown for student's registered term
   const creditBreakdown = [
     { name: "Theory Courses", value: 14, color: "#6366f1" },
@@ -157,9 +145,6 @@ export function StudentAnalyticsCharts({
           </h3>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs font-bold px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-            Cumulative GPA: 3.78 / 4.00
-          </span>
           <SectionCollapseToggle
             isCollapsed={isCollapsed}
             onToggle={toggleCollapse}
@@ -173,187 +158,139 @@ export function StudentAnalyticsCharts({
         onExpand={toggleCollapse}
         sectionName="Academic Performance Analytics"
       >
-        {/* Grid of 2 Key Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Chart 1: GPA Growth Progression */}
-        <div className="p-6 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h4 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-indigo-500" />
-                Semester SGPA vs Cumulative CGPA Trend
-              </h4>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                Academic progress over completed terms with 3.75 Honors Benchmark
-              </p>
-            </div>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
-              Scale 4.00
-            </span>
-          </div>
-
-          <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={semGpaData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="sgpaGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.35}/>
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0.0}/>
-                  </linearGradient>
-                  <linearGradient id="cgpaGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.25}/>
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0.0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.5} />
-                <XAxis dataKey="semester" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
-                <YAxis domain={[3.0, 4.0]} tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
-                <Tooltip content={<CustomChartTooltip unit="GPA" />} />
-                <ReferenceLine y={3.75} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: "Honors Line (3.75)", fill: "#f59e0b", fontSize: 10, position: "insideTopRight" }} />
-                <Area type="monotone" dataKey="sgpa" name="Term SGPA" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#sgpaGrad)" />
-                <Area type="monotone" dataKey="cgpa" name="Overall CGPA" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#cgpaGrad)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="flex items-center justify-center gap-6 pt-1 text-xs text-slate-500 font-medium">
-            <span className="flex items-center gap-1.5"><span className="w-3 h-1 bg-indigo-500 rounded" /> Term SGPA</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-1 bg-emerald-500 rounded" /> Overall CGPA</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-1 border-t-2 border-dashed border-amber-500" /> Honors Target (3.75)</span>
-          </div>
-        </div>
-
-        {/* Chart 2: Weekly Lecture & Lab Hours Commitment */}
-        <div className="p-6 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h4 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-emerald-500" />
-                Weekly Academic Class Load (Hours / Day)
-              </h4>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                Distribution of theory lectures and practical lab sessions (Sat–Wed)
-              </p>
-            </div>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
-              {routineCount} Weekly Classes
-            </span>
-          </div>
-
-          <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={weeklyWorkload} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.5} />
-                <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
-                <Tooltip content={<CustomChartTooltip unit="hrs" />} />
-                <Bar dataKey="theoryHours" name="Theory Lectures" stackId="a" fill="#6366f1" radius={[0, 0, 4, 4]} />
-                <Bar dataKey="labHours" name="Lab Sessional" stackId="a" fill="#10b981" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="flex items-center justify-center gap-6 pt-1 text-xs text-slate-500 font-medium">
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-indigo-500 rounded" /> Theory Lecture Hours</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-emerald-500 rounded" /> Sessional Lab Hours</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Grid of 2 Secondary Charts: Credit Distribution & Attendance Rates */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Donut Chart: Term Credit Breakdown */}
-        <div className="p-6 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-4">
-          <div>
-            <h4 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
-              <PieIcon className="w-4 h-4 text-purple-500" />
-              Semester {enrolledSemester} Credit Weights
-            </h4>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-              Curriculum weight distribution ({semesterCredits.toFixed(1)} Credits)
-            </p>
-          </div>
-
-          <div className="h-52 w-full flex items-center justify-center">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={creditBreakdown}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={55}
-                  outerRadius={80}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {creditBreakdown.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} stroke="transparent" />
-                  ))}
-                </Pie>
-                <Tooltip content={<CustomChartTooltip unit="Credits" />} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="space-y-1.5 pt-1">
-            {creditBreakdown.map((item) => (
-              <div key={item.name} className="flex items-center justify-between text-xs">
-                <span className="flex items-center gap-1.5 font-medium text-slate-600 dark:text-slate-300">
-                  <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                  {item.name}
+        <div className="space-y-6">
+          {/* Row 1: Weekly Class Workload & Credit Distribution */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Chart 1: Weekly Lecture & Lab Hours Commitment */}
+            <div className="p-6 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 text-emerald-500" />
+                    Weekly Academic Class Load (Hours / Day)
+                  </h4>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                    Distribution of theory lectures and practical lab sessions (Sat–Wed)
+                  </p>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
+                  {routineCount} Weekly Classes
                 </span>
-                <span className="font-bold text-slate-900 dark:text-white">{item.value} Cr</span>
               </div>
-            ))}
-          </div>
-        </div>
 
-        {/* Horizontal Bar Chart: Subject Attendance Rates vs 75% Benchmark */}
-        <div className="lg:col-span-2 p-6 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h4 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                Course-Wise Attendance vs 75% Exam Eligibility Line
-              </h4>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                Mandatory presence rate required for semester final exam clearance
-              </p>
+              <div className="h-64 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={weeklyWorkload} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.5} />
+                    <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
+                    <Tooltip content={<CustomChartTooltip unit="hrs" />} />
+                    <Bar dataKey="theoryHours" name="Theory Lectures" stackId="a" fill="#6366f1" radius={[0, 0, 4, 4]} />
+                    <Bar dataKey="labHours" name="Lab Sessional" stackId="a" fill="#10b981" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex items-center justify-center gap-6 pt-1 text-xs text-slate-500 font-medium">
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-indigo-500 rounded" /> Theory Lecture Hours</span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 bg-emerald-500 rounded" /> Sessional Lab Hours</span>
+              </div>
             </div>
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-              (attendanceSummary?.overallPercentage ?? 0) >= 75
-                ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400"
-                : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
-            }`}>
-              Avg {attendanceSummary?.overallPercentage !== undefined ? `${attendanceSummary.overallPercentage}%` : "0%"}
-            </span>
+
+            {/* Chart 2: Term Credit Breakdown */}
+            <div className="p-6 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-4">
+              <div>
+                <h4 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                  <PieIcon className="w-4 h-4 text-purple-500" />
+                  Semester {enrolledSemester} Credit Weights
+                </h4>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                  Curriculum weight distribution ({semesterCredits.toFixed(1)} Credits)
+                </p>
+              </div>
+
+              <div className="h-52 w-full flex items-center justify-center">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={creditBreakdown}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={55}
+                      outerRadius={80}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      {creditBreakdown.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} stroke="transparent" />
+                      ))}
+                    </Pie>
+                    <Tooltip content={<CustomChartTooltip unit="Credits" />} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="space-y-1.5 pt-1">
+                {creditBreakdown.map((item) => (
+                  <div key={item.name} className="flex items-center justify-between text-xs">
+                    <span className="flex items-center gap-1.5 font-medium text-slate-600 dark:text-slate-300">
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+                      {item.name}
+                    </span>
+                    <span className="font-bold text-slate-900 dark:text-white">{item.value} Cr</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
 
-          <div className="h-52 w-full">
-            {subjectAttendance.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={subjectAttendance} layout="vertical" margin={{ top: 5, right: 30, left: 35, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" opacity={0.5} />
-                  <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 10, fill: "#64748b" }} unit="%" axisLine={false} tickLine={false} />
-                  <YAxis dataKey="code" type="category" tick={{ fontSize: 11, fontWeight: "bold", fill: "#475569" }} axisLine={false} tickLine={false} />
-                  <Tooltip content={<CustomChartTooltip unit="%" />} />
-                  <ReferenceLine x={75} stroke="#f43f5e" strokeDasharray="3 3" label={{ value: "Min 75%", fill: "#f43f5e", fontSize: 10, position: "insideBottomRight" }} />
-                  <Bar dataKey="attendance" name="Class Attendance" fill="#6366f1" radius={[0, 6, 6, 0]} barSize={14} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full w-full flex flex-col items-center justify-center text-center p-4 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl space-y-1">
-                <CheckCircle2 className="w-7 h-7 text-slate-300 dark:text-slate-600" />
-                <p className="text-xs font-bold text-slate-600 dark:text-slate-300">No attendance sessions recorded yet</p>
-                <p className="text-[11px] text-slate-400 dark:text-slate-500">Your presence rate vs the 75% exam line will plot here as classes are conducted.</p>
+          {/* Row 2: Course-Wise Attendance vs 75% Exam Eligibility Line */}
+          <div className="p-6 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                  Course-Wise Attendance vs 75% Exam Eligibility Line
+                </h4>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                  Mandatory presence rate required for semester final exam clearance
+                </p>
               </div>
-            )}
-          </div>
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-100 dark:border-white/10">
-            <span>Minimum University Eligibility: <strong>75%</strong></span>
-            <span className={(attendanceSummary?.overallPercentage ?? 0) >= 75 && subjectAttendance.length > 0 ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-slate-400 font-medium"}>
-              {(attendanceSummary?.overallPercentage ?? 0) >= 75 && subjectAttendance.length > 0 ? "✓ All Courses Exam Cleared" : "Awaiting class sessions"}
-            </span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                (attendanceSummary?.overallPercentage ?? 0) >= 75
+                  ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400"
+                  : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+              }`}>
+                Avg {attendanceSummary?.overallPercentage !== undefined ? `${attendanceSummary.overallPercentage}%` : "0%"}
+              </span>
+            </div>
+
+            <div className="min-h-[14rem] w-full">
+              {subjectAttendance.length > 0 ? (
+                <ResponsiveContainer width="100%" height={Math.max(220, subjectAttendance.length * 36)}>
+                  <BarChart data={subjectAttendance} layout="vertical" margin={{ top: 5, right: 30, left: 35, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" opacity={0.5} />
+                    <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 10, fill: "#64748b" }} unit="%" axisLine={false} tickLine={false} />
+                    <YAxis dataKey="code" type="category" tick={{ fontSize: 11, fontWeight: "bold", fill: "#475569" }} axisLine={false} tickLine={false} />
+                    <Tooltip content={<CustomChartTooltip unit="%" />} />
+                    <ReferenceLine x={75} stroke="#f43f5e" strokeDasharray="3 3" label={{ value: "Min 75%", fill: "#f43f5e", fontSize: 10, position: "insideBottomRight" }} />
+                    <Bar dataKey="attendance" name="Class Attendance" fill="#6366f1" radius={[0, 6, 6, 0]} barSize={16} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-48 w-full flex flex-col items-center justify-center text-center p-4 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl space-y-1">
+                  <CheckCircle2 className="w-7 h-7 text-slate-300 dark:text-slate-600" />
+                  <p className="text-xs font-bold text-slate-600 dark:text-slate-300">No attendance sessions recorded yet</p>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500">Your presence rate vs the 75% exam line will plot here as classes are conducted.</p>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-100 dark:border-white/10">
+              <span>Minimum University Eligibility: <strong>75%</strong></span>
+              <span className={(attendanceSummary?.overallPercentage ?? 0) >= 75 && subjectAttendance.length > 0 ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-slate-400 font-medium"}>
+                {(attendanceSummary?.overallPercentage ?? 0) >= 75 && subjectAttendance.length > 0 ? "✓ All Courses Exam Cleared" : "Awaiting class sessions"}
+              </span>
+            </div>
           </div>
         </div>
-      </div>
       </CollapsibleBody>
     </div>
   );

@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { apiFetch } from "@/lib/api";
-import { SEMESTER_LABELS, SEMESTER_KEYS } from "@/data/courses";
+import { SEMESTER_LABELS, SEMESTER_KEYS, SEMESTER_COURSES } from "@/data/courses";
 
 // Official PUST grading helper (Section 20.8 f)
 function calcGradeFromMarks(marks) {
@@ -101,9 +101,8 @@ export default function AdminResultsSection() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [fetchingTemplate, setFetchingTemplate] = useState(false);
   const [fetchingCA, setFetchingCA] = useState(false);
-  const [entryMode, setEntryMode] = useState("criteria"); // "criteria" (Att + CA + Final) | "total" (Total Marks 100)
+  const [entryMode, setEntryMode] = useState("total"); // Default to simple Total Marks view ("total" | "criteria")
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -209,6 +208,21 @@ export default function AdminResultsSection() {
     const candidateStudents = selectedSession !== "all" ? studentsInActiveSession : studentsList;
     const initialStudent = targetStudent || (candidateStudents.length > 0 ? candidateStudents[0] : null);
 
+    const curriculum = SEMESTER_COURSES[initialSem] || [];
+    const officialCourses = curriculum.map((c) => ({
+      courseCode: c.code,
+      courseTitle: c.title,
+      courseType: getCourseType(c.code, c.title),
+      credits: c.credits,
+      attendancePercentage: "",
+      attendanceMarks: "",
+      caMarks: "",
+      finalMarks: "",
+      marks: "",
+      grade: "—",
+      gradePoint: 0.00,
+    }));
+
     setFormState({
       id: null,
       studentId: initialStudent?.studentId || "",
@@ -219,18 +233,16 @@ export default function AdminResultsSection() {
       examYear: new Date().getFullYear(),
       status: "published",
       remarks: "Official Semester Examination Result",
-      courses: [],
+      courses: officialCourses,
     });
     setIsModalOpen(true);
 
     if (initialStudent?.studentId) {
       await autoFetchCAMetrics(initialStudent.studentId, initialSem);
-    } else {
-      await autoFetchCurriculum(initialSem);
     }
   };
 
-  // Open modal to edit existing result
+  // Open modal to edit existing result (strictly loads official semester courses and credits)
   const openEditModal = async (resultSummary) => {
     setIsEditing(true);
     try {
@@ -241,17 +253,33 @@ export default function AdminResultsSection() {
       const existing = (data.results || []).find((r) => r.semester === resultSummary.semester);
 
       if (existing) {
-        setFormState({
-          id: existing._id,
-          studentId: existing.studentId,
-          studentName: existing.studentName,
-          studentEmail: existing.studentEmail,
-          semester: existing.semester,
-          session: existing.session || selectedSession || "2021-2022",
-          examYear: existing.examYear || new Date().getFullYear(),
-          status: existing.status || "published",
-          remarks: existing.remarks || "",
-          courses: (existing.courses || []).map((c) => {
+        const sem = existing.semester;
+        const curriculum = SEMESTER_COURSES[sem] || [];
+
+        // Build course list strictly using official curriculum so credits and courses match syllabus
+        let mergedCourses = [];
+        if (curriculum.length > 0) {
+          mergedCourses = curriculum.map((official) => {
+            const courseType = getCourseType(official.code, official.title);
+            const saved = (existing.courses || []).find((c) => c.courseCode === official.code);
+            const totalM = saved?.marks !== undefined && saved?.marks !== null ? saved.marks : "";
+            const { grade, gp } = calcGradeFromMarks(totalM !== "" ? totalM : null);
+            return {
+              courseCode: official.code,
+              courseTitle: official.title, // Always matches current official title
+              courseType,
+              credits: official.credits,   // Always matches current official credit
+              attendancePercentage: saved?.attendancePercentage ?? "",
+              attendanceMarks: saved?.attendanceMarks ?? "",
+              caMarks: saved?.caMarks ?? saved?.continuousMarks ?? "",
+              finalMarks: saved?.finalMarks ?? "",
+              marks: totalM,
+              grade: totalM !== "" ? grade : (saved?.grade || "—"),
+              gradePoint: totalM !== "" ? gp : (saved?.gradePoint ?? 0.00),
+            };
+          });
+        } else {
+          mergedCourses = (existing.courses || []).map((c) => {
             const courseType = c.courseType || getCourseType(c.courseCode, c.courseTitle);
             const totalM = c.marks ?? "";
             const { grade, gp } = calcGradeFromMarks(totalM !== "" ? totalM : null);
@@ -268,7 +296,20 @@ export default function AdminResultsSection() {
               grade: totalM !== "" ? grade : (c.grade || "—"),
               gradePoint: totalM !== "" ? gp : (c.gradePoint ?? 0.00),
             };
-          }),
+          });
+        }
+
+        setFormState({
+          id: existing._id,
+          studentId: existing.studentId,
+          studentName: existing.studentName,
+          studentEmail: existing.studentEmail,
+          semester: existing.semester,
+          session: existing.session || selectedSession || "2021-2022",
+          examYear: existing.examYear || new Date().getFullYear(),
+          status: existing.status || "published",
+          remarks: existing.remarks || "",
+          courses: mergedCourses,
         });
         setIsModalOpen(true);
       } else {
@@ -279,43 +320,6 @@ export default function AdminResultsSection() {
       toast.error("Failed to load result for editing");
     } finally {
       setLoading(false);
-    }
-  };
-
-  // Auto-fill official curriculum courses from SEMESTER_COURSES
-  const autoFetchCurriculum = async (semNum) => {
-    try {
-      setFetchingTemplate(true);
-      const res = await apiFetch(`/api/results/admin/courses-template?semester=${semNum}`);
-      if (!res.ok) throw new Error(res.data?.error || "Failed to fetch template");
-      const data = res.data;
-
-      setFormState((prev) => ({
-        ...prev,
-        semester: semNum,
-        courses: (data.courses || []).map((c) => {
-          const courseType = getCourseType(c.courseCode, c.courseTitle);
-          return {
-            courseCode: c.courseCode,
-            courseTitle: c.courseTitle,
-            courseType,
-            credits: c.credits,
-            attendancePercentage: 100,
-            attendanceMarks: 10,
-            caMarks: courseType === "sessional" ? 25 : 18,
-            finalMarks: "",
-            marks: "",
-            grade: "—",
-            gradePoint: 0.00,
-          };
-        }),
-      }));
-      toast.success(`Loaded official curriculum for Semester ${semNum}!`);
-    } catch (err) {
-      console.error("Error auto-fetching curriculum:", err);
-      toast.error("Failed to load semester curriculum");
-    } finally {
-      setFetchingTemplate(false);
     }
   };
 
@@ -442,31 +446,6 @@ export default function AdminResultsSection() {
       target.gradePoint = target.marks !== "" && target.marks !== null && target.marks !== undefined ? gp : 0.00;
 
       updated[index] = target;
-      return { ...prev, courses: updated };
-    });
-  };
-
-  const addCourseRow = () => {
-    setFormState((prev) => ({
-      ...prev,
-      courses: [
-        ...prev.courses,
-        {
-          courseCode: `CSE ${prev.semester}100`,
-          courseTitle: "New Course",
-          credits: 3.0,
-          marks: "",
-          grade: "A",
-          gradePoint: 3.75,
-        },
-      ],
-    }));
-  };
-
-  const removeCourseRow = (index) => {
-    setFormState((prev) => {
-      const updated = [...prev.courses];
-      updated.splice(index, 1);
       return { ...prev, courses: updated };
     });
   };
@@ -882,230 +861,258 @@ export default function AdminResultsSection() {
 
       {/* ── Fill / Edit Modal ───────────────────────────────────────── */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-4xl rounded-3xl shadow-2xl border border-slate-200 dark:border-white/10 my-8 overflow-hidden animate-in fade-in zoom-in-95">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-5xl lg:max-w-6xl rounded-3xl shadow-2xl border border-slate-200 dark:border-white/10 my-4 flex flex-col max-h-[92vh] overflow-hidden animate-in fade-in zoom-in-95">
             {/* Modal Header */}
-            <div className="p-5 sm:p-6 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-white/10 flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Award className="w-5 h-5 text-purple-600" />
-                  <h3 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white">
-                    {isEditing ? `Edit Semester ${formState.semester} Result for Session ${formState.session}` : `Fill & Publish Result for Session ${formState.session}`}
-                  </h3>
+            <div className="px-6 py-4 bg-slate-50/90 dark:bg-slate-800/80 border-b border-slate-200 dark:border-white/10 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-purple-600/10 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center border border-purple-500/20">
+                  <Award className="w-5 h-5" />
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Official grading sheet for departmental records. Managed strictly by session & semester.
-                </p>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white">
+                      {isEditing
+                        ? `Edit Semester ${formState.semester} Result`
+                        : `Fill & Publish Result`}
+                    </h3>
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-300">
+                      Session {formState.session}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    PUST CSE Official Grading Sheet (Ordinance Sec 20.8)
+                  </p>
+                </div>
               </div>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700"
-              >
-                <X className="w-5 h-5" />
-              </button>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Modal Form */}
-            <form onSubmit={handleSaveResult} className="p-5 sm:p-6 space-y-6 max-h-[75vh] overflow-y-auto">
-              {/* Session, Student & Semester Info Row */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Academic Session */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Academic Session
-                  </label>
-                  <select
-                    value={formState.session}
-                    onChange={(e) => {
-                      const newSess = e.target.value;
-                      setFormState((prev) => ({ ...prev, session: newSess }));
-                    }}
-                    disabled={isEditing}
-                    className="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-white/10 focus:ring-2 focus:ring-purple-500 font-bold"
-                  >
-                    {sessionsList.map((s) => (
-                      <option key={s.session} value={s.session}>
-                        Session {s.session} (Sem {s.currentSemester})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+            <form onSubmit={handleSaveResult} className="p-5 sm:p-6 space-y-4 flex-1 overflow-y-auto">
+              {/* Student & Session Info */}
+              {isEditing ? (
+                /* Sleek Profile Banner in Edit Mode */
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-500/10 via-indigo-500/5 to-transparent border border-purple-500/20 flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-600 text-white flex items-center justify-center font-black text-base shadow-md shadow-purple-500/25">
+                      {formState.studentName?.charAt(0) || "S"}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-extrabold text-slate-900 dark:text-white text-base">
+                          {formState.studentName}
+                        </h4>
+                        <span className="font-mono text-xs font-bold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/60 px-2 py-0.5 rounded-md border border-purple-200 dark:border-purple-800">
+                          {formState.studentId}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        <span>Session: <strong className="text-slate-700 dark:text-slate-200">{formState.session}</strong></span>
+                        <span>•</span>
+                        <span>Semester: <strong className="text-purple-600 dark:text-purple-400">{formState.semester} ({SEMESTER_LABELS[formState.semester] || `${formState.semester}th Semester`})</strong></span>
+                        {formState.studentEmail && (
+                          <>
+                            <span>•</span>
+                            <span className="hidden sm:inline">{formState.studentEmail}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
 
-                {/* Student Selector */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Student (Session {formState.session})
-                  </label>
-                  <select
-                    value={formState.studentId}
-                    onChange={(e) => handleStudentSelect(e.target.value)}
-                    disabled={isEditing}
-                    className="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-white/10 focus:ring-2 focus:ring-purple-500"
-                    required
-                  >
-                    <option value="">Select Student...</option>
-                    {studentsList
-                      .filter((s) => !formState.session || s.session === formState.session)
-                      .map((s) => (
-                        <option key={s.studentId} value={s.studentId}>
-                          {s.name} ({s.studentId}) — Sem {s.semester || "N/A"}
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                      Exam Year:
+                    </label>
+                    <input
+                      type="number"
+                      value={formState.examYear}
+                      onChange={(e) => setFormState((prev) => ({ ...prev, examYear: e.target.value }))}
+                      className="w-24 px-3 py-1.5 rounded-xl text-xs font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 focus:ring-2 focus:ring-purple-500 shadow-sm"
+                      required
+                    />
+                  </div>
+                </div>
+              ) : (
+                /* 4-Field Grid in Create Mode */
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 p-4 rounded-2xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200 dark:border-white/10">
+                  {/* Academic Session */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Academic Session
+                    </label>
+                    <select
+                      value={formState.session}
+                      onChange={(e) => {
+                        const newSess = e.target.value;
+                        setFormState((prev) => ({ ...prev, session: newSess }));
+                      }}
+                      className="w-full px-3 py-2 rounded-xl text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 focus:ring-2 focus:ring-purple-500 font-bold"
+                    >
+                      {sessionsList.map((s) => (
+                        <option key={s.session} value={s.session}>
+                          Session {s.session} (Sem {s.currentSemester})
                         </option>
                       ))}
-                  </select>
-                </div>
+                    </select>
+                  </div>
 
-                {/* Semester Selector */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Semester
-                  </label>
-                  <select
-                    value={formState.semester}
-                    onChange={(e) => {
-                      const semNum = Number(e.target.value);
-                      setFormState((prev) => ({ ...prev, semester: semNum }));
-                    }}
-                    disabled={isEditing}
-                    className="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-white/10 focus:ring-2 focus:ring-purple-500"
+                  {/* Student Selector */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Student
+                    </label>
+                    <select
+                      value={formState.studentId}
+                      onChange={(e) => handleStudentSelect(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 focus:ring-2 focus:ring-purple-500 font-medium"
+                      required
+                    >
+                      <option value="">Select Student...</option>
+                      {studentsList
+                        .filter((s) => !formState.session || s.session === formState.session)
+                        .map((s) => (
+                          <option key={s.studentId} value={s.studentId}>
+                            {s.name} ({s.studentId})
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  {/* Semester Selector */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Semester
+                    </label>
+                    <select
+                      value={formState.semester}
+                      onChange={(e) => {
+                        const semNum = Number(e.target.value);
+                        const curriculum = SEMESTER_COURSES[semNum] || [];
+                        const officialList = curriculum.map((c) => ({
+                          courseCode: c.code,
+                          courseTitle: c.title,
+                          courseType: getCourseType(c.code, c.title),
+                          credits: c.credits,
+                          attendancePercentage: "",
+                          attendanceMarks: "",
+                          caMarks: "",
+                          finalMarks: "",
+                          marks: "",
+                          grade: "—",
+                          gradePoint: 0.00,
+                        }));
+                        setFormState((prev) => ({ ...prev, semester: semNum, courses: officialList }));
+                        if (formState.studentId) {
+                          autoFetchCAMetrics(formState.studentId, semNum);
+                        }
+                      }}
+                      className="w-full px-3 py-2 rounded-xl text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 focus:ring-2 focus:ring-purple-500 font-bold"
+                    >
+                      {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => (
+                        <option key={s} value={s}>
+                          Semester {s} ({SEMESTER_LABELS[s] || `${s}th Semester`})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Exam Year */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Exam Year
+                    </label>
+                    <input
+                      type="number"
+                      value={formState.examYear}
+                      onChange={(e) => setFormState((prev) => ({ ...prev, examYear: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-xl text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 focus:ring-2 focus:ring-purple-500 font-bold"
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Action Toolbar */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-white/10">
+                {/* Mode Segmented Switch */}
+                <div className="inline-flex p-1 rounded-xl bg-slate-200/80 dark:bg-slate-900/80 text-xs font-bold border border-slate-300/60 dark:border-white/5">
+                  <button
+                    type="button"
+                    onClick={() => setEntryMode("total")}
+                    className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                      entryMode === "total"
+                        ? "bg-purple-600 text-white shadow-sm"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                    title="Direct Total Marks Entry (100 Marks per course)"
                   >
-                    {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => (
-                      <option key={s} value={s}>
-                        Semester {s} ({SEMESTER_LABELS[s] || `${s}th Semester`})
-                      </option>
-                    ))}
-                  </select>
+                    <BookOpen className="w-3.5 h-3.5" />
+                    <span>Total Marks (100)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEntryMode("criteria")}
+                    className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                      entryMode === "criteria"
+                        ? "bg-purple-600 text-white shadow-sm"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                    title="Continuous Assessment: Attendance (10%) + CA (20/30%) + Final Exam (70/60%) = 100"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Criteria Breakdown (Att + CA + Final)</span>
+                  </button>
                 </div>
 
-                {/* Exam Year */}
+                {/* Auto-Fetch Teacher CA & Attendance */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Exam Year
-                  </label>
-                  <input
-                    type="number"
-                    value={formState.examYear}
-                    onChange={(e) => setFormState((prev) => ({ ...prev, examYear: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-white/10 focus:ring-2 focus:ring-purple-500"
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* Course Action Toolbar */}
-              <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-white/10">
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200 mr-2">
-                    <BookOpen className="w-4 h-4 text-purple-600" />
-                    <span>Courses ({formState.courses.length})</span>
-                  </div>
-
-                  {/* Entry Mode Toggle (Criteria Breakdown vs Total Marks) */}
-                  <div className="inline-flex p-0.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-[11px] font-bold border border-slate-200 dark:border-white/10">
-                    <button
-                      type="button"
-                      onClick={() => setEntryMode("criteria")}
-                      className={`px-3 py-1 rounded-lg transition-all ${
-                        entryMode === "criteria"
-                          ? "bg-purple-600 text-white shadow-sm"
-                          : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-                      }`}
-                      title="Attendance 10% (Sec 20.8 iv) + Teacher CA 20/30% + Final Exam 70/60% = 100"
-                    >
-                      Criteria Breakdown (30/70 & 40/60)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEntryMode("total")}
-                      className={`px-3 py-1 rounded-lg transition-all ${
-                        entryMode === "total"
-                          ? "bg-purple-600 text-white shadow-sm"
-                          : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-                      }`}
-                      title="Direct Total Marks Entry (100 Marks)"
-                    >
-                      Direct Total Marks (100)
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  {/* Button to Auto-Fetch Teacher Continuous Assessment & Attendance */}
                   <button
                     type="button"
                     onClick={() => autoFetchCAMetrics()}
                     disabled={fetchingCA || !formState.studentId}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-xs font-bold border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 transition-colors shadow-sm"
-                    title="Auto-fetch present attendance percentage & teacher continuous assessment marks from database"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-600/30 transition-all hover:scale-[1.02] disabled:opacity-50"
+                    title="Auto-fetch student attendance percentage & teacher continuous assessment marks from database"
                   >
-                    <Sparkles className={`w-3.5 h-3.5 ${fetchingCA ? "animate-spin text-emerald-500" : "text-emerald-600"}`} />
-                    <span>{fetchingCA ? "Fetching..." : "Auto-Fetch Teacher CA & Attendance"}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => autoFetchCurriculum(formState.semester)}
-                    disabled={fetchingTemplate}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 text-xs font-bold border border-purple-200 dark:border-purple-800 hover:bg-purple-100 transition-colors"
-                  >
-                    <span>{fetchingTemplate ? "Loading..." : `Reset Curriculum Courses`}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={addCourseRow}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>+ Add</span>
+                    <Sparkles className={`w-3.5 h-3.5 ${fetchingCA ? "animate-spin" : ""}`} />
+                    <span>{fetchingCA ? "Syncing..." : "Auto-Fetch Teacher CA & Attendance"}</span>
                   </button>
                 </div>
               </div>
 
-              {/* Mode Guidance Alert */}
-              <div className="p-3 rounded-xl bg-purple-50/60 dark:bg-purple-950/20 border border-purple-200/60 dark:border-purple-800/40 text-[11px] text-purple-900 dark:text-purple-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>
-                    <strong>Auto-Fixed Grading Enabled:</strong> Grade (LG) and Grade Point (Gi) are automatically calculated from Total Marks (100). Manual selection is removed.
-                  </span>
-                </div>
-                {entryMode === "criteria" ? (
-                  <span className="text-slate-500 dark:text-slate-400 font-mono text-[10px]">
-                    Theory: Att (10) + CA (20) + Final (70) | Sessional: Att (10) + CA (30) + Final (60)
-                  </span>
-                ) : (
-                  <span className="text-slate-500 dark:text-slate-400 font-mono text-[10px]">
-                    Enter Total Marks directly (0–100)
-                  </span>
-                )}
-              </div>
-
-              {/* Courses Grid / Table matching Ordinance Section 20.8.1.1 */}
-              <div className="border border-slate-200 dark:border-white/10 rounded-2xl overflow-x-auto">
+              {/* Courses Table */}
+              <div className="border border-slate-200 dark:border-white/10 rounded-2xl overflow-x-auto shadow-sm">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="bg-slate-50 dark:bg-slate-800/80 uppercase tracking-wider text-[10px] font-extrabold text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-white/10">
-                      <th className="py-2.5 px-3 min-w-[100px]">Course Code</th>
-                      <th className="py-2.5 px-3 min-w-[180px]">Course Title</th>
-                      <th className="py-2.5 px-2 text-center w-16">Type</th>
-                      <th className="py-2.5 px-2 text-center w-16">Credit (Ci)</th>
+                      <th className="py-3 px-3 min-w-[100px]">Course Code</th>
+                      <th className="py-3 px-3 min-w-[220px]">Course Title</th>
+                      <th className="py-3 px-2 text-center w-20">Credit (Ci)</th>
 
                       {entryMode === "criteria" ? (
                         <>
-                          <th className="py-2.5 px-2 text-center w-20" title="Attendance Percentage (PUST Section 20.8 iv)">Att %</th>
-                          <th className="py-2.5 px-2 text-center w-20" title="Attendance Marks (0-10, auto-calculated from attendance %)">Att (10)</th>
-                          <th className="py-2.5 px-2 text-center w-24" title="Continuous Assessment / Class Tests & Assignments (Max 20 for theory, 30 for sessional)">CA (20/30)</th>
-                          <th className="py-2.5 px-2 text-center w-24" title="Semester Final Examination Marks (Max 70 for theory, 60 for sessional)">Final (70/60)</th>
-                          <th className="py-2.5 px-2 text-center w-24 font-bold text-purple-700 dark:text-purple-300">Total (100)</th>
+                          <th className="py-3 px-2 text-center w-24 text-emerald-700 dark:text-emerald-300 font-extrabold" title="Attendance Marks (Max 10 per Section 20.8 iv)">Att (10)</th>
+                          <th className="py-3 px-2 text-center w-28 text-indigo-700 dark:text-indigo-300 font-extrabold" title="Continuous Assessment / Class Tests & Assignments (Max 20 for theory, 30 for sessional)">Teacher CA (20/30)</th>
+                          <th className="py-3 px-2 text-center w-28 text-purple-700 dark:text-purple-300 font-extrabold" title="Semester Final Examination Marks (Max 70 for theory, 60 for sessional)">Final Exam (70/60)</th>
+                          <th className="py-3 px-2 text-center w-24 font-black text-slate-900 dark:text-white">Total (100)</th>
                         </>
                       ) : (
-                        <th className="py-2.5 px-2 text-center w-24 font-bold text-purple-700 dark:text-purple-300">Total Marks (100)</th>
+                        <th className="py-3 px-3 text-center w-28 font-black text-purple-700 dark:text-purple-300">Marks (100)</th>
                       )}
 
-                      <th className="py-2.5 px-2 text-center w-20">Grade (LG)</th>
-                      <th className="py-2.5 px-2 text-center w-20">Grade Point (Gi)</th>
-                      <th className="py-2.5 px-2 text-center w-24 font-mono">Points (Ci * Gi)</th>
-                      <th className="py-2.5 px-2 text-center w-10">Del</th>
+                      <th className="py-3 px-2 text-center w-24">Grade (LG)</th>
+                      <th className="py-3 px-2 text-center w-24">Grade Point (Gi)</th>
+                      <th className="py-3 px-2 text-center w-28 font-mono">Points (Ci * Gi)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-white/5">
@@ -1116,278 +1123,212 @@ export default function AdminResultsSection() {
                       const isSessional = course.courseType === "sessional" || getCourseType(course.courseCode, course.courseTitle) === "sessional";
 
                       return (
-                        <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
-                          <td className="py-2 px-3">
-                            <input
-                              type="text"
-                              value={course.courseCode}
-                              onChange={(e) => handleCourseChange(idx, "courseCode", e.target.value)}
-                              className="w-full px-2 py-1 rounded-lg text-xs font-mono font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10"
-                              required
-                            />
-                          </td>
-                          <td className="py-2 px-3">
-                            <input
-                              type="text"
-                              value={course.courseTitle}
-                              onChange={(e) => handleCourseChange(idx, "courseTitle", e.target.value)}
-                              className="w-full px-2 py-1 rounded-lg text-xs font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10"
-                              required
-                            />
-                          </td>
-                          <td className="py-2 px-2 text-center">
-                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                              isSessional
-                                ? "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300"
-                                : "bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300"
-                            }`}>
-                              {isSessional ? "Lab" : "Theory"}
+                        <tr key={idx} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
+                          {/* Course Code (Clean badge derived from official curriculum) */}
+                          <td className="py-2.5 px-3">
+                            <span className="font-mono font-extrabold text-xs text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/60 px-2.5 py-1 rounded-lg border border-purple-200 dark:border-purple-800/60 inline-block">
+                              {course.courseCode}
                             </span>
                           </td>
-                          <td className="py-2 px-2 text-center">
-                            <input
-                              type="number"
-                              step="0.25"
-                              value={course.credits}
-                              onChange={(e) => handleCourseChange(idx, "credits", e.target.value)}
-                              className="w-full px-1.5 py-1 rounded-lg text-xs text-center font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10"
-                              required
-                            />
+
+                          {/* Course Title (Official curriculum title) */}
+                          <td className="py-2.5 px-3">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-xs text-slate-900 dark:text-slate-100">
+                                {course.courseTitle}
+                              </span>
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide uppercase shrink-0 ${
+                                isSessional
+                                  ? "bg-sky-100 text-sky-800 dark:bg-sky-950/80 dark:text-sky-300 border border-sky-200 dark:border-sky-800"
+                                  : "bg-purple-100 text-purple-800 dark:bg-purple-950/80 dark:text-purple-300 border border-purple-200 dark:border-purple-800"
+                              }`}>
+                                {isSessional ? "Lab" : "Theory"}
+                              </span>
+                            </div>
                           </td>
 
-                          {/* Criteria Mode Breakdown Inputs */}
+                          {/* Credits (Official curriculum credits) */}
+                          <td className="py-2.5 px-2 text-center font-extrabold text-xs text-slate-800 dark:text-slate-200">
+                            {Number(course.credits).toFixed(2)}
+                          </td>
+
+                          {/* Criteria Mode Columns */}
                           {entryMode === "criteria" ? (
                             <>
-                              {/* Attendance Percentage */}
-                              <td className="py-2 px-1 text-center">
+                              {/* Attendance (/10) */}
+                              <td className="py-2.5 px-2 text-center">
                                 <input
                                   type="number"
-                                  min="0"
-                                  max="100"
-                                  value={course.attendancePercentage ?? ""}
-                                  onChange={(e) => handleCourseChange(idx, "attendancePercentage", e.target.value)}
-                                  placeholder="e.g. 95"
-                                  className="w-full px-1 py-1 rounded-lg text-xs text-center font-medium bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 focus:ring-1 focus:ring-purple-500"
-                                  title="Attendance Percentage (>=90% gives 10 marks)"
-                                />
-                              </td>
-
-                              {/* Attendance Marks (0-10) */}
-                              <td className="py-2 px-1 text-center">
-                                <input
-                                  type="number"
+                                  step="0.5"
                                   min="0"
                                   max="10"
-                                  step="0.5"
                                   value={course.attendanceMarks ?? ""}
                                   onChange={(e) => handleCourseChange(idx, "attendanceMarks", e.target.value)}
                                   placeholder="10"
-                                  className="w-full px-1 py-1 rounded-lg text-xs text-center font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 focus:ring-1 focus:ring-emerald-500"
-                                  title="Attendance Marks (out of 10) - Auto-calculated from percentage or manual override"
+                                  className="w-20 h-10 px-2 mx-auto rounded-xl text-center font-black text-sm text-emerald-600 dark:text-emerald-400 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none block"
+                                  title="Attendance Marks (0-10) per Section 20.8 iv"
                                 />
+                                {course.attendancePercentage !== undefined && course.attendancePercentage !== "" && (
+                                  <div className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+                                    {course.attendancePercentage}% att
+                                  </div>
+                                )}
                               </td>
 
-                              {/* Continuous Assessment (CA) / CT Marks (20 for theory, 30 for sessional) */}
-                              <td className="py-2 px-1 text-center">
+                              {/* Continuous Assessment (CA) */}
+                              <td className="py-2.5 px-2 text-center">
                                 <input
                                   type="number"
+                                  step="0.5"
                                   min="0"
                                   max={isSessional ? 30 : 20}
-                                  step="0.5"
                                   value={course.caMarks ?? ""}
                                   onChange={(e) => handleCourseChange(idx, "caMarks", e.target.value)}
-                                  placeholder={isSessional ? "Max 30" : "Max 20"}
-                                  className="w-full px-1.5 py-1 rounded-lg text-xs text-center font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 focus:ring-1 focus:ring-indigo-500"
-                                  title={`Continuous Assessment Marks (Max ${isSessional ? 30 : 20}) from teacher CTs & assignments`}
+                                  placeholder={isSessional ? "25" : "18"}
+                                  className="w-20 h-10 px-2 mx-auto rounded-xl text-center font-black text-sm text-indigo-600 dark:text-indigo-400 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none block"
+                                  title={`Continuous Assessment by Teacher (Max ${isSessional ? 30 : 20})`}
                                 />
                               </td>
 
-                              {/* Semester Final Exam Marks (70 for theory, 60 for sessional) */}
-                              <td className="py-2 px-1 text-center">
+                              {/* Semester Final Exam */}
+                              <td className="py-2.5 px-2 text-center">
                                 <input
                                   type="number"
+                                  step="0.5"
                                   min="0"
                                   max={isSessional ? 60 : 70}
-                                  step="0.5"
                                   value={course.finalMarks ?? ""}
                                   onChange={(e) => handleCourseChange(idx, "finalMarks", e.target.value)}
-                                  placeholder={isSessional ? "Max 60" : "Max 70"}
-                                  className="w-full px-1.5 py-1 rounded-lg text-xs text-center font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 focus:ring-1 focus:ring-purple-500"
+                                  placeholder={isSessional ? "50" : "55"}
+                                  className="w-20 h-10 px-2 mx-auto rounded-xl text-center font-black text-sm text-purple-600 dark:text-purple-400 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none block"
                                   title={`Semester Final Exam Marks (Max ${isSessional ? 60 : 70})`}
                                 />
                               </td>
 
-                              {/* Total Marks (Auto-summed = Att + CA + Final) */}
-                              <td className="py-2 px-2 text-center">
+                              {/* Total Marks (Summed = Att + CA + Final) */}
+                              <td className="py-2.5 px-2 text-center">
                                 <input
                                   type="number"
+                                  step="0.5"
                                   min="0"
                                   max="100"
                                   value={course.marks ?? ""}
                                   onChange={(e) => handleCourseChange(idx, "marks", e.target.value)}
-                                  placeholder="Auto"
-                                  className="w-full px-1.5 py-1 rounded-lg text-xs text-center font-black text-purple-700 dark:text-purple-300 bg-purple-50/70 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 focus:ring-1 focus:ring-purple-500"
-                                  title="Total Marks (100) = Attendance + CA + Final Exam"
+                                  placeholder="0"
+                                  className="w-20 h-10 px-2 mx-auto rounded-xl text-center font-black text-base text-slate-900 dark:text-white bg-purple-50/60 dark:bg-purple-950/40 border-2 border-purple-500/60 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none block"
+                                  title="Total Marks (100) = Attendance + Teacher CA + Final Exam"
                                 />
                               </td>
                             </>
                           ) : (
-                            /* Direct Total Marks Mode */
-                            <td className="py-2 px-2 text-center">
+                            /* Direct Total Marks Column (100) - CLEAR, LARGE & PROMINENT */
+                            <td className="py-2.5 px-3 text-center">
                               <input
                                 type="number"
+                                step="0.5"
                                 min="0"
                                 max="100"
                                 value={course.marks ?? ""}
                                 onChange={(e) => handleCourseChange(idx, "marks", e.target.value)}
-                                placeholder="e.g. 85"
-                                className="w-full px-2 py-1 rounded-lg text-xs text-center font-black text-purple-700 dark:text-purple-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 focus:ring-1 focus:ring-purple-500"
-                                title="Enter Total Marks (0-100)"
+                                placeholder="0"
+                                className="w-24 h-10 px-3 mx-auto rounded-xl text-center font-black text-base text-slate-900 dark:text-white bg-slate-100 dark:bg-slate-800 border-2 border-purple-500/60 focus:border-purple-500 focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-purple-500/20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none shadow-sm block"
+                                title="Enter Total Marks directly (0–100)"
                               />
                             </td>
                           )}
 
                           {/* AUTO-FIXED GRADE (LG) - NO SELECT DROPDOWN! */}
-                          <td className="py-2 px-2 text-center">
-                            <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-black border ${getGradeBadgeClass(course.grade)} shadow-sm`}>
+                          <td className="py-2.5 px-2 text-center">
+                            <span className={`inline-block px-3 py-1 rounded-xl text-xs font-black border ${getGradeBadgeClass(course.grade)} shadow-sm`}>
                               {course.grade || "—"}
                             </span>
                           </td>
 
                           {/* AUTO-FIXED GRADE POINT (Gi) */}
-                          <td className="py-2 px-2 text-center font-mono font-bold text-slate-800 dark:text-slate-200">
-                            {gp.toFixed(2)}
+                          <td className="py-2.5 px-2 text-center">
+                            <span className="font-mono font-bold text-sm text-slate-800 dark:text-slate-200">
+                              {gp.toFixed(2)}
+                            </span>
                           </td>
 
                           {/* Points (Ci * Gi) */}
-                          <td className="py-2 px-2 text-center font-mono font-bold text-indigo-600 dark:text-indigo-400">
-                            {creditPoints}
-                          </td>
-
-                          <td className="py-2 px-2 text-center">
-                            <button
-                              type="button"
-                              onClick={() => removeCourseRow(idx)}
-                              className="p-1 text-slate-400 hover:text-rose-500 transition-colors"
-                              title="Delete Course"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                          <td className="py-2.5 px-2 text-center">
+                            <span className="font-mono font-black text-sm text-indigo-600 dark:text-indigo-400">
+                              {creditPoints}
+                            </span>
                           </td>
                         </tr>
                       );
                     })}
                   </tbody>
                   <tfoot>
-                    <tr className="bg-slate-100/80 dark:bg-slate-800/90 font-bold border-t border-slate-200 dark:border-white/10 text-[11px]">
-                      <td colSpan={3} className="py-2 px-3 text-right uppercase tracking-wider text-slate-500">
+                    <tr className="bg-slate-100/80 dark:bg-slate-800/90 font-bold border-t border-slate-200 dark:border-white/10 text-xs">
+                      <td colSpan={2} className="py-2.5 px-3 text-right uppercase tracking-wider text-slate-500">
                         Total Σ:
                       </td>
-                      <td className="py-2 px-2 text-center font-black text-purple-700 dark:text-purple-300">
-                        {modalMetrics.totCredits} Credits
+                      <td className="py-2.5 px-2 text-center font-black text-purple-700 dark:text-purple-300">
+                        {modalMetrics.totCredits}
                       </td>
                       {entryMode === "criteria" ? (
                         <>
-                          <td className="py-2 px-1 text-center text-slate-400">—</td>
-                          <td className="py-2 px-1 text-center text-slate-400">—</td>
-                          <td className="py-2 px-1 text-center text-slate-400">—</td>
-                          <td className="py-2 px-1 text-center text-slate-400">—</td>
-                          <td className="py-2 px-2 text-center text-slate-400">—</td>
+                          <td className="py-2.5 px-1 text-center text-slate-400">—</td>
+                          <td className="py-2.5 px-1 text-center text-slate-400">—</td>
+                          <td className="py-2.5 px-1 text-center text-slate-400">—</td>
+                          <td className="py-2.5 px-2 text-center text-slate-400">—</td>
                         </>
                       ) : (
-                        <td className="py-2 px-2 text-center text-slate-400">—</td>
+                        <td className="py-2.5 px-2 text-center text-slate-400">—</td>
                       )}
-                      <td className="py-2 px-2 text-center text-slate-400">—</td>
-                      <td className="py-2 px-2 text-center text-slate-400">—</td>
-                      <td className="py-2 px-2 text-center font-black text-indigo-700 dark:text-indigo-300">
-                        {modalMetrics.points} Points
+                      <td className="py-2.5 px-2 text-center text-slate-400">—</td>
+                      <td className="py-2.5 px-2 text-center text-slate-400">—</td>
+                      <td className="py-2.5 px-2 text-center font-black text-indigo-700 dark:text-indigo-300 font-mono text-sm">
+                        {modalMetrics.points}
                       </td>
-                      <td className="py-2 px-2"></td>
                     </tr>
                   </tfoot>
                 </table>
               </div>
 
-              {/* Real-time Computed Summary matching Equations (I) & (II) */}
-              <div className="p-4 rounded-2xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div className="flex items-center gap-6">
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-purple-600 dark:text-purple-400">Registered Credits (Σ Ci)</span>
-                      <div className="text-base font-black text-slate-900 dark:text-white">
-                        {modalMetrics.totCredits}
-                      </div>
-                    </div>
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-purple-600 dark:text-purple-400">Earned Credits</span>
-                      <div className="text-base font-black text-emerald-600 dark:text-emerald-400">
-                        {modalMetrics.earned}
-                      </div>
-                    </div>
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-purple-600 dark:text-purple-400">Earned Points (Σ Ci*Gi)</span>
-                      <div className="text-base font-black text-indigo-600 dark:text-indigo-400">
-                        {modalMetrics.points}
-                      </div>
-                    </div>
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-purple-600 dark:text-purple-400">Semester GPA (Formula I)</span>
-                      <div className="text-xl font-black text-purple-700 dark:text-purple-300 flex items-baseline gap-1.5">
-                        <span>{modalMetrics.sgpa.toFixed(2)}</span>
-                        <span className="text-xs text-slate-400 font-normal">({modalMetrics.sgpaExact})</span>
-                      </div>
+              {/* Essential Summary & Actions Bar (Clean, simple, no clutter) */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-white/10">
+                <div className="flex items-center gap-6 sm:gap-8">
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block">Total Credits</span>
+                    <div className="text-base font-black text-slate-900 dark:text-white">
+                      {modalMetrics.totCredits}
                     </div>
                   </div>
-
-                  {modalMetrics.isDeansList && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 shadow-sm animate-pulse">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                      <span>Dean's List Eligible (GPA ≥ 3.80, Sec 20.9)</span>
-                    </span>
-                  )}
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block">Total Points</span>
+                    <div className="text-base font-black text-indigo-600 dark:text-indigo-400 font-mono">
+                      {modalMetrics.points}
+                    </div>
+                  </div>
+                  <div className="pl-3 border-l border-slate-200 dark:border-white/10">
+                    <span className="text-[10px] uppercase font-bold text-purple-600 dark:text-purple-400 block">Semester GPA</span>
+                    <div className="text-2xl font-black text-purple-700 dark:text-purple-300 leading-tight">
+                      {modalMetrics.sgpa.toFixed(2)}
+                    </div>
+                  </div>
                 </div>
 
-                <div className="pt-2 border-t border-purple-200/60 dark:border-purple-800/60 text-[11px] text-purple-700 dark:text-purple-300 flex items-center justify-between">
-                  <span className="font-mono">
-                    GPA = (Σ Ci * Gi) / (Σ Ci) = {modalMetrics.points} / {modalMetrics.totCredits} = {modalMetrics.sgpaExact} ≈ {modalMetrics.sgpa.toFixed(2)}
-                  </span>
-                  <span>
-                    Yearly YGPA (Equation II) and CGPA (Equation III) update automatically on save.
-                  </span>
+                <div className="flex items-center justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200 dark:border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-lg shadow-purple-500/25 transition-all hover:scale-[1.02] disabled:opacity-50"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>{saving ? "Saving..." : "Save Result"}</span>
+                  </button>
                 </div>
-              </div>
-
-              {/* Remarks */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Official Controller Remarks
-                </label>
-                <input
-                  type="text"
-                  value={formState.remarks}
-                  onChange={(e) => setFormState((prev) => ({ ...prev, remarks: e.target.value }))}
-                  placeholder="e.g. Official Semester Examination Result Published"
-                  className="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-white/10"
-                />
-              </div>
-
-              {/* Footer Actions */}
-              <div className="pt-4 border-t border-slate-200 dark:border-white/10 flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-lg shadow-purple-500/25 transition-all hover:scale-[1.02]"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>{saving ? "Saving & Publishing..." : "Save & Publish Result"}</span>
-                </button>
               </div>
             </form>
           </div>

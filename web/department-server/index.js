@@ -25,6 +25,8 @@ const materialRoutes = require('./routes/material.routes');
 const classTestRoutes = require('./routes/classTest.routes');
 const supportRoutes = require('./routes/support.routes');
 const resultRoutes = require('./routes/result.routes');
+const courseMessageRoutes = require('./routes/courseMessage.routes');
+const aiStudyRoutes = require('./routes/aiStudy.routes');
 const attendanceConfig = require('./config/attendance');
 
 const path = require('path');
@@ -114,6 +116,12 @@ app.use('/api/support', supportRoutes);
 
 // Academic Semester Results & Grade Sheets (/api/results)
 app.use('/api/results', resultRoutes);
+
+// Direct WhatsApp-like Course Messaging (/api/course-messages)
+app.use('/api/course-messages', courseMessageRoutes);
+
+// AI Note Summary & Quiz Generator (/api/ai-study)
+app.use('/api/ai-study', aiStudyRoutes);
 
 // ── ROOT & HEALTH ─────────────────────────────────────────────
 app.get('/', (req, res) => {

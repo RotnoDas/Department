@@ -41,13 +41,16 @@ import {
   Bell,
   Star,
   FileSpreadsheet,
-  Edit3
+  Edit3,
+  Brain,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { authClient } from "@/lib/auth-client";
 import { apiFetch } from "@/lib/api";
 import Loading from "@/components/common/Loading";
 import NoticeCard from "@/components/notice/NoticeCard";
+import StudentCourseChat from "@/components/course-chat/StudentCourseChat";
+import StudentCourseAIStudy from "@/components/course-study/StudentCourseAIStudy";
 import { SEMESTER_COURSES, getCoursesBySemester } from "@/data/courses";
 
 // Helper for UGC / PUST grading breakdown (Image 3 from University Regulations)
@@ -143,12 +146,13 @@ export default function StudentCourseWorkspacePage() {
 
   const searchParams = useSearchParams();
   const urlTab = searchParams?.get("tab");
-  const validTabs = useMemo(() => ["notices", "materials", "assignments", "class-tests", "continuous-evaluation", "attendance", "schedule"], []);
+  const validTabs = useMemo(() => ["notices", "materials", "assignments", "class-tests", "continuous-evaluation", "attendance", "schedule", "messages", "ai-study"], []);
 
-  // Active Tab: "notices" | "materials" | "assignments" | "class-tests" | "attendance" | "schedule"
+  // Active Tab: "notices" | "materials" | "assignments" | "class-tests" | "continuous-evaluation" | "attendance" | "schedule" | "messages" | "ai-study"
   const [activeTab, setActiveTab] = useState(() =>
     urlTab && validTabs.includes(urlTab) ? urlTab : "notices"
   );
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
 
   useEffect(() => {
     if (urlTab && validTabs.includes(urlTab) && urlTab !== activeTab) {
@@ -212,6 +216,26 @@ export default function StudentCourseWorkspacePage() {
   const [continuousEvaluation, setContinuousEvaluation] = useState(null);
   const [isEvaluationLoading, setIsEvaluationLoading] = useState(true);
   const [showGradingSchemeModal, setShowGradingSchemeModal] = useState(false);
+
+  // Fetch unread course messages count for student
+  useEffect(() => {
+    if (!user?.email || !courseCode) return;
+    if (activeTab === "messages") {
+      setUnreadMessagesCount(0);
+      return;
+    }
+    apiFetch(
+      `/api/course-messages/unread-count?courseCode=${encodeURIComponent(
+        courseCode
+      )}&studentEmail=${encodeURIComponent(user.email)}&role=student`
+    )
+      .then((res) => {
+        if (res.ok && typeof res.data?.unreadCount === "number") {
+          setUnreadMessagesCount(res.data.unreadCount);
+        }
+      })
+      .catch(() => {});
+  }, [user?.email, courseCode, activeTab]);
 
   // ── 1. FETCH STUDENT PROFILE ──────────────────────────────────
   useEffect(() => {
@@ -964,6 +988,18 @@ export default function StudentCourseWorkspacePage() {
           },
           { id: "attendance", label: "My Attendance", icon: UserCheck, count: `${courseStats.attendancePct}%` },
           { id: "schedule", label: "Class Schedule", icon: Calendar, count: `${routineSlots.length} Slots` },
+          {
+            id: "messages",
+            label: "Teacher Chat",
+            icon: MessageSquare,
+            count: unreadMessagesCount > 0 ? `${unreadMessagesCount} New` : "Chat",
+          },
+          {
+            id: "ai-study",
+            label: "AI Notes & Quiz",
+            icon: Brain,
+            count: "AI Study",
+          },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -2352,6 +2388,35 @@ export default function StudentCourseWorkspacePage() {
               </p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════
+          TAB 6: COURSE TEACHER MESSAGING (WHATSAPP-STYLE)
+          ════════════════════════════════════════════════════════════════ */}
+      {activeTab === "messages" && (
+        <div className="space-y-4 animate-in fade-in duration-150">
+          <StudentCourseChat
+            courseCode={courseCode}
+            course={course}
+            routineSlots={routineSlots}
+            student={studentProfile}
+            user={user}
+          />
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════
+          TAB 7: AI STUDY NOTES & QUIZ GENERATOR (DOCUMENT-BASED)
+          ════════════════════════════════════════════════════════════════ */}
+      {activeTab === "ai-study" && (
+        <div className="space-y-4 animate-in fade-in duration-150">
+          <StudentCourseAIStudy
+            courseCode={courseCode}
+            student={studentProfile}
+            user={user}
+            courseMaterials={materials}
+          />
         </div>
       )}
 

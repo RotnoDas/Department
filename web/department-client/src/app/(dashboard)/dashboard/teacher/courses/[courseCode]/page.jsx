@@ -62,6 +62,7 @@ import Loading from "@/components/common/Loading";
 import { SEMESTER_COURSES } from "@/data/courses";
 import CourseNoticeModal from "@/components/notice/CourseNoticeModal";
 import NoticeCard from "@/components/notice/NoticeCard";
+import TeacherCourseChat from "@/components/course-chat/TeacherCourseChat";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
@@ -161,10 +162,26 @@ export default function TeacherCourseWorkspacePage() {
 
   const searchParams = useSearchParams();
   const urlTab = searchParams?.get("tab");
-  const validTabs = useMemo(() => ["notices", "attendance", "materials", "assignments", "class-tests", "schedule"], []);
+  const validTabs = useMemo(() => ["notices", "attendance", "materials", "assignments", "class-tests", "schedule", "messages"], []);
 
-  // Active Tab: "notices" | "attendance" | "materials" | "assignments" | "class-tests" | "schedule"
+  // Active Tab: "notices" | "attendance" | "materials" | "assignments" | "class-tests" | "schedule" | "messages"
   const [activeTab, setActiveTab] = useState(() => (urlTab && validTabs.includes(urlTab) ? urlTab : "attendance"));
+  const [teacherUnreadCount, setTeacherUnreadCount] = useState(0);
+
+  useEffect(() => {
+    if (!courseCode) return;
+    if (activeTab === "messages") {
+      setTeacherUnreadCount(0);
+      return;
+    }
+    apiFetch(`/api/course-messages/unread-count?courseCode=${encodeURIComponent(courseCode)}&role=teacher`)
+      .then((res) => {
+        if (res.ok && typeof res.data?.unreadCount === "number") {
+          setTeacherUnreadCount(res.data.unreadCount);
+        }
+      })
+      .catch(() => {});
+  }, [courseCode, activeTab]);
 
   useEffect(() => {
     if (urlTab && validTabs.includes(urlTab) && urlTab !== activeTab) {
@@ -2396,6 +2413,12 @@ export default function TeacherCourseWorkspacePage() {
           { id: "assignments", label: "Continuous Tasks", icon: FileText, count: courseStats.totalAssignments },
           { id: "class-tests", label: "Class Tests (CT)", icon: Award, count: `${courseStats.totalClassTests} CTs` },
           { id: "schedule", label: "Routine Schedule", icon: Calendar, count: `${routineSlots.length} Classes` },
+          {
+            id: "messages",
+            label: "Student Messages",
+            icon: MessageSquare,
+            count: teacherUnreadCount > 0 ? `${teacherUnreadCount} New` : "Chat",
+          },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -3572,8 +3595,6 @@ export default function TeacherCourseWorkspacePage() {
         </div>
       )}
 
-
-
       {/* ════════════════════════════════════════════════════════════════
           TAB 4.5: OFFLINE CLASS TESTS (CT) & ROLL-WISE MARKS
           ════════════════════════════════════════════════════════════════ */}
@@ -3763,6 +3784,7 @@ export default function TeacherCourseWorkspacePage() {
           )}
         </div>
       )}
+
       {activeTab === "schedule" && (
         <div className="p-7 sm:p-8 rounded-[2rem] bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/80 dark:border-white/10 shadow-sm space-y-6 transition-colors">
           <div>
@@ -3820,6 +3842,20 @@ export default function TeacherCourseWorkspacePage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════
+          TAB: STUDENT MESSAGES & COMMUNICATION (WHATSAPP-STYLE)
+          ════════════════════════════════════════════════════════════════ */}
+      {activeTab === "messages" && (
+        <div className="space-y-4 animate-in fade-in duration-150">
+          <TeacherCourseChat
+            courseCode={courseCode}
+            course={course}
+            routineSlots={routineSlots}
+            teacherUser={user}
+          />
         </div>
       )}
 

@@ -7,6 +7,7 @@ const { verifyToken } = require('../middleware/auth');
 const { requireStudent, requireAdmin, noStore } = require('../middleware/roles');
 const { SEMESTER_COURSES, SEMESTER_LABELS } = require('../data/courses');
 const { adminEmails } = require('../config/attendance');
+const { calculateAcademicTrajectory, generateAIEvaluation, answerAcademicQuestion, generateDynamicEnglishGuidance } = require('../services/aiAdvisor.service');
 
 const router = express.Router();
 router.use(noStore);
@@ -385,6 +386,203 @@ router.get('/student/my-results', verifyToken, async (req, res) => {
   } catch (err) {
     console.error('Error fetching student results:', err);
     res.status(500).json({ error: 'Failed to retrieve academic results.' });
+  }
+});
+
+// ── GET /api/results/student/ai-forecast ───────────────────────────
+// AI Academic Graduation Forecast & Performance Coach (Credit Trajectory + Gemini AI)
+router.get('/student/ai-forecast', verifyToken, async (req, res) => {
+  try {
+    const { students, results } = getCollections();
+    const userEmail = (req.user?.email || '').trim().toLowerCase();
+    const userId = req.user?.sub ? String(req.user.sub) : null;
+    const isAdmin = checkIsAdmin(req);
+
+    let student = null;
+    if (isAdmin && req.query.studentId) {
+      student = await students.findOne({ studentId: String(req.query.studentId).trim() });
+    }
+
+    if (!student) {
+      student = await students.findOne({
+        $or: [
+          { email: { $in: [userEmail, (req.user?.email || '').trim()] } },
+          ...(userId ? [{ userId }] : []),
+        ],
+      });
+    }
+
+    if (!student) {
+      return res.status(404).json({ error: 'No student profile linked to this account.', code: 'STUDENT_NOT_FOUND' });
+    }
+
+    const rawSemester = String(student.semester || '7');
+    const semDigits = rawSemester.replace(/\D/g, '');
+    const currentSemNum = semDigits ? parseInt(semDigits, 10) : 7;
+
+    const query = {
+      $or: [
+        { studentEmail: student.email.toLowerCase() },
+        { studentId: String(student.studentId).trim() },
+      ],
+      status: 'published',
+      semester: { $lte: currentSemNum },
+    };
+
+    const studentResults = await results.find(query).sort({ semester: 1 }).toArray();
+
+    // Calculate deterministic trajectory
+    const trajectory = calculateAcademicTrajectory(studentResults, currentSemNum);
+
+    // Generate AI evaluation and improvement advice
+    const aiEvaluation = await generateAIEvaluation(student, trajectory);
+
+    res.json({
+      success: true,
+      student: {
+        id: String(student._id),
+        name: student.name,
+        studentId: student.studentId,
+        semester: student.semester,
+        currentSemester: currentSemNum,
+        session: student.session || '2021-2022',
+        batch: student.batch
+      },
+      trajectory,
+      aiEvaluation
+    });
+  } catch (err) {
+    console.error('Error generating AI forecast:', err);
+    res.status(500).json({ error: 'Failed to generate academic forecast.' });
+  }
+});
+
+// ── POST /api/results/student/ai-coach-chat ─────────────────────────
+// Interactive real-time Q&A with AI Academic Advisor
+router.post('/student/ai-coach-chat', verifyToken, async (req, res) => {
+  try {
+    const { students, results } = getCollections();
+    const userEmail = (req.user?.email || '').trim().toLowerCase();
+    const userId = req.user?.sub ? String(req.user.sub) : null;
+    const isAdmin = checkIsAdmin(req);
+    let payload = req.body || {};
+    if (typeof payload === 'string') {
+      try { payload = JSON.parse(payload); } catch (_) {}
+    }
+    const { question, studentId } = payload;
+
+    if (!question || !String(question).trim()) {
+      return res.status(400).json({ error: 'Question is required.' });
+    }
+
+    let student = null;
+    if (isAdmin && studentId) {
+      student = await students.findOne({ studentId: String(studentId).trim() });
+    }
+
+    if (!student) {
+      student = await students.findOne({
+        $or: [
+          { email: { $in: [userEmail, (req.user?.email || '').trim()] } },
+          ...(userId ? [{ userId }] : []),
+        ],
+      });
+    }
+
+    if (!student) {
+      return res.status(404).json({ error: 'Student profile not found.' });
+    }
+
+    const rawSemester = String(student.semester || '7');
+    const semDigits = rawSemester.replace(/\D/g, '');
+    const currentSemNum = semDigits ? parseInt(semDigits, 10) : 7;
+
+    const query = {
+      $or: [
+        { studentEmail: student.email.toLowerCase() },
+        { studentId: String(student.studentId).trim() },
+      ],
+      status: 'published',
+      semester: { $lte: currentSemNum },
+    };
+
+    const studentResults = await results.find(query).sort({ semester: 1 }).toArray();
+    const trajectory = calculateAcademicTrajectory(studentResults, currentSemNum);
+    const answer = await answerAcademicQuestion(student, trajectory, String(question).trim());
+
+    res.json({
+      success: true,
+      question: String(question).trim(),
+      reply: answer.reply,
+      source: answer.source,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Error in AI Coach chat:', err);
+    res.status(500).json({ error: 'Failed to process AI inquiry.' });
+  }
+});
+
+// ── POST /api/results/student/generate-guidance ─────────────────────
+// Generates fresh, uniquely phrased English academic guidance on every invocation
+router.post('/student/generate-guidance', verifyToken, async (req, res) => {
+  try {
+    const { students, results } = getCollections();
+    const userEmail = (req.user?.email || '').trim().toLowerCase();
+    const userId = req.user?.sub ? String(req.user.sub) : null;
+    const isAdmin = checkIsAdmin(req);
+
+    let payload = req.body || {};
+    if (typeof payload === 'string') {
+      try { payload = JSON.parse(payload); } catch (_) {}
+    }
+    const { studentId, variation = 0 } = payload;
+
+    let student = null;
+    if (isAdmin && studentId) {
+      student = await students.findOne({ studentId: String(studentId).trim() });
+    }
+
+    if (!student) {
+      student = await students.findOne({
+        $or: [
+          { email: { $in: [userEmail, (req.user?.email || '').trim()] } },
+          ...(userId ? [{ userId }] : []),
+        ],
+      });
+    }
+
+    if (!student) {
+      return res.status(404).json({ error: 'Student profile not found.' });
+    }
+
+    const rawSemester = String(student.semester || '7');
+    const semDigits = rawSemester.replace(/\D/g, '');
+    const currentSemNum = semDigits ? parseInt(semDigits, 10) : 7;
+
+    const query = {
+      $or: [
+        { studentEmail: student.email.toLowerCase() },
+        { studentId: String(student.studentId).trim() },
+      ],
+      status: 'published',
+      semester: { $lte: currentSemNum },
+    };
+
+    const studentResults = await results.find(query).sort({ semester: 1 }).toArray();
+    const trajectory = calculateAcademicTrajectory(studentResults, currentSemNum);
+    const guidance = await generateDynamicEnglishGuidance(student, trajectory, variation);
+
+    res.json({
+      success: true,
+      text: guidance.text,
+      source: guidance.source,
+      variation: guidance.variation,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Error generating dynamic guidance:', err);
+    res.status(500).json({ error: 'Failed to generate guidance message.' });
   }
 });
 

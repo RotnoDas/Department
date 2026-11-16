@@ -24,6 +24,7 @@ import {
 import toast from "react-hot-toast";
 import { apiFetch } from "@/lib/api";
 import { SEMESTER_LABELS } from "@/data/courses";
+import StudentAIForecastCard from "./StudentAIForecastCard";
 
 // Official PUST grading scale for legend
 const GRADING_SCALE_INFO = [
@@ -231,37 +232,10 @@ export default function StudentResultsSection({ student }) {
         </div>
       </div>
 
-      {/* ── Dean's List Honor Recognition (PUST Ordinance Sec 20.9) ── */}
-      {data && (data.isDeansList || Number(data.overallCGPA || 0) >= 3.80) && (
-        <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-amber-500/15 via-yellow-500/10 to-amber-500/20 border-2 border-amber-400/50 backdrop-blur-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm animate-in fade-in slide-in-from-top-4">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-amber-400/20 border border-amber-400/40 flex items-center justify-center shrink-0 shadow-inner">
-              <Sparkles className="w-6 h-6 text-amber-400 fill-amber-400" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-black uppercase tracking-wider text-amber-700 dark:text-amber-300">
-                  PUST Academic Ordinance Section 20.9
-                </span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400 text-amber-950">
-                  HONORS
-                </span>
-              </div>
-              <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white mt-0.5">
-                ★ Dean's List Recognition for Academic Distinction
-              </h3>
-              <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 max-w-2xl">
-                Recognized for outstanding academic achievement with an overall CGPA of <strong className="text-amber-600 dark:text-amber-400 text-sm font-black">{Number(data.overallCGPA).toFixed(2)}</strong> / 4.00, satisfying the rigorous ordinance threshold of 3.80 or above.
-              </p>
-            </div>
-          </div>
-          <div className="self-end sm:self-auto shrink-0 text-right">
-            <div className="text-[10px] uppercase font-bold text-slate-400">Awarded Standing</div>
-            <div className="text-xs font-black text-amber-600 dark:text-amber-300">
-              First Class with Honors
-            </div>
-          </div>
-        </div>
+
+      {/* ── AI 8-Semester Graduation Forecast & Academic Performance Coach ── */}
+      {data?.results && data.results.length > 0 && (
+        <StudentAIForecastCard student={student || data?.student} initialResults={data.results} />
       )}
 
       {/* ── Content Section ────────────────────────────────────────── */}
