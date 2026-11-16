@@ -43,7 +43,7 @@ router.use(noStore);
 router.get('/student/active-sessions', verifyToken, requireStudent(), async (req, res) => {
   try {
     const now = new Date();
-    const { local, queryDay, isToday, semester, sessions } = await listDaySessions({
+    const { local, queryDay, isToday, isPastDay, isFutureDay, semester, sessions } = await listDaySessions({
       student: req.student,
       userId: req.userId,
       queryDay: req.query.targetDay,
@@ -59,6 +59,8 @@ router.get('/student/active-sessions', verifyToken, requireStudent(), async (req
       currentDate: local.date,
       queryDay,
       isToday,
+      isPastDay,
+      isFutureDay,
       semester,
       student: {
         name: req.student.name,
@@ -540,14 +542,21 @@ router.get('/teacher/roster-report', async (req, res) => {
     if (courseCode) {
       const { courses } = getCollections();
       const rawCode = String(courseCode).trim();
-      const cleanCode = rawCode.replace(/[\s-]/g, '');
-      courseDoc = await courses.findOne({
-        $or: [
-          { code: { $regex: `^${rawCode}$`, $options: 'i' } },
-          { code: { $regex: cleanCode, $options: 'i' } },
-          { code: rawCode }
-        ]
-      });
+      const cleanCode = rawCode.replace(/[\s\-_]+/g, '');
+      const letters = cleanCode.replace(/[^A-Za-z]/g, '');
+      const digits = cleanCode.replace(/\D/g, '');
+      const or = [
+        { code: rawCode },
+        { code: rawCode.toUpperCase() },
+        { code: cleanCode },
+        { code: cleanCode.toUpperCase() },
+        { code: { $regex: `^${rawCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } },
+        { code: { $regex: `^${cleanCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } },
+      ];
+      if (letters && digits) {
+        or.push({ code: { $regex: `^${letters}\\s*[-_]?\\s*${digits}$`, $options: 'i' } });
+      }
+      courseDoc = await courses.findOne({ $or: or });
     }
     const totalPlannedClasses = courseDoc?.totalClasses !== undefined && courseDoc?.totalClasses !== null
       ? Number(courseDoc.totalClasses)
@@ -640,7 +649,7 @@ router.get('/teacher/roster-report', async (req, res) => {
 // Allows teacher to record a complete roll-call attendance session for a course
 router.post('/teacher/manual-session', async (req, res) => {
   try {
-    const { attendanceSessions, attendanceRecords } = getCollections();
+    const { attendanceSessions, attendanceRecords, students } = getCollections();
     const { courseCode, semester, sessionDate, timeSlot, topic, records, teacherName, teacherEmail } = req.body || {};
 
     if (!courseCode || !sessionDate) {
@@ -683,14 +692,22 @@ router.post('/teacher/manual-session', async (req, res) => {
         if (!studentEmail) continue;
 
         if (item.present) {
+          const st = students ? await students.findOne({
+            $or: [
+              { email: studentEmail },
+              ...(item.studentId ? [{ studentId: item.studentId }] : [])
+            ]
+          }) : null;
+
           await attendanceRecords.updateOne(
             { sessionKey, studentEmail },
             {
               $set: {
                 sessionKey,
+                userId: st ? String(st.userId || st._id) : item.userId || null,
                 studentEmail,
-                studentId: item.studentId || '',
-                studentName: item.studentName || '',
+                studentId: item.studentId || (st ? st.studentId : '') || '',
+                studentName: item.studentName || (st ? st.name : '') || '',
                 courseCode: cleanCourse,
                 sessionDate,
                 timeSlot: cleanSlot,
@@ -727,7 +744,7 @@ router.post('/teacher/manual-session', async (req, res) => {
 // Quick-toggle single student present/absent for a session
 router.post('/teacher/toggle-student', async (req, res) => {
   try {
-    const { attendanceRecords } = getCollections();
+    const { attendanceRecords, students } = getCollections();
     const { sessionKey, studentEmail, studentId, studentName, courseCode, sessionDate, timeSlot, present } = req.body || {};
 
     if (!sessionKey || !studentEmail) {
@@ -738,14 +755,22 @@ router.post('/teacher/toggle-student', async (req, res) => {
     const now = new Date();
 
     if (present) {
+      const st = students ? await students.findOne({
+        $or: [
+          { email: email },
+          ...(studentId ? [{ studentId: String(studentId) }] : [])
+        ]
+      }) : null;
+
       await attendanceRecords.updateOne(
         { sessionKey, studentEmail: email },
         {
           $set: {
             sessionKey,
+            userId: st ? String(st.userId || st._id) : req.body?.userId || null,
             studentEmail: email,
-            studentId: studentId || '',
-            studentName: studentName || '',
+            studentId: studentId || (st ? st.studentId : '') || '',
+            studentName: studentName || (st ? st.name : '') || '',
             courseCode: (courseCode || '').toUpperCase(),
             sessionDate: sessionDate || '',
             timeSlot: timeSlot || '',

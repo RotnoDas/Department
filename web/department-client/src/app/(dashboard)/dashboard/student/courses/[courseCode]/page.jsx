@@ -389,16 +389,30 @@ export default function StudentCourseWorkspacePage() {
         apiFetch("/api/attendance/student/history"),
       ]);
 
-      if (statsRes.status === "fulfilled" && statsRes.value?.stats) {
-        const matchedStat = statsRes.value.stats.find(
-          (s) => s.courseCode?.replace(/\s+/g, "").toUpperCase() === courseCode.replace(/\s+/g, "").toUpperCase()
+      const statsData =
+        statsRes.status === "fulfilled"
+          ? (statsRes.value?.data || statsRes.value)
+          : null;
+      const historyData =
+        historyRes.status === "fulfilled"
+          ? (historyRes.value?.data || historyRes.value)
+          : null;
+
+      const cleanCode = (c) => String(c || "").replace(/[\s\-_]+/g, "").toUpperCase();
+      const normTarget = cleanCode(courseCode);
+
+      const rawStats = statsData?.stats || (Array.isArray(statsData) ? statsData : []);
+      if (Array.isArray(rawStats) && rawStats.length > 0) {
+        const matchedStat = rawStats.find(
+          (s) => cleanCode(s.courseCode) === normTarget
         );
         setAttendanceStat(matchedStat || null);
       }
 
-      if (historyRes.status === "fulfilled" && historyRes.value?.history) {
-        const matchedHistory = historyRes.value.history.filter(
-          (h) => h.courseCode?.replace(/\s+/g, "").toUpperCase() === courseCode.replace(/\s+/g, "").toUpperCase()
+      const rawHistory = historyData?.history || (Array.isArray(historyData) ? historyData : []);
+      if (Array.isArray(rawHistory)) {
+        const matchedHistory = rawHistory.filter(
+          (h) => cleanCode(h.courseCode) === normTarget
         );
         setAttendanceHistory(matchedHistory);
       }
@@ -421,6 +435,27 @@ export default function StudentCourseWorkspacePage() {
       fetchContinuousEvaluation();
     }
   }, [courseCode, fetchCourseDetails, fetchCourseNotices, fetchCourseMaterials, fetchCourseAssignments, fetchCourseClassTests, fetchCourseAttendance, fetchContinuousEvaluation]);
+
+  // Auto-refresh course attendance and target classes periodically & on window focus
+  useEffect(() => {
+    if (!courseCode) return;
+    const refreshAll = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        fetchCourseAttendance();
+        fetchCourseDetails();
+      }
+    };
+    const timer = setInterval(refreshAll, 10000);
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", refreshAll);
+    }
+    return () => {
+      clearInterval(timer);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("focus", refreshAll);
+      }
+    };
+  }, [courseCode, fetchCourseAttendance, fetchCourseDetails]);
 
   // Handle assignment submission
   const handleSubmitAssignmentSolution = async (e) => {
@@ -531,9 +566,8 @@ export default function StudentCourseWorkspacePage() {
     const attended = attendanceStat?.attendedSessions || attendanceStat?.attended || attendanceStat?.presentCount || 0;
     const targetClasses = attendanceStat?.targetSessions || attendanceStat?.totalPlannedClasses || course?.totalClasses || null;
     const baseTotal = targetClasses && targetClasses > 0 ? targetClasses : totalHeld;
-    const pct = attendanceStat?.percentage !== undefined && attendanceStat?.percentage !== null
-      ? attendanceStat.percentage
-      : (baseTotal > 0 ? Math.round((attended / baseTotal) * 100) : 0);
+    const pct = baseTotal > 0 ? Math.min(100, Math.round((attended / baseTotal) * 100)) : 0;
+    const conductedPct = totalHeld > 0 ? Math.round((attended / totalHeld) * 100) : (pct > 0 ? 100 : 0);
 
     const submittedCount = assignments.filter((a) => a.mySubmission || a.submission).length;
     const gradedCount = assignments.filter((a) => {
@@ -577,6 +611,7 @@ export default function StudentCourseWorkspacePage() {
       attended,
       missed: Math.max(0, totalHeld - attended),
       attendancePct: pct,
+      conductedPct,
       isCollegiate: (totalHeld > 0 || (targetClasses && targetClasses > 0)) && pct >= 75,
       isNonCollegiate: (totalHeld > 0 || (targetClasses && targetClasses > 0)) && pct >= 60 && pct < 75,
       isDiscollegiate: (totalHeld > 0 || (targetClasses && targetClasses > 0)) && pct < 60,
@@ -889,7 +924,7 @@ export default function StudentCourseWorkspacePage() {
               </div>
               <div className="text-2xl font-black text-white">{courseStats.attendancePct}%</div>
               <span className="text-[10px] text-indigo-300 font-medium block truncate">
-                {courseStats.attended} of {courseStats.totalHeld} Attended
+                {courseStats.attended} of {courseStats.targetClasses ? `${courseStats.targetClasses} Target` : `${courseStats.totalHeld} Attended`}
               </span>
             </div>
 
@@ -2118,10 +2153,12 @@ export default function StudentCourseWorkspacePage() {
                       ? "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
                       : courseStats.isCollegiate
                       ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-200"
-                      : "bg-amber-50 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-200"
+                      : courseStats.isNonCollegiate
+                      ? "bg-amber-50 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-200"
+                      : "bg-rose-50 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300 border border-rose-200"
                   }`}
                 >
-                  {courseStats.totalHeld === 0 ? "No Sessions Held" : `${courseStats.attendancePct}% Cumulative`}
+                  {courseStats.totalHeld === 0 ? "No Sessions Held" : courseStats.targetClasses ? `${courseStats.attendancePct}% of Target` : `${courseStats.attendancePct}% Cumulative`}
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
@@ -2131,7 +2168,11 @@ export default function StudentCourseWorkspacePage() {
 
             <button
               type="button"
-              onClick={fetchCourseAttendance}
+              onClick={() => {
+                fetchCourseAttendance();
+                fetchCourseDetails();
+                toast.success("Attendance and target classes synchronized!");
+              }}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-slate-200 transition cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5" />

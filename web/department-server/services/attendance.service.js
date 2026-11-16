@@ -12,6 +12,7 @@ const cfg = require('../config/attendance');
 const { getZonedParts, parseTimeSlot, buildWindows, evaluateWindow } = require('../utils/classTime');
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const ROUTINE_WEEK_DAYS = ['Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
 class AttendanceError extends Error {
   constructor(code, message, status = 400, extra = {}) {
@@ -34,6 +35,8 @@ const parseSemesterNum = (value) => {
   return Number.isFinite(n) && n >= 1 ? n : null;
 };
 
+const escapeRegex = (str) => (str ? String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : '');
+
 function studentSemester(student) {
   const semester = parseSemesterNum(student?.semester);
   if (!semester) {
@@ -52,17 +55,32 @@ async function findRoutine(routineId) {
 // A student's record for one occurrence. The second clause also finds records written before
 // `sessionKey` existed, so nobody can check in twice across the upgrade.
 function recordFilter({ student, userId, sessionKey, sessionDate, routine }) {
-  return {
-    $or: [
-      { sessionKey, userId },
-      {
-        studentEmail: student.email,
-        sessionDate,
-        courseCode: routine.courseCode,
-        timeSlot: routine.timeSlot,
-      },
-    ],
-  };
+  const or = [];
+  if (sessionKey && userId) or.push({ sessionKey, userId });
+  if (sessionKey && student?.email) {
+    or.push({ sessionKey, studentEmail: student.email });
+    or.push({ sessionKey, studentEmail: { $regex: new RegExp(`^${escapeRegex(student.email.trim())}$`, 'i') } });
+  }
+  if (sessionKey && student?.studentId) {
+    or.push({ sessionKey, studentId: String(student.studentId) });
+  }
+  if (student?.email && sessionDate && routine) {
+    or.push({
+      studentEmail: { $regex: new RegExp(`^${escapeRegex(student.email.trim())}$`, 'i') },
+      sessionDate,
+      courseCode: routine.courseCode,
+      timeSlot: routine.timeSlot,
+    });
+  }
+  if (student?.studentId && sessionDate && routine) {
+    or.push({
+      studentId: String(student.studentId),
+      sessionDate,
+      courseCode: routine.courseCode,
+      timeSlot: routine.timeSlot,
+    });
+  }
+  return { $or: or.length ? or : [{ sessionKey, userId }] };
 }
 
 /** The check-in window for one routine slot at `local` (see utils/classTime). */
@@ -77,17 +95,26 @@ function describeWindow({ routine, slot, session, local }) {
     timeZone: cfg.timezone,
   });
 
-  // On another weekday only a dev-opened test window can exist.
-  if (!scheduledToday && !cfg.devMode) {
-    windows = windows.filter((w) => w.source === 'dev');
+  // If not scheduled today, only an actively opened window (dev or teacher) can exist
+  if (!scheduledToday) {
+    windows = windows.filter((w) => w.source === 'dev' || w.source === 'teacher');
     if (windows.length === 0) {
       return { state: 'not_today', source: null, secondsToOpen: 0, secondsLeft: 0 };
     }
   }
 
   if (windows.length === 0) {
-    if (scheduledToday || cfg.devMode) {
-      if (slot && local.minutes < slot.startMin - 5 && !cfg.devMode) {
+    if (scheduledToday) {
+      // Slot has ended: class time is finished
+      if (slot && local.minutes >= slot.endMin) {
+        return { state: 'closed', source: null, secondsToOpen: 0, secondsLeft: 0 };
+      }
+      // If session was completed or expired:
+      if (session?.status === 'completed' || session?.status === 'expired' || (session?.startedAt && !session?.status)) {
+        return { state: 'closed', source: null, secondsToOpen: 0, secondsLeft: 0 };
+      }
+      // Before class slot begins (more than 5 mins prior):
+      if (slot && local.minutes < slot.startMin - 5) {
         return {
           state: 'upcoming',
           source: null,
@@ -95,20 +122,16 @@ function describeWindow({ routine, slot, session, local }) {
           secondsLeft: 0,
         };
       }
-      if (slot && local.minutes >= slot.endMin && !cfg.devMode) {
-        return { state: 'closed', source: null, secondsToOpen: 0, secondsLeft: 0 };
+      // Scheduled today and currently ongoing: waiting for teacher to start attendance:
+      if (slot && local.minutes >= slot.startMin - 5 && local.minutes < slot.endMin) {
+        return {
+          state: 'waiting_teacher',
+          source: null,
+          secondsToOpen: 0,
+          secondsLeft: 0,
+        };
       }
-      // If session was completed or expired:
-      if (session?.status === 'completed' || (session?.startedAt && !session?.status)) {
-        return { state: 'closed', source: null, secondsToOpen: 0, secondsLeft: 0 };
-      }
-      // Scheduled today, within class duration, waiting for teacher to start attendance:
-      return {
-        state: 'waiting_teacher',
-        source: null,
-        secondsToOpen: 0,
-        secondsLeft: 0,
-      };
+      return { state: 'closed', source: null, secondsToOpen: 0, secondsLeft: 0 };
     }
     return { state: 'not_today', source: null, secondsToOpen: 0, secondsLeft: 0 };
   }
@@ -235,9 +258,29 @@ async function listDaySessions({ student, userId, queryDay, now = new Date() }) 
   const { routines, attendanceSessions, attendanceRecords } = getCollections();
   const semester = studentSemester(student);
   const local = getZonedParts(now, cfg.timezone);
-  const day = WEEKDAYS.includes(queryDay) ? queryDay : local.weekday;
+  const day = ROUTINE_WEEK_DAYS.includes(queryDay) || WEEKDAYS.includes(queryDay) ? queryDay : local.weekday;
 
   const isToday = day === local.weekday;
+  
+  // Calculate signed day offset from today's weekday (-3 to +3)
+  // Positive = future / next days (e.g. on Friday, Saturday is +1, Sunday is +2)
+  // Negative = past days (e.g. on Friday, Thursday is -1, Wednesday is -2)
+  const tIdx = WEEKDAYS.indexOf(local.weekday);
+  const dIdx = WEEKDAYS.indexOf(day);
+  let dayOffset = 0;
+  if (tIdx !== -1 && dIdx !== -1) {
+    dayOffset = dIdx - tIdx;
+    if (dayOffset < -3) dayOffset += 7;
+    if (dayOffset > 3) dayOffset -= 7;
+  }
+
+  const isPastDay = !isToday && dayOffset < 0;
+  const isFutureDay = !isToday && dayOffset > 0;
+
+  // Compute the calendar date for the target weekday
+  const targetDateObj = new Date(now);
+  targetDateObj.setDate(targetDateObj.getDate() + dayOffset);
+  const targetDate = isToday ? local.date : getZonedParts(targetDateObj, cfg.timezone).date;
 
   // Auto-complete any active sessions whose 10-minute window has passed
   try {
@@ -255,46 +298,109 @@ async function listDaySessions({ student, userId, queryDay, now = new Date() }) 
     .filter((x) => x.slot)
     .sort((a, b) => a.slot.startMin - b.slot.startMin);
 
-  const keys = slots.map(({ routine }) => sessionKeyFor(local.date, routine._id));
-  const sessionDocs = keys.length
-    ? await attendanceSessions.find({ sessionKey: { $in: keys } }).toArray()
-    : [];
-  const recordDocs = keys.length
-    ? await attendanceRecords
+  const keys = slots.map(({ routine }) => sessionKeyFor(targetDate, routine._id));
+  const todayKeys = isToday ? keys : slots.map(({ routine }) => sessionKeyFor(local.date, routine._id));
+  const allKeys = Array.from(new Set([...keys, ...todayKeys]));
+
+  const sessionDocs = allKeys.length
+    ? await attendanceSessions
         .find({
           $or: [
-            { userId, sessionKey: { $in: keys } },
-            { studentEmail: student.email, sessionDate: local.date },
+            { sessionKey: { $in: allKeys } },
+            { sessionDate: targetDate, routineId: { $in: slots.map((s) => String(s.routine._id)) } },
           ],
         })
         .toArray()
     : [];
 
-  const sessionByKey = new Map(sessionDocs.map((s) => [s.sessionKey, s]));
+  const studentOr = [];
+  if (userId) studentOr.push({ userId });
+  if (student?.email) {
+    studentOr.push({ studentEmail: student.email });
+    studentOr.push({ studentEmail: { $regex: new RegExp(`^${escapeRegex(student.email.trim())}$`, 'i') } });
+  }
+  if (student?.studentId) {
+    studentOr.push({ studentId: String(student.studentId) });
+  }
+
+  const recordDocs = slots.length && studentOr.length
+    ? await attendanceRecords
+        .find({
+          $and: [
+            { $or: studentOr },
+            {
+              $or: [
+                { sessionDate: targetDate },
+                { sessionDate: local.date },
+                { sessionKey: { $in: allKeys } },
+              ],
+            },
+          ],
+        })
+        .toArray()
+    : [];
+
+  const sessionByKey = new Map();
+  sessionDocs.forEach((s) => {
+    if (s.sessionKey) sessionByKey.set(s.sessionKey, s);
+    if (s.routineId) sessionByKey.set(`${targetDate}|${s.routineId}`, s);
+  });
+
+  const isStudentMatch = (r) => {
+    if (!r) return false;
+    if (userId && r.userId && String(r.userId) === String(userId)) return true;
+    if (student?.email && r.studentEmail && r.studentEmail.toLowerCase() === student.email.toLowerCase()) return true;
+    if (student?.studentId && r.studentId && String(r.studentId) === String(student.studentId)) return true;
+    return false;
+  };
 
   let activeOpenFound = false;
   const sessions = slots.map(({ routine, slot }) => {
-    const sessionKey = sessionKeyFor(local.date, routine._id);
+    const sessionKey = sessionKeyFor(targetDate, routine._id);
     const session = sessionByKey.get(sessionKey) || null;
+
+    // Robust matching for student's record for this slot:
     const record =
-      recordDocs.find((r) => r.sessionKey === sessionKey && r.userId === userId) ||
-      recordDocs.find(
-        (r) =>
-          !r.sessionKey &&
-          r.sessionDate === local.date &&
-          r.courseCode === routine.courseCode &&
-          r.timeSlot === routine.timeSlot
-      ) ||
-      null;
+      recordDocs.find((r) => {
+        if (!isStudentMatch(r)) return false;
+        if (r.sessionKey === sessionKey) return true;
+        if (r.routineId && String(r.routineId) === String(routine._id)) return true;
+        const sameCourse = r.courseCode && r.courseCode.toUpperCase() === routine.courseCode.toUpperCase();
+        const sameSlot = !r.timeSlot || r.timeSlot === routine.timeSlot;
+        return sameCourse && sameSlot;
+      }) || null;
 
-    const window = describeWindow({ routine, slot, session, local });
+    const window = isToday
+      ? describeWindow({ routine, slot, session, local })
+      : { state: 'scheduled', source: null, secondsToOpen: 0, secondsLeft: 0 };
+
     let state;
-    let isOpen = window.state === 'open';
-    let isMarkable = window.state === 'open' && !record;
-    let secondsLeft = window.secondsLeft;
+    let isOpen = isToday && window.state === 'open';
+    let isMarkable = isOpen && !record;
+    let secondsLeft = window.secondsLeft || 0;
 
-    // Enforce single active class: never allow multiple classes to be open simultaneously
-    if (isOpen) {
+    // 1. If attendance is already recorded for this slot, it stays marked!
+    if (record) {
+      state = 'marked';
+      isOpen = false;
+      isMarkable = false;
+    }
+    // 2. Any other day of the routine (Tuesday, Wednesday, Thursday, Saturday, Sunday, etc.)
+    // is a timetable schedule preview: never missed and never waiting for teacher.
+    else if (!isToday) {
+      state = 'scheduled';
+      isOpen = false;
+      isMarkable = false;
+    }
+    // 3. Today: class time slot has finished without attendance -> closed (missed)
+    else if (isToday && slot && local.minutes >= slot.endMin) {
+      state = 'closed';
+      isOpen = false;
+      isMarkable = false;
+    }
+    // 4. Today: check-in window is open
+    else if (isOpen) {
+      // Enforce single active class: never allow multiple classes to be open simultaneously
       if (activeOpenFound) {
         isOpen = false;
         isMarkable = false;
@@ -304,22 +410,31 @@ async function listDaySessions({ student, userId, queryDay, now = new Date() }) 
         activeOpenFound = true;
         state = 'open';
       }
-    } else if (record) {
-      state = 'marked';
-    } else if (window.state === 'upcoming') {
-      state = 'upcoming';
-    } else if (window.state === 'waiting_teacher') {
-      state = 'waiting_teacher';
-    } else if (window.state === 'closed') {
-      state = 'closed';
-    } else {
-      state = 'scheduled';
     }
+    // 5. Today: before class slot begins
+    else if (window.state === 'upcoming' || (isToday && slot && local.minutes < slot.startMin - 5)) {
+      state = 'upcoming';
+    }
+    // 6. Today: ongoing right now, waiting for teacher to start attendance
+    else if (
+      isToday &&
+      slot &&
+      local.minutes >= slot.startMin - 5 &&
+      local.minutes < slot.endMin &&
+      (window.state === 'waiting_teacher' || !session || session.status === 'scheduled')
+    ) {
+      state = 'waiting_teacher';
+    } else {
+      state = 'closed';
+    }
+
+    const isSlotFinishedToday = Boolean(isToday && slot && local.minutes >= slot.endMin);
+    const isPast = !record && isToday && (state === 'closed' || isSlotFinishedToday);
 
     return {
       routineId: String(routine._id),
       sessionId: session ? String(session._id) : null,
-      sessionDate: isToday ? local.date : null,
+      sessionDate: targetDate,
       day: routine.day,
       timeSlot: routine.timeSlot,
       startTime: slot.startLabel,
@@ -333,10 +448,11 @@ async function listDaySessions({ student, userId, queryDay, now = new Date() }) 
       isOpen,
       isActive: isOpen,
       isMarkable,
-      isPast: state === 'closed',
+      isPast,
+      isFinished: isSlotFinishedToday,
       attendanceId: record ? String(record._id) : null,
       windowSource: window.source,
-      secondsToOpen: window.secondsToOpen,
+      secondsToOpen: window.secondsToOpen || 0,
       secondsLeft,
       attendance: record
         ? {
@@ -350,12 +466,12 @@ async function listDaySessions({ student, userId, queryDay, now = new Date() }) 
     };
   });
 
-  return { local, queryDay: day, isToday, semester, sessions };
+  return { local, queryDay: day, isToday, isPastDay, isFutureDay, semester, sessions };
 }
 
 // ── Stats & history ──────────────────────────────────────────────────────────────────────────────
 const isLabCourse = (title) => /sessional|lab/i.test(title || '');
-const normCode = (code) => String(code || '').trim().toUpperCase();
+const normCode = (code) => String(code || '').replace(/[\s\-_]+/g, '').toUpperCase();
 
 /**
  * Per-course attendance for a student.
@@ -399,8 +515,18 @@ async function computeStats({ student, userId }) {
   conductedRows.forEach((r) => markConducted(r._id.c, r._id.d, r._id.t));
   startedRows.forEach((s) => markConducted(s.courseCode, s.sessionDate, s.timeSlot));
 
+  const studentOr = [];
+  if (userId) studentOr.push({ userId });
+  if (student?.email) {
+    studentOr.push({ studentEmail: student.email });
+    studentOr.push({ studentEmail: { $regex: new RegExp(`^${escapeRegex(student.email.trim())}$`, 'i') } });
+  }
+  if (student?.studentId) {
+    studentOr.push({ studentId: String(student.studentId) });
+  }
+
   const myRecords = await attendanceRecords
-    .find({ $or: [{ userId }, { studentEmail: student.email }] })
+    .find({ $or: studentOr.length ? studentOr : [{ userId }] })
     .toArray();
   const attendedByCourse = new Map();
   for (const r of myRecords) {
@@ -409,7 +535,53 @@ async function computeStats({ student, userId }) {
     attendedByCourse.get(key).set(`${r.sessionDate}|${r.timeSlot}`, r.status);
   }
 
-  const stats = semesterCourses.map((course) => {
+  // Merge courses by normCode to ensure we always retain the latest totalClasses
+  const courseMap = new Map();
+  for (const c of semesterCourses) {
+    const key = normCode(c.code);
+    if (!courseMap.has(key)) {
+      courseMap.set(key, c);
+    } else {
+      const existing = courseMap.get(key);
+      if ((existing.totalClasses === undefined || existing.totalClasses === null) && c.totalClasses !== undefined && c.totalClasses !== null) {
+        existing.totalClasses = c.totalClasses;
+      }
+    }
+  }
+
+  // Also include any course where student has records but wasn't in semesterCourses
+  for (const codeKey of attendedByCourse.keys()) {
+    if (!courseMap.has(codeKey)) {
+      const extra = await courses.findOne({
+        $or: [
+          { code: codeKey },
+          { code: { $regex: `^${codeKey}$`, $options: 'i' } }
+        ]
+      });
+      if (extra) courseMap.set(codeKey, extra);
+    }
+  }
+
+  // If any course in courseMap still has null totalClasses, check if there's any document in DB with totalClasses
+  for (const [key, c] of courseMap.entries()) {
+    if (c.totalClasses === undefined || c.totalClasses === null) {
+      const docWithTotal = await courses.findOne({
+        $or: [
+          { code: c.code },
+          { code: key },
+          { code: { $regex: key, $options: 'i' } }
+        ],
+        totalClasses: { $ne: null, $gt: 0 }
+      });
+      if (docWithTotal && docWithTotal.totalClasses) {
+        c.totalClasses = docWithTotal.totalClasses;
+      }
+    }
+  }
+
+  const finalCourseList = Array.from(courseMap.values());
+
+  const stats = finalCourseList.map((course) => {
     const key = normCode(course.code);
     const mine = attendedByCourse.get(key) || new Map();
     const statuses = [...mine.values()];
@@ -420,9 +592,11 @@ async function computeStats({ student, userId }) {
     const targetSessions = course.totalClasses !== undefined && course.totalClasses !== null && Number(course.totalClasses) > 0
       ? Number(course.totalClasses)
       : null;
-    const baseTotal = targetSessions || conductedSessions;
+    const baseTotal = targetSessions && targetSessions > 0 ? targetSessions : conductedSessions;
     const percentage =
       baseTotal > 0 ? Math.min(100, Math.round((attendedSessions / baseTotal) * 100)) : 0;
+    const conductedPercentage =
+      conductedSessions > 0 ? Math.min(100, Math.round((attendedSessions / conductedSessions) * 100)) : 0;
     const lab = isLabCourse(course.title);
 
     return {
@@ -438,6 +612,7 @@ async function computeStats({ student, userId }) {
       presentCount,
       lateCount,
       percentage,
+      conductedPercentage,
       hasData: conductedSessions > 0 || (targetSessions !== null && targetSessions > 0),
       status: (conductedSessions === 0 && !targetSessions) ? 'No classes yet' : percentage >= 75 ? 'Good Standing' : 'Low Attendance (< 75%)',
     };
@@ -453,14 +628,27 @@ async function computeStats({ student, userId }) {
     totalConducted,
     totalAttended,
     totalTarget: totalTarget > 0 ? totalTarget : null,
-    overallPercentage: totalTarget > 0 ? Math.round((totalAttended / totalTarget) * 100) : (totalConducted > 0 ? Math.round((totalAttended / totalConducted) * 100) : 0),
+    overallPercentage: totalTarget > 0
+      ? Math.round((totalAttended / totalTarget) * 100)
+      : (totalConducted > 0 ? Math.round((totalAttended / totalConducted) * 100) : 0),
+    conductedOverallPercentage: totalConducted > 0 ? Math.round((totalAttended / totalConducted) * 100) : 0,
   };
 }
 
 async function listHistory({ student, userId, limit = 50 }) {
   const { attendanceRecords } = getCollections();
+  const studentOr = [];
+  if (userId) studentOr.push({ userId });
+  if (student?.email) {
+    studentOr.push({ studentEmail: student.email });
+    studentOr.push({ studentEmail: { $regex: new RegExp(`^${escapeRegex(student.email.trim())}$`, 'i') } });
+  }
+  if (student?.studentId) {
+    studentOr.push({ studentId: String(student.studentId) });
+  }
+
   const records = await attendanceRecords
-    .find({ $or: [{ userId }, { studentEmail: student.email }] })
+    .find({ $or: studentOr.length ? studentOr : [{ userId }] })
     .sort({ markedAt: -1, createdAt: -1 })
     .limit(limit)
     .toArray();

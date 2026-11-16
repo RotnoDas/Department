@@ -54,6 +54,32 @@ router.get('/', async (req, res) => {
   }
 });
 
+function getCourseCodeFilter(codeParam, fieldName = 'code') {
+  const raw = decodeURIComponent(String(codeParam || '')).trim();
+  const clean = raw.replace(/[\s\-_]+/g, '');
+  const letters = clean.replace(/[^A-Za-z]/g, '');
+  const digits = clean.replace(/\D/g, '');
+
+  const or = [
+    { [fieldName]: raw },
+    { [fieldName]: raw.toUpperCase() },
+    { [fieldName]: clean },
+    { [fieldName]: clean.toUpperCase() },
+    { [fieldName]: { $regex: `^${raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } },
+    { [fieldName]: { $regex: `^${clean.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } },
+  ];
+
+  if (letters && digits) {
+    or.push({
+      [fieldName]: {
+        $regex: `^${letters}\\s*[-_]?\\s*${digits}$`,
+        $options: 'i',
+      },
+    });
+  }
+  return { $or: or };
+}
+
 // GET /api/courses/code/:code - Fetch single course details & schedule slots
 router.get('/code/:code', async (req, res) => {
   try {
@@ -62,13 +88,7 @@ router.get('/code/:code', async (req, res) => {
     const cleanCode = rawCode.replace(/[\s-]/g, '');
 
     // Search by exact code or regex variations (e.g. "CSE 3101", "CSE-3101", "CSE3101")
-    let course = await courses.findOne({
-      $or: [
-        { code: { $regex: `^${rawCode}$`, $options: 'i' } },
-        { code: { $regex: cleanCode, $options: 'i' } },
-        { code: rawCode }
-      ]
-    });
+    let course = await courses.findOne(getCourseCodeFilter(rawCode, 'code'));
 
     // If not in database collection, check SEMESTER_COURSES constants
     if (!course) {
@@ -91,13 +111,7 @@ router.get('/code/:code', async (req, res) => {
     }
 
     // Fetch related routine slots
-    const routineQuery = {
-      $or: [
-        { courseCode: { $regex: `^${rawCode}$`, $options: 'i' } },
-        { courseCode: { $regex: cleanCode, $options: 'i' } },
-        { courseCode: rawCode }
-      ]
-    };
+    const routineQuery = getCourseCodeFilter(rawCode, 'courseCode');
     const routineSlots = await routines.find(routineQuery).sort({ day: 1, timeSlot: 1 }).toArray();
 
     if (!course && routineSlots.length === 0) {
@@ -287,19 +301,11 @@ router.patch('/code/:code/classes', async (req, res) => {
   try {
     const { courses } = getCollections();
     const rawCode = decodeURIComponent(req.params.code).trim();
-    const cleanCode = rawCode.replace(/[\s-]/g, '');
+    const filter = getCourseCodeFilter(rawCode, 'code');
     const { totalClasses } = req.body;
 
-    const filter = {
-      $or: [
-        { code: { $regex: `^${rawCode}$`, $options: 'i' } },
-        { code: { $regex: cleanCode, $options: 'i' } },
-        { code: rawCode }
-      ]
-    };
-
     if (totalClasses === null || totalClasses === "" || totalClasses === 0 || totalClasses === "0") {
-      await courses.updateOne(filter, {
+      await courses.updateMany(filter, {
         $set: {
           totalClasses: null,
           updatedAt: new Date()
@@ -319,44 +325,49 @@ router.patch('/code/:code/classes', async (req, res) => {
       return res.status(400).json({ error: "Please enter a valid target classes count between 1 and 300." });
     }
 
-    let course = await courses.findOne(filter);
-    if (!course) {
-      // Upsert course document with totalClasses
+    const updateRes = await courses.updateMany(filter, {
+      $set: {
+        totalClasses: parsedCount,
+        updatedAt: new Date()
+      }
+    });
+
+    if (updateRes.matchedCount === 0) {
+      const clean = rawCode.replace(/[\s\-_]+/g, '').toLowerCase();
+      let matchedCurriculum = null;
+      let matchedSem = 7;
+      for (const [semNum, list] of Object.entries(SEMESTER_COURSES)) {
+        const found = list.find(c => c.code.replace(/[\s\-_]+/g, '').toLowerCase() === clean);
+        if (found) {
+          matchedCurriculum = found;
+          matchedSem = Number(semNum);
+          break;
+        }
+      }
+
+      const formattedCode = matchedCurriculum ? matchedCurriculum.code : rawCode.toUpperCase();
       await courses.updateOne(
-        { code: rawCode.toUpperCase() },
+        { code: formattedCode },
         {
           $set: {
-            code: rawCode.toUpperCase(),
+            code: formattedCode,
+            title: matchedCurriculum?.title || formattedCode,
+            credits: matchedCurriculum?.credits ? Number(matchedCurriculum.credits) : 3.0,
+            semester: SEMESTER_LABELS[matchedSem] || `${matchedSem}th Semester`,
+            semesterNum: matchedSem,
             totalClasses: parsedCount,
             updatedAt: new Date()
           },
           $setOnInsert: {
-            title: rawCode.toUpperCase(),
-            credits: 3.0,
             faculty: "Dept Faculty Member",
             createdAt: new Date()
           }
         },
         { upsert: true }
       );
-    } else {
-      await courses.updateOne(
-        { _id: course._id },
-        {
-          $set: {
-            totalClasses: parsedCount,
-            updatedAt: new Date()
-          }
-        }
-      );
     }
 
-    const updated = await courses.findOne({
-      $or: [
-        { code: { $regex: `^${rawCode}$`, $options: 'i' } },
-        { code: rawCode.toUpperCase() }
-      ]
-    });
+    const updated = await courses.findOne(filter);
 
     res.json({
       success: true,
@@ -377,24 +388,29 @@ router.patch('/:id/classes', async (req, res) => {
     const { id } = req.params;
     const { totalClasses } = req.body;
 
-    const parsedCount = parseInt(totalClasses, 10);
-    if (isNaN(parsedCount) || parsedCount < 1 || parsedCount > 300) {
+    const parsedCount = (totalClasses === null || totalClasses === "" || totalClasses === 0 || totalClasses === "0")
+      ? null
+      : parseInt(totalClasses, 10);
+
+    if (parsedCount !== null && (isNaN(parsedCount) || parsedCount < 1 || parsedCount > 300)) {
       return res.status(400).json({ error: "Please enter a valid planned classes count between 1 and 300." });
     }
 
-    const result = await courses.findOneAndUpdate(
-      { _id: new ObjectId(id) },
-      { $set: { totalClasses: parsedCount, updatedAt: new Date() } },
-      { returnDocument: 'after' }
+    const targetCourse = await courses.findOne({ _id: new ObjectId(id) });
+    if (!targetCourse) return res.status(404).json({ error: "Course not found" });
+
+    const codeFilter = getCourseCodeFilter(targetCourse.code, 'code');
+    await courses.updateMany(
+      { $or: [{ _id: new ObjectId(id) }, ...(codeFilter.$or || [])] },
+      { $set: { totalClasses: parsedCount, updatedAt: new Date() } }
     );
 
-    if (!result) return res.status(404).json({ error: "Course not found" });
-
+    const updated = await courses.findOne({ _id: new ObjectId(id) });
     res.json({
       success: true,
-      message: `Planned classes updated to ${parsedCount}.`,
+      message: parsedCount ? `Planned classes updated to ${parsedCount}.` : "Planned classes reset.",
       totalClasses: parsedCount,
-      course: result
+      course: updated
     });
   } catch (err) {
     console.error("Error updating course total classes by ID:", err);

@@ -356,11 +356,14 @@ export default function StudentDashboardPage() {
         prev.map((s) => {
           if (s.secondsLeft && s.secondsLeft > 0 && (s.isOpen || s.isMarkable)) {
             const next = s.secondsLeft - 1;
+            const hasAttended = Boolean(s.attendanceId || s.attendance?.id || s.state === "marked");
             return {
               ...s,
               secondsLeft: next,
               isOpen: next > 0,
-              isMarkable: next > 0 && !s.attendanceId,
+              isMarkable: next > 0 && !hasAttended,
+              state: next === 0 ? (hasAttended ? "marked" : "closed") : s.state,
+              isPast: next === 0 ? !hasAttended : s.isPast,
             };
           }
           return s;
@@ -1831,10 +1834,17 @@ export default function StudentDashboardPage() {
                                 </span>
                               )}
 
-                              {!isAttended && !isActive && session.state === "waiting_teacher" && (
+                              {!isAttended && !isPast && !isActive && session.state === "waiting_teacher" && (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
                                   <Clock className="w-3 h-3 text-amber-500" />
                                   <span>Waiting for Teacher to Start</span>
+                                </span>
+                              )}
+
+                              {!isAttended && !isPast && !isActive && session.state !== "waiting_teacher" && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                  <Clock className="w-3 h-3 text-slate-400" />
+                                  <span>{session.state === "upcoming" ? "Upcoming" : "Scheduled"}</span>
                                 </span>
                               )}
 
@@ -1861,7 +1871,11 @@ export default function StudentDashboardPage() {
 
                           {!isAttended && (
                             <div className="flex items-center gap-2">
-                              {isMarkable ? (
+                              {isPast ? (
+                                <span className="text-[10px] font-bold px-3 py-1.5 rounded-xl bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300">
+                                  Missed
+                                </span>
+                              ) : isMarkable ? (
                                 <button
                                   type="button"
                                   onClick={() => handleOpenFaceCheckIn(session)}
@@ -1870,21 +1884,17 @@ export default function StudentDashboardPage() {
                                   <Camera className="w-3.5 h-3.5" />
                                   <span>Mark Present</span>
                                 </button>
-                              ) : session.state === "waiting_teacher" ? (
-                                <span className="text-[10px] font-bold px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/60">
-                                  Waiting for teacher to start
-                                </span>
                               ) : isActive ? (
                                 <span className="text-[10px] font-bold px-3 py-1.5 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
                                   Window Closed (&gt;10m)
                                 </span>
-                              ) : isPast ? (
-                                <span className="text-[10px] font-bold px-3 py-1.5 rounded-xl bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300">
-                                  Missed
+                              ) : session.state === "waiting_teacher" ? (
+                                <span className="text-[10px] font-bold px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/60">
+                                  Waiting for teacher to start
                                 </span>
                               ) : (
                                 <span className="text-[10px] font-bold px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
-                                  Upcoming (Opens at {session.startTime || "start"})
+                                  {session.state === "upcoming" ? `Upcoming (Opens at ${session.startTime || "start"})` : `Scheduled (${session.timeSlot || `${session.startTime} — ${session.endTime}`})`}
                                 </span>
                               )}
                             </div>
@@ -1948,15 +1958,17 @@ export default function StudentDashboardPage() {
                     const pct = stat.percentage || 0;
                     const isGood = pct >= 75;
                     const isWarning = pct >= 60 && pct < 75;
+                    const noClasses = (stat.conductedSessions || stat.totalSessions || 0) === 0 && !stat.attendedSessions;
 
                     return (
-                      <div
+                      <Link
                         key={stat.courseCode}
-                        className="p-3.5 rounded-xl bg-white dark:bg-slate-800/90 border border-slate-200/60 dark:border-slate-700/60 space-y-2.5"
+                        href={`/dashboard/student/courses/${encodeURIComponent(stat.courseCode)}`}
+                        className="block p-3.5 rounded-xl bg-white dark:bg-slate-800/90 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 space-y-2.5 transition cursor-pointer group"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
-                            <p className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                            <p className="font-bold text-xs text-slate-900 dark:text-white truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                               {stat.courseTitle || stat.courseName}
                             </p>
                             <span className="font-mono text-[10px] font-bold text-slate-400">
@@ -1965,7 +1977,7 @@ export default function StudentDashboardPage() {
                           </div>
                           <span
                             className={`font-mono font-bold text-xs px-2 py-0.5 rounded-md ${
-                              stat.totalSessions === 0
+                              noClasses
                                 ? "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
                                 : isGood
                                 ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400"
@@ -1982,7 +1994,7 @@ export default function StudentDashboardPage() {
                         <div className="w-full bg-slate-100 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
                           <div
                             className={`h-full rounded-full transition-all duration-500 ${
-                              stat.totalSessions === 0
+                              noClasses
                                 ? "bg-slate-300 dark:bg-slate-600"
                                 : isGood
                                 ? "bg-emerald-500"
@@ -1998,8 +2010,8 @@ export default function StudentDashboardPage() {
                           <span>
                             {stat.attendedSessions} / {stat.targetSessions ? `${stat.targetSessions} Target` : `${stat.totalSessions} Sessions`}
                           </span>
-                          <span className={stat.totalSessions === 0 ? "text-slate-400 font-bold" : isGood ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-rose-500 font-bold"}>
-                            {stat.totalSessions === 0 ? "No Classes Held" : isGood ? "Good Standing" : "Short Attendance"}
+                          <span className={noClasses ? "text-slate-400 font-bold" : isGood ? "text-emerald-600 dark:text-emerald-400 font-bold" : "text-rose-500 font-bold"}>
+                            {noClasses ? "No Classes Held" : isGood ? "Good Standing" : "Short Attendance"}
                           </span>
                         </div>
 
@@ -2017,7 +2029,7 @@ export default function StudentDashboardPage() {
                             </span>
                           </div>
                         </div>
-                      </div>
+                      </Link>
                     );
                   })}
                 </div>
@@ -2493,7 +2505,31 @@ export default function StudentDashboardPage() {
         purpose={faceModalConfig.purpose}
         routine={faceModalConfig.routine}
         coords={coords}
-        onSuccess={async () => {
+        onSuccess={async (markData) => {
+          if (markData?.courseCode || faceModalConfig.routine?.routineId) {
+            setAttendanceSessions((prev) =>
+              prev.map((s) => {
+                const matchCourse = markData?.courseCode && s.courseCode?.toUpperCase() === markData.courseCode.toUpperCase();
+                const matchRoutine = faceModalConfig.routine?.routineId && s.routineId === faceModalConfig.routine.routineId;
+                if (matchCourse || matchRoutine) {
+                  return {
+                    ...s,
+                    state: "marked",
+                    isOpen: false,
+                    isMarkable: false,
+                    isPast: false,
+                    attendanceId: markData?.recordId || "marked",
+                    attendance: {
+                      id: markData?.recordId || "marked",
+                      status: "present",
+                      markedAt: markData?.markedAt || new Date().toISOString(),
+                    },
+                  };
+                }
+                return s;
+              })
+            );
+          }
           await loadAttendanceData(false);
         }}
       />
