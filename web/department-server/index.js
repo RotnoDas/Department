@@ -12,7 +12,6 @@ const { seedInitialData } = require('./utils/seed');
 const authRoutes = require('./routes/auth.routes');
 const studentRoutes = require('./routes/student.routes');
 const teacherRoutes = require('./routes/teacher.routes');
-const employeeRoutes = require('./routes/employee.routes');
 const adminRoutes = require('./routes/admin.routes');
 const userRoutes = require('./routes/user.routes');
 const noticeRoutes = require('./routes/notice.routes');
@@ -75,9 +74,6 @@ app.use('/api/students', studentRoutes);
 
 // Teachers (/api/teachers)
 app.use('/api/teachers', teacherRoutes);
-
-// Employees (/api/employees)
-app.use('/api/employees', employeeRoutes);
 
 // Admin & Stats (/api/admin)
 app.use('/api/admin', adminRoutes);

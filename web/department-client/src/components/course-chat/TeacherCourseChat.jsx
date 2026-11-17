@@ -123,8 +123,8 @@ function VoiceNotePlayer({ src, isMe }) {
           isPlaying ? "ring-2 ring-emerald-400/50 scale-105" : ""
         } ${
           isMe
-            ? "bg-white text-emerald-800 hover:bg-emerald-50 shadow-emerald-950/40"
-            : "bg-emerald-500 text-slate-950 hover:bg-emerald-400 shadow-black/40"
+            ? "bg-emerald-700 text-white hover:bg-emerald-800 shadow-sm dark:bg-white dark:text-emerald-800 dark:hover:bg-emerald-50"
+            : "bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm dark:bg-emerald-500 dark:text-slate-950 dark:hover:bg-emerald-400"
         }`}
         title={isPlaying ? "Pause audio" : "Play audio"}
       >
@@ -151,8 +151,8 @@ function VoiceNotePlayer({ src, isMe }) {
                 style={{ height: `${h}%` }}
                 className={`w-1 rounded-full transition-colors ${
                   isFilled
-                    ? isMe ? "bg-white" : "bg-emerald-400"
-                    : isMe ? "bg-emerald-900/60 group-hover/wave:bg-emerald-800/80" : "bg-slate-600 group-hover/wave:bg-slate-500"
+                    ? isMe ? "bg-emerald-800 dark:bg-white" : "bg-emerald-600 dark:bg-emerald-400"
+                    : isMe ? "bg-emerald-300/80 dark:bg-emerald-900/60" : "bg-slate-300 dark:bg-slate-600"
                 }`}
               />
             );
@@ -166,15 +166,15 @@ function VoiceNotePlayer({ src, isMe }) {
               onClick={toggleSpeed}
               className={`px-1.5 py-0.2 rounded-full text-[9px] font-extrabold uppercase transition-all ${
                 isMe
-                  ? "bg-emerald-900/60 hover:bg-emerald-800 text-emerald-200"
-                  : "bg-slate-700/80 hover:bg-slate-600 text-slate-200"
+                  ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-900/60 dark:hover:bg-emerald-800 dark:text-emerald-200"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-700/80 dark:hover:bg-slate-600 dark:text-slate-200"
               }`}
               title="Click to toggle playback speed (1x / 1.5x / 2x)"
             >
               {playbackRate}x
             </button>
             <span className="flex items-center gap-1">
-              <Mic className="w-3 h-3 text-emerald-300" />
+              <Mic className="w-3 h-3 text-emerald-600 dark:text-emerald-300" />
               <span>{formatAudioTime(duration || 0)}</span>
             </span>
           </div>
@@ -535,24 +535,24 @@ export default function TeacherCourseChat({
   const totalUnreadCount = conversations.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
 
   return (
-    <div className="rounded-3xl bg-slate-900/95 border border-slate-200/20 dark:border-white/10 shadow-2xl overflow-hidden grid grid-cols-1 md:grid-cols-12 h-[690px]">
+    <div className="rounded-3xl bg-white dark:bg-slate-900/95 border border-slate-200/90 dark:border-white/10 shadow-xl overflow-hidden grid grid-cols-1 md:grid-cols-12 h-[690px] transition-colors">
       {/* ── Left Column: Student Conversations Sidebar (4 cols) ── */}
-      <div className="md:col-span-4 border-r border-white/10 flex flex-col bg-slate-950/60 h-full">
+      <div className="md:col-span-4 border-r border-slate-200/80 dark:border-white/10 flex flex-col bg-slate-50/70 dark:bg-slate-950/60 h-full transition-colors">
         {/* Top Search & Filter Bar */}
-        <div className="p-3.5 border-b border-white/10 space-y-2.5">
+        <div className="p-3.5 border-b border-slate-200/80 dark:border-white/10 space-y-2.5 bg-white/80 dark:bg-slate-950/40">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <MessageSquare className="w-4 h-4 text-emerald-400" />
-              <h4 className="text-sm font-extrabold text-white">Student Chats</h4>
+              <MessageSquare className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <h4 className="text-sm font-extrabold text-slate-900 dark:text-white">Student Chats</h4>
               {totalUnreadCount > 0 && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500 text-slate-950">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-600 text-white dark:bg-emerald-500 dark:text-slate-950 shadow-xs">
                   {totalUnreadCount} new
                 </span>
               )}
             </div>
             <button
               onClick={() => fetchConversations(false)}
-              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white"
+              className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 dark:bg-white/5 dark:hover:bg-white/10 dark:text-slate-400 dark:hover:text-white border border-slate-200/60 dark:border-white/5 transition"
               title="Refresh messages"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loadingList ? "animate-spin" : ""}`} />
@@ -561,13 +561,13 @@ export default function TeacherCourseChat({
 
           {/* Search Box */}
           <div className="relative">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <Search className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search student or roll..."
-              className="w-full bg-white/5 border border-white/10 focus:border-emerald-500 rounded-xl py-2 pl-9 pr-3 text-xs text-white placeholder-slate-400 outline-none transition-all"
+              className="w-full bg-slate-100/90 dark:bg-white/5 border border-slate-200/80 dark:border-white/10 focus:border-emerald-500 focus:bg-white dark:focus:bg-white/10 rounded-xl py-2 pl-9 pr-3 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none transition-all shadow-2xs"
             />
           </div>
 
@@ -577,8 +577,8 @@ export default function TeacherCourseChat({
               onClick={() => setViewFilter("all")}
               className={`px-2.5 py-1 rounded-lg font-semibold transition-all ${
                 viewFilter === "all"
-                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
-                  : "bg-white/5 text-slate-400 hover:text-white"
+                  ? "bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/40 shadow-2xs"
+                  : "bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white border border-slate-200/60 dark:border-white/5"
               }`}
             >
               All ({conversations.length})
@@ -587,8 +587,8 @@ export default function TeacherCourseChat({
               onClick={() => setViewFilter("unread")}
               className={`px-2.5 py-1 rounded-lg font-semibold transition-all ${
                 viewFilter === "unread"
-                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
-                  : "bg-white/5 text-slate-400 hover:text-white"
+                  ? "bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/40 shadow-2xs"
+                  : "bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white border border-slate-200/60 dark:border-white/5"
               }`}
             >
               Unread ({totalUnreadCount})
@@ -597,8 +597,8 @@ export default function TeacherCourseChat({
               onClick={() => setViewFilter("roster")}
               className={`px-2.5 py-1 rounded-lg font-semibold transition-all ${
                 viewFilter === "roster"
-                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
-                  : "bg-white/5 text-slate-400 hover:text-white"
+                  ? "bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/40 shadow-2xs"
+                  : "bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white border border-slate-200/60 dark:border-white/5"
               }`}
             >
               Class Roster ({classRoster.length})
@@ -607,10 +607,10 @@ export default function TeacherCourseChat({
         </div>
 
         {/* Student List View */}
-        <div className="flex-1 overflow-y-auto divide-y divide-white/5 scrollbar-thin scrollbar-thumb-white/10">
+        <div className="flex-1 overflow-y-auto divide-y divide-slate-200/60 dark:divide-white/5 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-white/10">
           {viewFilter === "roster" ? (
             classRoster.length === 0 ? (
-              <div className="p-6 text-center text-xs text-slate-400">
+              <div className="p-6 text-center text-xs text-slate-500 dark:text-slate-400">
                 No students enrolled in this semester.
               </div>
             ) : (
@@ -631,20 +631,20 @@ export default function TeacherCourseChat({
                     }}
                     className={`w-full p-3 flex items-center justify-between gap-3 text-left transition-all ${
                       isSelected
-                        ? "bg-emerald-600/20 border-l-4 border-emerald-500"
-                        : "hover:bg-white/5"
+                        ? "bg-emerald-50/90 dark:bg-emerald-600/20 border-l-4 border-emerald-600 dark:border-emerald-500 shadow-2xs"
+                        : "hover:bg-slate-100/70 dark:hover:bg-white/5"
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-8 h-8 rounded-xl bg-slate-800 border border-white/10 flex items-center justify-center font-bold text-xs text-slate-300 shrink-0">
+                      <div className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-white/10 flex items-center justify-center font-bold text-xs text-slate-700 dark:text-slate-300 shrink-0">
                         {s.name ? s.name.slice(0, 1).toUpperCase() : "S"}
                       </div>
                       <div className="min-w-0">
-                        <div className="text-xs font-bold text-white truncate">{s.name}</div>
-                        <div className="text-[10px] text-slate-400">Roll: {s.studentId || s.roll || "—"}</div>
+                        <div className="text-xs font-bold text-slate-900 dark:text-white truncate">{s.name}</div>
+                        <div className="text-[10px] text-slate-500 dark:text-slate-400">Roll: {s.studentId || s.roll || "—"}</div>
                       </div>
                     </div>
-                    <span className="text-[10px] text-emerald-400 font-bold shrink-0">
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold shrink-0">
                       {s.hasConversation ? "Chatting" : "Start Chat"}
                     </span>
                   </button>
@@ -652,12 +652,12 @@ export default function TeacherCourseChat({
               })
             )
           ) : filteredList.length === 0 ? (
-            <div className="p-6 text-center space-y-2 text-xs text-slate-400">
-              <MessageSquare className="w-6 h-6 mx-auto text-slate-600" />
+            <div className="p-6 text-center space-y-2 text-xs text-slate-500 dark:text-slate-400">
+              <MessageSquare className="w-6 h-6 mx-auto text-slate-400 dark:text-slate-600" />
               <p>No student conversations found.</p>
               <button
                 onClick={() => setViewFilter("roster")}
-                className="text-emerald-400 hover:underline font-bold text-[11px]"
+                className="text-emerald-600 dark:text-emerald-400 hover:underline font-bold text-[11px]"
               >
                 Browse full class roster
               </button>
@@ -673,30 +673,30 @@ export default function TeacherCourseChat({
                   onClick={() => setSelectedStudent(c)}
                   className={`w-full p-3 flex items-center justify-between gap-3 text-left transition-all ${
                     isSelected
-                      ? "bg-emerald-600/20 border-l-4 border-emerald-500"
-                      : "hover:bg-white/5"
+                      ? "bg-emerald-50/90 dark:bg-emerald-600/20 border-l-4 border-emerald-600 dark:border-emerald-500 shadow-2xs"
+                      : "hover:bg-slate-100/70 dark:hover:bg-white/5"
                   }`}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 p-0.5 shrink-0">
-                      <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center font-black text-indigo-300 text-xs">
+                    <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 p-0.5 shrink-0 shadow-xs">
+                      <div className="w-full h-full bg-white dark:bg-slate-950 rounded-[10px] flex items-center justify-center font-black text-indigo-700 dark:text-indigo-300 text-xs shadow-inner">
                         {c.studentName ? c.studentName.slice(0, 2).toUpperCase() : "ST"}
                       </div>
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-bold text-white truncate">
+                        <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
                           {c.studentName}
                         </span>
                         {c.studentId && (
-                          <span className="text-[10px] text-slate-400 font-mono">
+                          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
                             ({c.studentId})
                           </span>
                         )}
                       </div>
-                      <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
                         {c.lastSenderRole === "teacher" ? (
-                          <span className="text-emerald-400 font-semibold">You: </span>
+                          <span className="text-emerald-600 dark:text-emerald-400 font-semibold">You: </span>
                         ) : null}
                         {c.lastMessage || "Attachment"}
                       </p>
@@ -704,11 +704,11 @@ export default function TeacherCourseChat({
                   </div>
 
                   <div className="flex flex-col items-end gap-1 shrink-0">
-                    <span className="text-[10px] text-slate-500">
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
                       {formatMsgTime(c.lastMessageAt)}
                     </span>
                     {hasUnread && (
-                      <span className="w-5 h-5 rounded-full bg-emerald-500 text-slate-950 text-[10px] font-black flex items-center justify-center">
+                      <span className="w-5 h-5 rounded-full bg-emerald-600 text-white dark:bg-emerald-500 dark:text-slate-950 text-[10px] font-black flex items-center justify-center shadow-xs">
                         {c.unreadCount}
                       </span>
                     )}
@@ -721,29 +721,29 @@ export default function TeacherCourseChat({
       </div>
 
       {/* ── Right Column: Selected Student Chat Window (8 cols) ── */}
-      <div className="md:col-span-8 flex flex-col h-full bg-slate-900/60">
+      <div className="md:col-span-8 flex flex-col h-full bg-slate-50/40 dark:bg-slate-900/60 transition-colors">
         {selectedStudent ? (
           <>
             {/* Chat Header */}
-            <div className="p-3.5 bg-slate-950/80 border-b border-white/10 flex items-center justify-between shrink-0">
+            <div className="p-3.5 bg-white/95 dark:bg-slate-950/80 border-b border-slate-200/80 dark:border-white/10 flex items-center justify-between shrink-0 shadow-2xs">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-500 p-0.5 shadow-md">
-                  <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center font-black text-indigo-300 text-sm">
+                  <div className="w-full h-full bg-white dark:bg-slate-950 rounded-[14px] flex items-center justify-center font-black text-indigo-700 dark:text-indigo-300 text-sm shadow-inner">
                     {selectedStudent.studentName ? selectedStudent.studentName.slice(0, 2).toUpperCase() : "ST"}
                   </div>
                 </div>
 
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="text-sm sm:text-base font-extrabold text-white">
+                    <h3 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white tracking-tight">
                       {selectedStudent.studentName}
                     </h3>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30">
                       Student
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-400 flex items-center gap-2">
-                    <span>Roll: <strong>{selectedStudent.studentId || selectedStudent.roll || "—"}</strong></span>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-2 font-medium">
+                    <span>Roll: <strong className="text-slate-700 dark:text-slate-200">{selectedStudent.studentId || selectedStudent.roll || "—"}</strong></span>
                     <span>•</span>
                     <span className="truncate">{selectedStudent.studentEmail}</span>
                   </p>
@@ -755,18 +755,18 @@ export default function TeacherCourseChat({
                   onClick={() => setShowSuggestions((prev) => !prev)}
                   className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all border ${
                     showSuggestions
-                      ? "bg-amber-400/20 text-amber-300 border-amber-400/40"
-                      : "bg-white/5 text-slate-400 border-white/10 hover:text-white"
+                      ? "bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-400/20 dark:text-amber-300 dark:border-amber-400/40 shadow-sm"
+                      : "bg-white hover:bg-slate-100 text-slate-700 border-slate-200/80 dark:bg-white/5 dark:text-slate-400 dark:border-white/10 dark:hover:text-white shadow-sm"
                   }`}
                   title="Toggle quick suggestions"
                 >
-                  <Lightbulb className="w-3.5 h-3.5 text-amber-300" />
+                  <Lightbulb className="w-3.5 h-3.5 text-amber-500 dark:text-amber-300" />
                   <span className="hidden sm:inline">Suggestions</span>
                 </button>
 
                 <button
                   onClick={() => fetchThread(selectedStudent.studentEmail, false)}
-                  className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-all border border-white/10"
+                  className="p-2 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/80 dark:bg-white/5 dark:hover:bg-white/10 dark:text-slate-300 dark:hover:text-white transition-all dark:border-white/10 active:scale-95 shadow-sm"
                   title="Refresh chat"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${loadingChat ? "animate-spin" : ""}`} />
@@ -776,15 +776,16 @@ export default function TeacherCourseChat({
 
             {/* Quick Suggestion Chips */}
             {showSuggestions && (
-              <div className="px-3.5 py-2 bg-slate-950/70 border-b border-white/10 flex items-center gap-2 overflow-x-auto scrollbar-none shrink-0 animate-in fade-in duration-150">
-                <span className="text-[10px] uppercase font-bold text-slate-400 shrink-0">
-                  Quick feedback:
+              <div className="px-3.5 py-2.5 bg-slate-100/80 dark:bg-slate-950/70 border-b border-slate-200/80 dark:border-white/10 flex items-center gap-2 overflow-x-auto scrollbar-none shrink-0 animate-in fade-in duration-150">
+                <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 tracking-wider shrink-0 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-amber-500 dark:text-amber-400" />
+                  <span>Quick feedback:</span>
                 </span>
                 {TEACHER_SUGGESTIONS.map((r, idx) => (
                   <button
                     key={idx}
                     onClick={() => setInputText(r.text)}
-                    className="shrink-0 px-2.5 py-1 rounded-xl text-xs bg-white/5 hover:bg-emerald-600/20 text-slate-300 hover:text-emerald-200 border border-white/10 transition-all text-left"
+                    className="shrink-0 px-3 py-1 rounded-xl text-xs bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border border-slate-200/90 hover:border-emerald-300 dark:bg-white/5 dark:hover:bg-emerald-600/25 dark:text-slate-300 dark:hover:text-emerald-200 dark:border-white/10 dark:hover:border-emerald-500/30 shadow-sm transition-all text-left"
                   >
                     {r.label}
                   </button>
@@ -796,21 +797,27 @@ export default function TeacherCourseChat({
             <div
               ref={chatContainerRef}
               onScroll={handleChatScroll}
-              className="flex-1 p-3.5 sm:p-5 overflow-y-auto space-y-2 font-sans text-xs sm:text-sm bg-[#0b141a] scrollbar-thin scrollbar-thumb-white/10 relative"
+              className="flex-1 p-3.5 sm:p-5 overflow-y-auto space-y-2 font-sans text-xs sm:text-sm bg-[#efeae2]/70 dark:bg-[#0b141a] scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-white/10 relative transition-colors"
             >
               {/* WhatsApp background texture */}
-              <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:16px_16px]" />
+              <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-[radial-gradient(#000_1px,transparent_1px)] dark:bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:16px_16px]" />
 
               {loadingChat && messages.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-slate-400">
-                  <RefreshCw className="w-5 h-5 animate-spin text-emerald-400 mr-2" />
-                  <span>Loading messages...</span>
+                <div className="h-full flex flex-col items-center justify-center space-y-2 text-slate-500 dark:text-slate-400">
+                  <RefreshCw className="w-6 h-6 animate-spin text-emerald-600 dark:text-emerald-400" />
+                  <p className="text-xs font-medium">Loading messages...</p>
                 </div>
               ) : messages.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-2 text-slate-400">
-                  <MessageSquare className="w-8 h-8 text-slate-600" />
-                  <p className="text-xs">No messages yet with {selectedStudent.studentName}.</p>
-                  <p className="text-[11px] text-slate-500">Send text, audio feedback, or files below.</p>
+                <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-3">
+                  <div className="w-14 h-14 rounded-3xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-sm">
+                    <MessageSquare className="w-7 h-7" />
+                  </div>
+                  <div className="max-w-md space-y-1">
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">No messages yet with {selectedStudent.studentName}</h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Send text messages, audio feedback, or attachments below.
+                    </p>
+                  </div>
                 </div>
               ) : (
                 messages.map((m, idx) => {
@@ -823,7 +830,7 @@ export default function TeacherCourseChat({
                     <React.Fragment key={m.id || idx}>
                       {showDateHeader && (
                         <div className="flex justify-center my-3 relative z-10">
-                          <span className="px-3 py-0.5 rounded-full text-[10px] font-bold bg-[#182229] text-slate-400 border border-white/5">
+                          <span className="px-3 py-0.5 rounded-full text-[10px] font-bold bg-white/90 dark:bg-[#182229] text-slate-600 dark:text-slate-400 border border-slate-200/80 dark:border-white/5 shadow-xs">
                             {formatMsgDate(m.createdAt)}
                           </span>
                         </div>
@@ -840,16 +847,16 @@ export default function TeacherCourseChat({
                         <div
                           className={`relative group w-fit max-w-[85%] sm:max-w-[72%] transition-all break-words ${
                             isMe
-                              ? "bg-gradient-to-br from-[#005c4b] via-[#006653] to-[#025243] text-white rounded-[22px] rounded-br-[5px] shadow-[0_3px_12px_rgba(0,0,0,0.25),inset_0_1px_0_rgba(255,255,255,0.15)] border border-emerald-400/20"
-                              : "bg-[#202c33] text-[#e9edef] rounded-[22px] rounded-bl-[5px] shadow-[0_3px_12px_rgba(0,0,0,0.25),inset_0_1px_0_rgba(255,255,255,0.06)] border border-white/[0.08]"
+                              ? "bg-[#d9fdd3] text-slate-900 rounded-[22px] rounded-br-[5px] shadow-sm border border-[#b8f5ad] dark:bg-gradient-to-br dark:from-[#005c4b] dark:via-[#006653] dark:to-[#025243] dark:text-white dark:border-emerald-400/20"
+                              : "bg-white text-slate-900 rounded-[22px] rounded-bl-[5px] shadow-sm border border-slate-200/90 dark:bg-[#202c33] dark:text-[#e9edef] dark:border-white/[0.08]"
                           } px-4 py-2.5 sm:px-4.5 sm:py-3`}
                         >
                           {/* Student Name for incoming message */}
                           {!isMe && (
-                            <div className="text-[11px] font-bold text-sky-400 mb-1.5 flex items-center gap-1.5 select-none">
-                              <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
+                            <div className="text-[11px] font-bold text-sky-700 dark:text-sky-400 mb-1.5 flex items-center gap-1.5 select-none">
+                              <span className="w-1.5 h-1.5 rounded-full bg-sky-500 dark:bg-sky-400" />
                               <span>{selectedStudent?.studentName}</span>
-                              <span className="text-[9px] font-mono text-slate-400">
+                              <span className="text-[9px] font-mono text-slate-500 dark:text-slate-400">
                                 (Roll: {selectedStudent?.studentId || selectedStudent?.roll || "Student"})
                               </span>
                             </div>
@@ -857,7 +864,7 @@ export default function TeacherCourseChat({
 
                           {/* 1. Video Attachment */}
                           {m.fileType === "video" && m.fileUrl && (
-                            <div className="mb-2 rounded-2xl overflow-hidden bg-black/70 border border-white/10 shadow-inner">
+                            <div className="mb-2 rounded-2xl overflow-hidden bg-black/80 border border-slate-200/80 dark:border-white/10 shadow-inner">
                               <video
                                 src={m.fileUrl}
                                 controls
@@ -868,7 +875,7 @@ export default function TeacherCourseChat({
 
                           {/* 2. Audio Attachment / Voice Note with Waveform */}
                           {m.fileType === "audio" && m.fileUrl && (
-                            <div className="mb-1 rounded-2xl bg-black/20 border border-white/5 p-1.5">
+                            <div className="mb-1 rounded-2xl bg-black/[0.04] dark:bg-black/20 border border-slate-200/60 dark:border-white/5 p-1.5">
                               <VoiceNotePlayer src={m.fileUrl} isMe={isMe} />
                             </div>
                           )}
@@ -877,7 +884,7 @@ export default function TeacherCourseChat({
                           {m.fileType === "image" && m.fileUrl && (
                             <div
                               onClick={() => setPreviewImage(m.fileUrl)}
-                              className="mb-2 rounded-2xl overflow-hidden border border-white/10 shadow-sm group/img relative cursor-pointer"
+                              className="mb-2 rounded-2xl overflow-hidden border border-slate-200/80 dark:border-white/10 shadow-sm group/img relative cursor-pointer"
                               title="Click to view full image"
                             >
                               <img
@@ -894,20 +901,20 @@ export default function TeacherCourseChat({
 
                           {/* 4. Document / Generic File Attachment */}
                           {(m.fileType === "pdf" || m.fileType === "file") && m.fileUrl && (
-                            <div className="mb-2 p-3 rounded-2xl bg-black/25 border border-white/10 flex items-center justify-between gap-3 min-w-[210px] sm:min-w-[250px] hover:border-white/20 transition-all">
+                            <div className="mb-2 p-3 rounded-2xl bg-black/[0.04] dark:bg-black/25 border border-slate-200/80 dark:border-white/10 flex items-center justify-between gap-3 min-w-[210px] sm:min-w-[250px] hover:border-emerald-500/40 transition-all">
                               <div className="flex items-center gap-2.5 min-w-0">
                                 <div
                                   className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                                    m.fileType === "pdf" ? "bg-rose-500/20 text-rose-300" : "bg-sky-500/20 text-sky-300"
+                                    m.fileType === "pdf" ? "bg-rose-500/20 text-rose-600 dark:text-rose-300" : "bg-sky-500/20 text-sky-600 dark:text-sky-300"
                                   }`}
                                 >
                                   {m.fileType === "pdf" ? <FileText className="w-5 h-5" /> : <File className="w-5 h-5" />}
                                 </div>
                                 <div className="min-w-0">
-                                  <div className="text-xs font-bold truncate max-w-[170px] sm:max-w-[200px]">
+                                  <div className="text-xs font-bold text-slate-900 dark:text-white truncate max-w-[170px] sm:max-w-[200px]">
                                     {m.fileName || "Download Attachment"}
                                   </div>
-                                  <div className="text-[10px] opacity-75">
+                                  <div className="text-[10px] text-slate-500 dark:text-slate-400">
                                     {formatFileSize(m.fileSize)} • {m.fileType?.toUpperCase()}
                                   </div>
                                 </div>
@@ -917,7 +924,7 @@ export default function TeacherCourseChat({
                                 download={m.fileName || true}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all shrink-0 active:scale-95 shadow-sm"
+                                className="w-8 h-8 rounded-full bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 dark:bg-white/10 dark:hover:bg-white/20 dark:text-white dark:border-transparent flex items-center justify-center transition-all shrink-0 active:scale-95 shadow-sm"
                                 title="Download file"
                               >
                                 <Download className="w-4 h-4" />
@@ -933,14 +940,14 @@ export default function TeacherCourseChat({
                               </span>
                             )}
 
-                            <span className="inline-flex items-center gap-1 text-[10px] opacity-75 shrink-0 select-none font-medium ml-auto pt-0.5">
+                            <span className="inline-flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400 shrink-0 select-none font-medium ml-auto pt-0.5">
                               <span>{formatMsgTime(m.createdAt)}</span>
                               {isMe && (
                                 <span>
                                   {m.isRead ? (
                                     <CheckCheck className="w-3.5 h-3.5 text-[#53bdeb] inline" title="Read by student" />
                                   ) : (
-                                    <Check className="w-3.5 h-3.5 text-emerald-200/80 inline" title="Delivered" />
+                                    <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-200/80 inline" title="Delivered" />
                                   )}
                                 </span>
                               )}
@@ -956,19 +963,19 @@ export default function TeacherCourseChat({
 
             {/* Attachment Preview Chip */}
             {selectedFile && (
-              <div className="px-4 py-2 bg-slate-950 border-t border-white/10 flex items-center justify-between gap-2 shrink-0 animate-in slide-in-from-bottom-2">
+              <div className="px-4 py-2 bg-slate-100 dark:bg-slate-950 border-t border-slate-200/80 dark:border-white/10 flex items-center justify-between gap-2 shrink-0 animate-in slide-in-from-bottom-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-300 flex items-center justify-center shrink-0">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0">
                     <Paperclip className="w-3.5 h-3.5" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-xs font-bold text-white truncate">{selectedFile.name}</div>
-                    <div className="text-[10px] text-slate-400">{formatFileSize(selectedFile.size)}</div>
+                    <div className="text-xs font-bold text-slate-900 dark:text-white truncate">{selectedFile.name}</div>
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400">{formatFileSize(selectedFile.size)}</div>
                   </div>
                 </div>
                 <button
                   onClick={() => setSelectedFile(null)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-white/5 transition-all"
+                  className="p-1 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-slate-200 dark:hover:bg-white/5 transition-all"
                   title="Remove attachment"
                 >
                   <X className="w-4 h-4" />
@@ -978,10 +985,10 @@ export default function TeacherCourseChat({
 
             {/* Voice Recording Bar */}
             {isRecording && (
-              <div className="px-4 py-3 bg-rose-950/80 border-t border-rose-500/30 flex items-center justify-between gap-3 shrink-0 animate-pulse">
+              <div className="px-4 py-3 bg-rose-50 dark:bg-rose-950/80 border-t border-rose-200 dark:border-rose-500/30 flex items-center justify-between gap-3 shrink-0 animate-pulse">
                 <div className="flex items-center gap-3">
                   <span className="w-3 h-3 rounded-full bg-rose-500 animate-ping" />
-                  <span className="text-xs font-bold text-rose-200">
+                  <span className="text-xs font-bold text-rose-800 dark:text-rose-200">
                     Recording Teacher Voice Note: {formatSeconds(recordingDuration)}
                   </span>
                 </div>
@@ -989,7 +996,7 @@ export default function TeacherCourseChat({
                 <div className="flex items-center gap-2">
                   <button
                     onClick={cancelRecording}
-                    className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-semibold text-slate-300"
+                    className="px-3 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-white/10 dark:hover:bg-white/20 text-xs font-semibold text-slate-700 dark:text-slate-300"
                   >
                     Cancel
                   </button>
@@ -1011,7 +1018,7 @@ export default function TeacherCourseChat({
                   e.preventDefault();
                   handleSendMessage();
                 }}
-                className="p-2.5 sm:p-3 bg-slate-950/90 border-t border-white/10 flex items-center gap-2 shrink-0"
+                className="p-2.5 sm:p-3 bg-slate-50 dark:bg-slate-950/90 border-t border-slate-200/80 dark:border-white/10 flex items-center gap-2 shrink-0"
               >
                 <input
                   type="file"
@@ -1028,19 +1035,19 @@ export default function TeacherCourseChat({
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="p-2.5 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-all border border-white/10 active:scale-95 shrink-0"
+                  className="p-2.5 rounded-2xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/80 dark:bg-white/5 dark:hover:bg-white/10 dark:text-slate-300 dark:border-white/10 active:scale-95 shrink-0 shadow-sm transition-all"
                   title="Attach file, audio, video, or document"
                 >
-                  <Paperclip className="w-4 h-4 text-emerald-400" />
+                  <Paperclip className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                 </button>
 
                 <button
                   type="button"
                   onClick={startRecording}
-                  className="p-2.5 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-all border border-white/10 active:scale-95 shrink-0"
+                  className="p-2.5 rounded-2xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/80 dark:bg-white/5 dark:hover:bg-white/10 dark:text-slate-300 dark:border-white/10 active:scale-95 shrink-0 shadow-sm transition-all"
                   title="Record voice note"
                 >
-                  <Mic className="w-4 h-4 text-sky-400" />
+                  <Mic className="w-4 h-4 text-sky-600 dark:text-sky-400" />
                 </button>
 
                 <input
@@ -1053,7 +1060,7 @@ export default function TeacherCourseChat({
                       : `Reply to ${selectedStudent.studentName}... (Press Enter to send)`
                   }
                   disabled={isSending}
-                  className="flex-1 bg-white/5 border border-white/10 focus:border-emerald-500 focus:bg-white/10 rounded-2xl py-2.5 px-4 text-xs sm:text-sm text-white placeholder-slate-400 outline-none transition-all disabled:opacity-50"
+                  className="flex-1 bg-white dark:bg-white/5 border border-slate-200/90 dark:border-white/10 focus:border-emerald-500 focus:bg-white dark:focus:bg-white/10 rounded-2xl py-2.5 px-4 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none transition-all disabled:opacity-50 shadow-sm"
                 />
 
                 <button
@@ -1069,13 +1076,13 @@ export default function TeacherCourseChat({
             )}
           </>
         ) : (
-          <div className="h-full flex flex-col items-center justify-center p-6 text-center text-slate-400 space-y-3">
-            <div className="w-14 h-14 rounded-3xl bg-slate-800/80 border border-white/10 flex items-center justify-center text-slate-400">
+          <div className="h-full flex flex-col items-center justify-center p-6 text-center space-y-3">
+            <div className="w-14 h-14 rounded-3xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/80 dark:border-white/10 flex items-center justify-center text-slate-500 dark:text-slate-400 shadow-sm">
               <Users className="w-7 h-7" />
             </div>
             <div className="space-y-1">
-              <h4 className="text-sm font-bold text-white">Select a Student Conversation</h4>
-              <p className="text-xs text-slate-400 max-w-sm">
+              <h4 className="text-sm font-bold text-slate-900 dark:text-white">Select a Student Conversation</h4>
+              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm">
                 Choose a student from the sidebar to view their messages or start a new conversation for {courseCode}.
               </p>
             </div>

@@ -214,7 +214,7 @@ export default function NoticeDetailPage() {
             <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white pt-2">Sign In Required</h2>
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-            This notice is an internal departmental circular intended for registered students, faculty members, and staff. Please sign in to view the full circular.
+            This notice is an internal departmental circular intended for registered students and faculty members. Please sign in to view the full circular.
           </p>
           <div className="pt-2 flex flex-col gap-3">
             <Link

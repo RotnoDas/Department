@@ -68,14 +68,13 @@ export function Navbar() {
     if (user?.role) return user.role;
     const email = (user?.email || "").toLowerCase().trim();
     if (email === "admin@cse.edu" || email.includes("admin")) return "admin";
-    if (email.endsWith("@teacher.cse.edu") || (email.endsWith("@cse.edu") && !email.includes("student") && !email.includes("staff") && !email.includes("admin") && !email.includes("employee"))) return "teacher";
-    if (email.endsWith("@employee.cse.edu") || email.endsWith("@staff.cse.edu")) return "employee";
+    if (email.endsWith("@teacher.cse.edu") || (email.endsWith("@cse.edu") && !email.includes("student") && !email.includes("admin"))) return "teacher";
     return "student";
   };
 
   const role = user ? resolveRole() : null;
 
-  // Fetch full student/teacher/employee details from backend if available
+  // Fetch full student/teacher details from backend if available
   useEffect(() => {
     if (user?.email) {
       const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
@@ -165,7 +164,6 @@ export function Navbar() {
     switch (role) {
       case "admin": return "/dashboard/admin";
       case "teacher": return "/dashboard/teacher";
-      case "employee": return "/dashboard/employee";
       case "student":
       default: return "/dashboard/student";
     }
@@ -175,7 +173,6 @@ export function Navbar() {
     switch (role) {
       case "admin": return "Admin Console";
       case "teacher": return "Faculty Hub";
-      case "employee": return "Staff Desk";
       case "student":
       default: return "Student Portal";
     }
@@ -195,12 +192,6 @@ export function Navbar() {
           badgeClass: "bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 ring-sky-200 dark:ring-sky-800",
           avatarBg: "from-sky-600 via-blue-600 to-indigo-700",
         };
-      case "employee":
-        return {
-          label: "Staff / Officer",
-          badgeClass: "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 ring-emerald-200 dark:ring-emerald-800",
-          avatarBg: "from-emerald-600 via-teal-600 to-cyan-700",
-        };
       case "student":
       default:
         return {
@@ -215,7 +206,6 @@ export function Navbar() {
   const displayName = user?.name || (
     role === "admin" ? "Administrator" :
     role === "teacher" ? "Faculty Member" :
-    role === "employee" ? "Staff Officer" :
     "Student"
   );
   const displayEmail = user?.email || "";
@@ -422,15 +412,6 @@ export function Navbar() {
                             <span className="text-[10px] text-slate-400 block font-medium">Designation & Department</span>
                             <span className="font-bold text-slate-800 dark:text-slate-200 block mt-0.5">
                               {dbProfile?.designation || "Faculty Member"} • Dept of CSE
-                            </span>
-                          </div>
-                        )}
-
-                        {role === "employee" && (
-                          <div className="p-2.5 rounded-xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-100 dark:border-white/5 text-xs">
-                            <span className="text-[10px] text-slate-400 block font-medium">Office / Department</span>
-                            <span className="font-bold text-slate-800 dark:text-slate-200 block mt-0.5">
-                              Staff Operations • Dept of CSE
                             </span>
                           </div>
                         )}

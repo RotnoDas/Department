@@ -323,7 +323,7 @@ export default function NoticeBoardSection({
       return { scopedCourseNotices: rawCourses, scopedDeptNotices: rawDept };
     }
 
-    // Public guests, employees: Course notices are private to course teachers and enrolled students
+    // Public guests & others: Course notices are private to course teachers and enrolled students
     return {
       scopedCourseNotices: [],
       scopedDeptNotices: rawDept.filter((n) => n.isPublic || user),

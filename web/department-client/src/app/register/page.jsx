@@ -30,8 +30,7 @@ const RegisterPage = () => {
         if (!email) return null;
         const lowerEmail = email.toLowerCase();
         if (lowerEmail.endsWith("@student.cse.edu")) return "student";
-        if (lowerEmail.endsWith("@teacher.cse.edu") || (lowerEmail.endsWith("@cse.edu") && !lowerEmail.includes("staff") && !lowerEmail.includes("admin"))) return "teacher";
-        if (lowerEmail.endsWith("@employee.cse.edu") || lowerEmail.endsWith("@staff.cse.edu")) return "employee";
+        if (lowerEmail.endsWith("@teacher.cse.edu") || (lowerEmail.endsWith("@cse.edu") && !lowerEmail.includes("admin"))) return "teacher";
         return null;
     }, [email]);
 
@@ -73,8 +72,6 @@ const RegisterPage = () => {
         if (data.specialization) payload.specialization = data.specialization;
         if (data.officeRoom) payload.officeRoom = data.officeRoom;
         if (data.joiningDate) payload.joiningDate = data.joiningDate;
-        if (data.employeeId) payload.employeeId = data.employeeId;
-        if (data.department) payload.department = data.department;
 
         try {
             const { data: signUpData, error: signUpError } = await authClient.signUp.email(payload);
@@ -298,19 +295,16 @@ const RegisterPage = () => {
                     <div className={`mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-white dark:bg-slate-900 shadow-[0_0_40px_-10px_rgba(79,70,229,0.3)] dark:shadow-[0_0_40px_-10px_rgba(99,102,241,0.2)] ring-1 ring-slate-100 dark:ring-white/10 transform transition-transform hover:scale-105 hover:rotate-3 duration-500 ${
                         derivedRole === 'student' ? 'text-indigo-600 dark:text-indigo-400' : 
                         derivedRole === 'teacher' ? 'text-sky-500 dark:text-sky-400' : 
-                        derivedRole === 'employee' ? 'text-emerald-500 dark:text-emerald-400' : 
                         'text-slate-800 dark:text-slate-100'
                     }`}>
                         {derivedRole === 'student' ? <GraduationCap className="h-8 w-8 animate-in zoom-in" strokeWidth={2.5} /> :
                          derivedRole === 'teacher' ? <Presentation className="h-8 w-8 animate-in zoom-in" strokeWidth={2.5} /> :
-                         derivedRole === 'employee' ? <Briefcase className="h-8 w-8 animate-in zoom-in" strokeWidth={2.5} /> :
                          <UserPlus className="h-8 w-8 animate-in zoom-in" strokeWidth={2.5} />}
                     </div>
                     <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
                         <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-500 dark:from-indigo-400 dark:to-purple-400">
                             {derivedRole === 'student' ? "Student Registration" : 
                              derivedRole === 'teacher' ? "Faculty Registration" : 
-                             derivedRole === 'employee' ? "Employee Registration" : 
                              "Create an Account"}
                         </span>
                     </h1>
@@ -489,52 +483,6 @@ const RegisterPage = () => {
                                     </div>
                                 </div>
 
-                            </div>
-                        )}
-
-                        {/* DYNAMIC EMPLOYEE FIELDS */}
-                        {derivedRole === "employee" && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full animate-in fade-in zoom-in-95 duration-500 pt-6 border-t border-slate-100 dark:border-white/10">
-                                
-                                <div className="flex flex-col gap-1.5 w-full">
-                                    <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Employee ID</label>
-                                    <div className="relative">
-                                        <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
-                                        <input name="employeeId" placeholder="e.g. E-204" className={inputClassName} />
-                                    </div>
-                                </div>
-
-                                <div className="flex flex-col gap-1.5 w-full">
-                                    <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Phone Number</label>
-                                    <div className="relative">
-                                        <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
-                                        <input name="phone" placeholder="+880" className={inputClassName} />
-                                    </div>
-                                </div>
-
-                                <div className="flex flex-col gap-1.5 w-full">
-                                    <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Department</label>
-                                    <div className="relative">
-                                        <Layers className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
-                                        <input name="department" placeholder="e.g. IT Support" className={inputClassName} />
-                                    </div>
-                                </div>
-
-                                <div className="flex flex-col gap-1.5 w-full">
-                                    <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Designation</label>
-                                    <div className="relative">
-                                        <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
-                                        <input name="designation" placeholder="e.g. Lab Assistant" className={inputClassName} />
-                                    </div>
-                                </div>
-
-                                <div className="flex flex-col gap-1.5 w-full">
-                                    <label className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Joining Date</label>
-                                    <div className="relative">
-                                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10 pointer-events-none" />
-                                        <input name="joiningDate" type="date" className={inputClassName} />
-                                    </div>
-                                </div>
                             </div>
                         )}
 

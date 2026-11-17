@@ -54,6 +54,8 @@ import {
   Lock,
   Target,
   Zap,
+  ChevronLeft,
+  Brain,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { authClient } from "@/lib/auth-client";
@@ -63,6 +65,7 @@ import { SEMESTER_COURSES } from "@/data/courses";
 import CourseNoticeModal from "@/components/notice/CourseNoticeModal";
 import NoticeCard from "@/components/notice/NoticeCard";
 import TeacherCourseChat from "@/components/course-chat/TeacherCourseChat";
+import StudentCourseAIStudy from "@/components/course-study/StudentCourseAIStudy";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
 
@@ -151,6 +154,82 @@ const formatShortTime = (rawTime) => {
   }
 };
 
+// Course Workspace 8-Page Paginated Sections mapping for Teachers
+export const TEACHER_COURSE_PAGES = [
+  {
+    pageNum: 1,
+    id: "notices",
+    title: "Course Notices & Announcements",
+    shortLabel: "Notices",
+    description: "Official teacher notices, schedule announcements & student circulars",
+    badge: "Notices",
+    icon: Bell,
+  },
+  {
+    pageNum: 2,
+    id: "attendance",
+    title: "Student Attendance & Roster Engine",
+    shortLabel: "Attendance",
+    description: "Geofenced 10-minute session launch, live roster & exam eligibility monitor",
+    badge: "Attendance",
+    icon: UserCheck,
+  },
+  {
+    pageNum: 3,
+    id: "materials",
+    title: "Study Materials & Lecture Slides",
+    shortLabel: "Materials",
+    description: "Course slides, lecture notes, syllabus, and reference handouts",
+    badge: "Materials",
+    icon: BookOpen,
+  },
+  {
+    pageNum: 4,
+    id: "assignments",
+    title: "Continuous Tasks & Submissions",
+    shortLabel: "Tasks & Marks",
+    description: "Homework tasks, student submissions grading, feedback, and marks",
+    badge: "Tasks",
+    icon: FileText,
+  },
+  {
+    pageNum: 5,
+    id: "class-tests",
+    title: "Class Tests (CT) & Offline Marks",
+    shortLabel: "Class Tests",
+    description: "Continuous class test scores, feedback, and performance tracking",
+    badge: "CT Marks",
+    icon: Award,
+  },
+  {
+    pageNum: 6,
+    id: "schedule",
+    title: "Course Routine & Schedule",
+    shortLabel: "Routine",
+    description: "Weekly lecture timetable, classroom numbers, and faculty schedule",
+    badge: "Routine",
+    icon: Calendar,
+  },
+  {
+    pageNum: 7,
+    id: "messages",
+    title: "Teacher-Student Course Chat",
+    shortLabel: "Student Chat",
+    description: "Direct real-time communication channel with enrolled course students",
+    badge: "Chat",
+    icon: MessageSquare,
+  },
+  {
+    pageNum: 8,
+    id: "ai-study",
+    title: "AI Note Summary & Quiz Studio",
+    shortLabel: "AI Study",
+    description: "AI-powered notes, lecture slide summarization, and interactive quiz generator",
+    badge: "AI Study",
+    icon: Brain,
+  },
+];
+
 export default function TeacherCourseWorkspacePage() {
   const params = useParams();
   const router = useRouter();
@@ -162,9 +241,9 @@ export default function TeacherCourseWorkspacePage() {
 
   const searchParams = useSearchParams();
   const urlTab = searchParams?.get("tab");
-  const validTabs = useMemo(() => ["notices", "attendance", "materials", "assignments", "class-tests", "schedule", "messages"], []);
+  const validTabs = useMemo(() => ["notices", "attendance", "materials", "assignments", "class-tests", "schedule", "messages", "ai-study"], []);
 
-  // Active Tab: "notices" | "attendance" | "materials" | "assignments" | "class-tests" | "schedule" | "messages"
+  // Active Tab / Page: 8 distinct pages mapped 1:1 with tabs and sidebar
   const [activeTab, setActiveTab] = useState(() => (urlTab && validTabs.includes(urlTab) ? urlTab : "attendance"));
   const [teacherUnreadCount, setTeacherUnreadCount] = useState(0);
 
@@ -197,6 +276,23 @@ export default function TeacherCourseWorkspacePage() {
       window.history.replaceState(null, "", url.toString());
     }
   }, []);
+
+  const currentIdx = TEACHER_COURSE_PAGES.findIndex((p) => p.id === activeTab);
+  const activePageObj = TEACHER_COURSE_PAGES[currentIdx >= 0 ? currentIdx : 0];
+  const prevPageObj = currentIdx > 0 ? TEACHER_COURSE_PAGES[currentIdx - 1] : null;
+  const nextPageObj = currentIdx >= 0 && currentIdx < TEACHER_COURSE_PAGES.length - 1 ? TEACHER_COURSE_PAGES[currentIdx + 1] : null;
+
+  const goToPage = useCallback((pageId) => {
+    handleTabChange(pageId);
+    if (typeof window !== "undefined") {
+      setTimeout(() => {
+        const el = document.getElementById("course-workspace-content");
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 50);
+    }
+  }, [handleTabChange]);
 
   // Course Details State
   const [course, setCourse] = useState(null);
@@ -1946,6 +2042,30 @@ export default function TeacherCourseWorkspacePage() {
     };
   }, [rosterData, materials, assignments, courseNotices, classTests, isRelatedTeacher, course?.totalClasses]);
 
+  // Page count & metrics helper for teacher workspace pagination items
+  const getPageCount = (tabId) => {
+    switch (tabId) {
+      case "notices":
+        return isRelatedTeacher ? `${courseStats.totalNotices} Notices` : "0 Notices";
+      case "attendance":
+        return `${courseStats.totalHeld} Held • ${courseStats.totalStudents} Students`;
+      case "materials":
+        return `${courseStats.totalMaterials} Files`;
+      case "assignments":
+        return `${courseStats.totalAssignments} Tasks`;
+      case "class-tests":
+        return `${courseStats.totalClassTests} Recorded`;
+      case "schedule":
+        return `${routineSlots.length} Classes/Wk`;
+      case "messages":
+        return teacherUnreadCount > 0 ? `${teacherUnreadCount} New` : "Chat Room";
+      case "ai-study":
+        return "AI Studio";
+      default:
+        return "";
+    }
+  };
+
   // Loading Screen
   if (isLoadingCourse && !course) {
     return (
@@ -2030,58 +2150,57 @@ export default function TeacherCourseWorkspacePage() {
         </div>
       </div>
 
-      {/* ── COURSE HERO HEADER CARD ────────────────────────────────── */}
-      <div className="p-7 sm:p-9 rounded-[2.5rem] bg-gradient-to-r from-slate-950 via-indigo-950/90 to-slate-950 text-white shadow-2xl relative overflow-hidden border border-white/10">
+      {/* ── COURSE WORKSPACE HERO CARD (LIGHT & DARK THEME EXCELLENCE) ── */}
+      <div className="relative overflow-hidden rounded-[2.5rem] bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl text-slate-900 dark:text-white p-7 sm:p-9 shadow-sm border border-slate-200/90 dark:border-white/10 transition-colors">
         {/* Decorative background glow accents */}
-        <div className="absolute -right-24 -top-24 w-96 h-96 bg-indigo-500/25 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -left-20 -bottom-20 w-80 h-80 bg-sky-500/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute right-1/3 top-1/2 w-72 h-72 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/[0.05] dark:bg-indigo-600/15 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+        <div className="absolute bottom-0 left-1/3 w-80 h-80 bg-sky-500/[0.04] dark:bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-8">
           <div className="space-y-4 max-w-3xl">
             {/* Badges */}
             <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="font-mono text-xs font-black px-3.5 py-1 rounded-full bg-indigo-500/30 text-indigo-300 border border-indigo-400/40 backdrop-blur-md shadow-sm">
+              <span className="font-mono text-xs font-black px-3.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-400/30 shadow-xs">
                 {courseCode}
               </span>
-              <span className="text-xs font-bold px-3 py-1 rounded-full bg-white/10 text-slate-200 border border-white/15 backdrop-blur-md">
+              <span className="text-xs font-bold px-3 py-1 rounded-full bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-200 border border-slate-200/80 dark:border-white/10">
                 {course?.semester || `Semester ${course?.semesterNum || 7}`}
               </span>
-              <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 backdrop-blur-md">
+              <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-400/30">
                 {course?.credits || 3.0} Credit Units
               </span>
-              <span className="text-xs font-semibold px-3 py-1 rounded-full bg-sky-500/20 text-sky-300 border border-sky-400/30 backdrop-blur-md">
+              <span className="text-xs font-semibold px-3 py-1 rounded-full bg-sky-50 dark:bg-sky-500/20 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-400/30">
                 B.Sc. in CSE Program
               </span>
             </div>
 
             {/* Course Title */}
-            <h1 className="text-2xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white leading-tight">
+            <h1 className="text-2xl sm:text-4xl lg:text-5xl font-black tracking-tight text-slate-900 dark:text-white leading-tight">
               {course?.title || courseCode}
             </h1>
 
             {/* Details Meta */}
-            <div className="flex items-center gap-3 text-xs font-medium text-slate-300 flex-wrap pt-1">
-              <span className="flex items-center gap-1.5 bg-white/5 px-3 py-1.5 rounded-xl border border-white/10">
-                <GraduationCap className="w-4 h-4 text-indigo-400" />
+            <div className="flex items-center gap-3 text-xs font-medium text-slate-600 dark:text-slate-300 flex-wrap pt-1">
+              <span className="flex items-center gap-1.5 bg-slate-50/90 dark:bg-white/5 px-3 py-1.5 rounded-xl border border-slate-200/80 dark:border-white/10">
+                <GraduationCap className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                 <span>Instructor: <strong>{course?.faculty || user?.name || "Assigned Faculty"}</strong></span>
               </span>
 
               {routineSlots.length > 0 && routineSlots.map((s) => s.room).filter(Boolean)[0] ? (
                 <button
                   type="button"
-                  onClick={() => handleTabChange("schedule")}
-                  className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-xl border border-white/10 hover:border-emerald-400/50 transition cursor-pointer text-left"
+                  onClick={() => goToPage("schedule")}
+                  className="flex items-center gap-1.5 bg-slate-50/90 hover:bg-slate-100 dark:bg-white/5 dark:hover:bg-white/10 px-3 py-1.5 rounded-xl border border-slate-200/80 hover:border-emerald-400/50 dark:border-white/10 dark:hover:border-emerald-400/50 transition cursor-pointer text-left"
                   title="Click to view routine schedule"
                 >
-                  <MapPin className="w-4 h-4 text-emerald-400" />
+                  <MapPin className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                   <span>Room: <strong>{routineSlots.map((s) => s.room).filter(Boolean)[0]}</strong></span>
                 </button>
               ) : (
                 <button
                   type="button"
-                  onClick={() => handleTabChange("schedule")}
-                  className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-xl border border-white/10 text-slate-400 hover:text-slate-200 transition cursor-pointer text-left"
+                  onClick={() => goToPage("schedule")}
+                  className="flex items-center gap-1.5 bg-slate-50/90 hover:bg-slate-100 dark:bg-white/5 dark:hover:bg-white/10 px-3 py-1.5 rounded-xl border border-slate-200/80 dark:border-white/10 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition cursor-pointer text-left"
                   title="Click to view routine schedule"
                 >
                   <MapPin className="w-4 h-4 text-slate-400" />
@@ -2092,11 +2211,11 @@ export default function TeacherCourseWorkspacePage() {
               {routineSlots.length > 0 ? (
                 <button
                   type="button"
-                  onClick={() => handleTabChange("schedule")}
-                  className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-xl border border-white/10 hover:border-amber-400/50 transition cursor-pointer text-left"
+                  onClick={() => goToPage("schedule")}
+                  className="flex items-center gap-1.5 bg-slate-50/90 hover:bg-slate-100 dark:bg-white/5 dark:hover:bg-white/10 px-3 py-1.5 rounded-xl border border-slate-200/80 hover:border-amber-400/50 dark:border-white/10 dark:hover:border-amber-400/50 transition cursor-pointer text-left"
                   title="Click to view routine schedule"
                 >
-                  <Clock className="w-4 h-4 text-amber-400" />
+                  <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                   <span>
                     Lectures: <strong>{routineSlots.length} sessions/week ({routineSlots.map((s) => s.day.slice(0, 3)).join(", ")})</strong>
                   </span>
@@ -2104,8 +2223,8 @@ export default function TeacherCourseWorkspacePage() {
               ) : (
                 <button
                   type="button"
-                  onClick={() => handleTabChange("schedule")}
-                  className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-xl border border-white/10 text-slate-400 hover:text-slate-200 transition cursor-pointer text-left"
+                  onClick={() => goToPage("schedule")}
+                  className="flex items-center gap-1.5 bg-slate-50/90 hover:bg-slate-100 dark:bg-white/5 dark:hover:bg-white/10 px-3 py-1.5 rounded-xl border border-slate-200/80 dark:border-white/10 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition cursor-pointer text-left"
                   title="Click to view routine schedule"
                 >
                   <Clock className="w-4 h-4 text-slate-400" />
@@ -2132,7 +2251,7 @@ export default function TeacherCourseWorkspacePage() {
             <button
               type="button"
               onClick={handleExportAttendanceCSV}
-              className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 font-bold text-xs border border-emerald-400/30 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-bold text-xs border border-emerald-200 dark:border-emerald-400/30 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-xs"
             >
               <FileSpreadsheet className="w-3.5 h-3.5" />
               <span>Export Attendance CSV</span>
@@ -2142,24 +2261,24 @@ export default function TeacherCourseWorkspacePage() {
               <button
                 type="button"
                 onClick={() => {
-                  handleTabChange("materials");
+                  goToPage("materials");
                   setShowMaterialModal(true);
                 }}
-                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/15 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/20 text-slate-700 dark:text-white font-bold text-xs border border-slate-200/80 dark:border-white/15 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-xs"
               >
-                <UploadCloud className="w-3.5 h-3.5 text-indigo-300" />
+                <UploadCloud className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-300" />
                 <span>Upload Slide</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => {
-                  handleTabChange("assignments");
+                  goToPage("assignments");
                   setShowAssignmentModal(true);
                 }}
-                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/15 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/20 text-slate-700 dark:text-white font-bold text-xs border border-slate-200/80 dark:border-white/15 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-xs"
               >
-                <Plus className="w-3.5 h-3.5 text-sky-300" />
+                <Plus className="w-3.5 h-3.5 text-sky-600 dark:text-sky-300" />
                 <span>New Task</span>
               </button>
             </div>
@@ -2167,7 +2286,7 @@ export default function TeacherCourseWorkspacePage() {
         </div>
 
         {/* ── COURSE KEY PERFORMANCE METRICS (INTERACTIVE STAT CARDS) ───────────────────────── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mt-8 pt-6 border-t border-white/10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mt-8 pt-6 border-t border-slate-200/80 dark:border-white/10">
           {/* Card 1: Classes Held & Semester Target */}
           <div
             onClick={() => setShowSessionsModal(true)}
@@ -2176,11 +2295,11 @@ export default function TeacherCourseWorkspacePage() {
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") setShowSessionsModal(true);
             }}
-            className="p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-indigo-400/60 backdrop-blur-md space-y-2 relative group/card cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.99] shadow-sm hover:shadow-indigo-500/10 text-left"
+            className="p-4 rounded-2xl bg-slate-50/90 hover:bg-white dark:bg-white/5 dark:hover:bg-white/10 border border-slate-200/80 hover:border-indigo-300/80 dark:border-white/10 dark:hover:border-indigo-400/60 backdrop-blur-md space-y-2 relative group/card cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.99] shadow-xs text-left"
             title="Click to view class session history, attendance logs & edit target classes"
           >
             <div className="flex items-center justify-between gap-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block group-hover/card:text-indigo-300 transition-colors">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block group-hover/card:text-indigo-600 dark:group-hover/card:text-indigo-300 transition-colors">
                 Classes & Target
               </span>
               <button
@@ -2189,7 +2308,7 @@ export default function TeacherCourseWorkspacePage() {
                   e.stopPropagation();
                   setShowEditClassesModal(true);
                 }}
-                className="text-[10px] text-indigo-300 hover:text-white font-bold flex items-center gap-1 bg-white/10 hover:bg-indigo-600 px-2 py-0.5 rounded-lg transition"
+                className="text-[10px] text-indigo-700 dark:text-indigo-300 hover:text-indigo-900 dark:hover:text-white font-bold flex items-center gap-1 bg-indigo-50 dark:bg-white/10 hover:bg-indigo-100 dark:hover:bg-indigo-600 px-2 py-0.5 rounded-lg border border-indigo-200/60 dark:border-transparent transition"
                 title="Edit target classes for this semester"
               >
                 <Edit3 className="w-2.5 h-2.5" />
@@ -2199,33 +2318,33 @@ export default function TeacherCourseWorkspacePage() {
 
             <div className="space-y-2 pt-1">
               <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-black text-white">{courseStats.totalHeld}</span>
-                <span className="text-xs font-semibold text-slate-400">
+                <span className="text-3xl font-black text-slate-900 dark:text-white">{courseStats.totalHeld}</span>
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                   {courseStats.targetClasses ? `/ ${courseStats.targetClasses} Target` : "Classes Held"}
                 </span>
                 {courseStats.targetClasses ? (
-                  <span className="text-[10px] text-indigo-300 font-bold ml-auto bg-indigo-500/20 px-2 py-0.5 rounded-md border border-indigo-400/30">
+                  <span className="text-[10px] text-indigo-700 dark:text-indigo-300 font-bold ml-auto bg-indigo-50 dark:bg-indigo-500/20 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-400/30">
                     {courseStats.progressPct}% Held
                   </span>
                 ) : courseStats.totalHeld === 0 ? (
-                  <span className="text-[10px] text-amber-300 font-bold ml-auto bg-amber-500/20 px-2 py-0.5 rounded-md border border-amber-400/30">
+                  <span className="text-[10px] text-amber-700 dark:text-amber-300 font-bold ml-auto bg-amber-50 dark:bg-amber-500/20 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-400/30">
                     No Target Set
                   </span>
                 ) : null}
               </div>
-              <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
+              <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-white/10 overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all duration-500 ${
                     courseStats.targetClasses
-                      ? "bg-indigo-500"
+                      ? "bg-indigo-600 dark:bg-indigo-500"
                       : courseStats.totalHeld > 0
-                      ? "bg-indigo-500 w-full"
-                      : "bg-slate-700/50 w-full"
+                      ? "bg-indigo-600 dark:bg-indigo-500 w-full"
+                      : "bg-slate-300 dark:bg-slate-700/50 w-full"
                   }`}
                   style={courseStats.targetClasses ? { width: `${courseStats.progressPct || 0}%` } : undefined}
                 />
               </div>
-              <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium">
+              <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 font-medium">
                 <span>
                   {courseStats.targetClasses
                     ? `${courseStats.remainingClasses} classes remaining`
@@ -2233,7 +2352,7 @@ export default function TeacherCourseWorkspacePage() {
                     ? `${routineSlots.length} weekly slots`
                     : "Target not configured"}
                 </span>
-                <span className="text-indigo-300 font-bold group-hover/card:underline flex items-center gap-0.5">
+                <span className="text-indigo-600 dark:text-indigo-300 font-bold group-hover/card:underline flex items-center gap-0.5">
                   <span>History</span>
                   <ChevronRight className="w-2.5 h-2.5" />
                 </span>
@@ -2243,20 +2362,20 @@ export default function TeacherCourseWorkspacePage() {
 
           {/* Card 2: Class Avg Attendance */}
           <div
-            onClick={() => handleTabChange("attendance")}
+            onClick={() => goToPage("attendance")}
             role="button"
             tabIndex={0}
             onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") handleTabChange("attendance");
+              if (e.key === "Enter" || e.key === " ") goToPage("attendance");
             }}
-            className="p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-400/60 backdrop-blur-md space-y-1 relative group/card cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.99] shadow-sm hover:shadow-emerald-500/10 text-left"
+            className="p-4 rounded-2xl bg-slate-50/90 hover:bg-white dark:bg-white/5 dark:hover:bg-white/10 border border-slate-200/80 hover:border-emerald-300/80 dark:border-white/10 dark:hover:border-emerald-400/60 backdrop-blur-md space-y-1 relative group/card cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.99] shadow-xs text-left"
             title="Click to view full attendance roster & records"
           >
             <div className="flex items-center justify-between gap-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block group-hover/card:text-emerald-300 transition-colors">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block group-hover/card:text-emerald-600 dark:group-hover/card:text-emerald-300 transition-colors">
                 Class Avg Attendance
               </span>
-              <span className="text-[10px] font-bold text-emerald-300 opacity-0 group-hover/card:opacity-100 transition-opacity flex items-center gap-0.5">
+              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-300 opacity-0 group-hover/card:opacity-100 transition-opacity flex items-center gap-0.5">
                 <span>Roster</span>
                 <ChevronRight className="w-2.5 h-2.5" />
               </span>
@@ -2266,16 +2385,16 @@ export default function TeacherCourseWorkspacePage() {
                 courseStats.avgPercentage === null
                   ? "text-slate-400"
                   : courseStats.avgPercentage >= 75
-                  ? "text-emerald-400"
+                  ? "text-emerald-600 dark:text-emerald-400"
                   : courseStats.avgPercentage >= 60
-                  ? "text-amber-400"
-                  : "text-rose-400"
+                  ? "text-amber-600 dark:text-amber-400"
+                  : "text-rose-600 dark:text-rose-400"
               }`}>
                 {courseStats.avgPercentage === null ? "—" : `${courseStats.avgPercentage}%`}
               </span>
-              <span className="text-xs text-slate-400 font-medium">Cohort Rate</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Cohort Rate</span>
             </div>
-            <span className="text-[10px] text-emerald-300 font-semibold block pt-0.5 truncate">
+            <span className="text-[10px] text-emerald-700 dark:text-emerald-300 font-semibold block pt-0.5 truncate">
               {courseStats.targetClasses
                 ? `${courseStats.eligibleCount} of ${courseStats.totalStudents} eligible (target-based)`
                 : courseStats.totalHeld === 0
@@ -2286,58 +2405,58 @@ export default function TeacherCourseWorkspacePage() {
 
           {/* Card 3: Study Materials */}
           <div
-            onClick={() => handleTabChange("materials")}
+            onClick={() => goToPage("materials")}
             role="button"
             tabIndex={0}
             onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") handleTabChange("materials");
+              if (e.key === "Enter" || e.key === " ") goToPage("materials");
             }}
-            className="p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-sky-400/60 backdrop-blur-md space-y-1 relative group/card cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.99] shadow-sm hover:shadow-sky-500/10 text-left"
+            className="p-4 rounded-2xl bg-slate-50/90 hover:bg-white dark:bg-white/5 dark:hover:bg-white/10 border border-slate-200/80 hover:border-sky-300/80 dark:border-white/10 dark:hover:border-sky-400/60 backdrop-blur-md space-y-1 relative group/card cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.99] shadow-xs text-left"
             title="Click to view or upload course study materials"
           >
             <div className="flex items-center justify-between gap-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block group-hover/card:text-sky-300 transition-colors">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block group-hover/card:text-sky-600 dark:group-hover/card:text-sky-300 transition-colors">
                 Study Materials
               </span>
-              <span className="text-[10px] font-bold text-sky-300 opacity-0 group-hover/card:opacity-100 transition-opacity flex items-center gap-0.5">
+              <span className="text-[10px] font-bold text-sky-600 dark:text-sky-300 opacity-0 group-hover/card:opacity-100 transition-opacity flex items-center gap-0.5">
                 <span>Files</span>
                 <ChevronRight className="w-2.5 h-2.5" />
               </span>
             </div>
             <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-black text-white">{courseStats.totalMaterials}</span>
-              <span className="text-xs text-slate-400 font-medium">Files & Notes</span>
+              <span className="text-3xl font-black text-slate-900 dark:text-white">{courseStats.totalMaterials}</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Files & Notes</span>
             </div>
-            <span className="text-[10px] text-sky-300 font-semibold block pt-0.5 truncate">
+            <span className="text-[10px] text-sky-700 dark:text-sky-300 font-semibold block pt-0.5 truncate">
               {courseStats.totalMaterials > 0 ? "Instant student downloads" : "Click to upload slide / notes"}
             </span>
           </div>
 
           {/* Card 4: Assignments & Tasks */}
           <div
-            onClick={() => handleTabChange("assignments")}
+            onClick={() => goToPage("assignments")}
             role="button"
             tabIndex={0}
             onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") handleTabChange("assignments");
+              if (e.key === "Enter" || e.key === " ") goToPage("assignments");
             }}
-            className="p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-amber-400/60 backdrop-blur-md space-y-1 relative group/card cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.99] shadow-sm hover:shadow-amber-500/10 text-left"
+            className="p-4 rounded-2xl bg-slate-50/90 hover:bg-white dark:bg-white/5 dark:hover:bg-white/10 border border-slate-200/80 hover:border-amber-300/80 dark:border-white/10 dark:hover:border-amber-400/60 backdrop-blur-md space-y-1 relative group/card cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.99] shadow-xs text-left"
             title="Click to view or create coursework assignments"
           >
             <div className="flex items-center justify-between gap-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block group-hover/card:text-amber-300 transition-colors">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block group-hover/card:text-amber-600 dark:group-hover/card:text-amber-300 transition-colors">
                 Assignments & Tasks
               </span>
-              <span className="text-[10px] font-bold text-amber-300 opacity-0 group-hover/card:opacity-100 transition-opacity flex items-center gap-0.5">
+              <span className="text-[10px] font-bold text-amber-600 dark:text-amber-300 opacity-0 group-hover/card:opacity-100 transition-opacity flex items-center gap-0.5">
                 <span>Tasks</span>
                 <ChevronRight className="w-2.5 h-2.5" />
               </span>
             </div>
             <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-black text-white">{courseStats.totalAssignments}</span>
-              <span className="text-xs text-slate-400 font-medium">Tasks Given</span>
+              <span className="text-3xl font-black text-slate-900 dark:text-white">{courseStats.totalAssignments}</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Tasks Given</span>
             </div>
-            <span className="text-[10px] text-amber-300 font-semibold block pt-0.5 truncate">
+            <span className="text-[10px] text-amber-700 dark:text-amber-300 font-semibold block pt-0.5 truncate">
               {courseStats.totalAssignments > 0
                 ? `${courseStats.totalSubmissions} submissions received`
                 : "Click to create assignment task"}
@@ -2346,102 +2465,163 @@ export default function TeacherCourseWorkspacePage() {
 
           {/* Card 5: Course Notices */}
           <div
-            onClick={() => handleTabChange("notices")}
+            onClick={() => goToPage("notices")}
             role="button"
             tabIndex={0}
             onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") handleTabChange("notices");
+              if (e.key === "Enter" || e.key === " ") goToPage("notices");
             }}
-            className="p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-indigo-400/60 backdrop-blur-md space-y-1 relative group/card cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.99] shadow-sm hover:shadow-indigo-500/10 text-left"
+            className="p-4 rounded-2xl bg-slate-50/90 hover:bg-white dark:bg-white/5 dark:hover:bg-white/10 border border-slate-200/80 hover:border-indigo-300/80 dark:border-white/10 dark:hover:border-indigo-400/60 backdrop-blur-md space-y-1 relative group/card cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.99] shadow-xs text-left"
             title="Click to view and broadcast course notices"
           >
             <div className="flex items-center justify-between gap-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block group-hover/card:text-indigo-300 transition-colors">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block group-hover/card:text-indigo-600 dark:group-hover/card:text-indigo-300 transition-colors">
                 Course Notices
               </span>
-              <span className="text-[10px] font-bold text-indigo-300 opacity-0 group-hover/card:opacity-100 transition-opacity flex items-center gap-0.5">
+              <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-300 opacity-0 group-hover/card:opacity-100 transition-opacity flex items-center gap-0.5">
                 <span>Notices</span>
                 <ChevronRight className="w-2.5 h-2.5" />
               </span>
             </div>
             <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-black text-white">{courseStats.totalNotices}</span>
-              <span className="text-xs text-slate-400 font-medium">Broadcasts</span>
+              <span className="text-3xl font-black text-slate-900 dark:text-white">{courseStats.totalNotices}</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Broadcasts</span>
             </div>
-            <span className="text-[10px] text-indigo-300 font-semibold block pt-0.5 truncate">
+            <span className="text-[10px] text-indigo-700 dark:text-indigo-300 font-semibold block pt-0.5 truncate">
               {courseStats.totalNotices > 0 ? "Published to students" : "Click to broadcast notice"}
             </span>
           </div>
 
           {/* Card 6: Class Tests (CT) */}
           <div
-            onClick={() => handleTabChange("class-tests")}
+            onClick={() => goToPage("class-tests")}
             role="button"
             tabIndex={0}
             onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") handleTabChange("class-tests");
+              if (e.key === "Enter" || e.key === " ") goToPage("class-tests");
             }}
-            className="p-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-indigo-400/60 backdrop-blur-md space-y-1 relative group/card cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.99] shadow-sm hover:shadow-indigo-500/10 text-left"
+            className="p-4 rounded-2xl bg-slate-50/90 hover:bg-white dark:bg-white/5 dark:hover:bg-white/10 border border-slate-200/80 hover:border-indigo-300/80 dark:border-white/10 dark:hover:border-indigo-400/60 backdrop-blur-md space-y-1 relative group/card cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.99] shadow-xs text-left"
             title="Click to view and input offline Class Test (CT) marks"
           >
             <div className="flex items-center justify-between gap-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block group-hover/card:text-indigo-300 transition-colors">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block group-hover/card:text-indigo-600 dark:group-hover/card:text-indigo-300 transition-colors">
                 Class Tests (CT)
               </span>
-              <span className="text-[10px] font-bold text-indigo-300 opacity-0 group-hover/card:opacity-100 transition-opacity flex items-center gap-0.5">
+              <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-300 opacity-0 group-hover/card:opacity-100 transition-opacity flex items-center gap-0.5">
                 <span>Marks</span>
                 <ChevronRight className="w-2.5 h-2.5" />
               </span>
             </div>
             <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-black text-white">{courseStats.totalClassTests}</span>
-              <span className="text-xs text-slate-400 font-medium">Offline CTs</span>
+              <span className="text-3xl font-black text-slate-900 dark:text-white">{courseStats.totalClassTests}</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Offline CTs</span>
             </div>
-            <span className="text-[10px] text-indigo-300 font-semibold block pt-0.5 truncate">
+            <span className="text-[10px] text-indigo-700 dark:text-indigo-300 font-semibold block pt-0.5 truncate">
               {courseStats.totalClassTests > 0 ? "Roll-wise marks recorded" : "Click to record CT marks"}
             </span>
           </div>
         </div>
       </div>
 
-      {/* ── COURSE WORKSPACE TABS ──────────────────────────────────── */}
-      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-white/10 pb-2 overflow-x-auto scrollbar-none">
-        {[
-          { id: "notices", label: "Course Notices", icon: Bell, count: isRelatedTeacher ? courseNotices.length : 0 },
-          { id: "attendance", label: "Attendance Hub", icon: UserCheck, count: `${courseStats.totalHeld} Sessions` },
-          { id: "materials", label: "Study Materials", icon: BookOpen, count: courseStats.totalMaterials },
-          { id: "assignments", label: "Continuous Tasks", icon: FileText, count: courseStats.totalAssignments },
-          { id: "class-tests", label: "Class Tests (CT)", icon: Award, count: `${courseStats.totalClassTests} CTs` },
-          { id: "schedule", label: "Routine Schedule", icon: Calendar, count: `${routineSlots.length} Classes` },
-          {
-            id: "messages",
-            label: "Student Messages",
-            icon: MessageSquare,
-            count: teacherUnreadCount > 0 ? `${teacherUnreadCount} New` : "Chat",
-          },
-        ].map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
+      {/* ── COURSE WORKSPACE TOP PAGINATION BAR ────────────────────── */}
+      <div id="course-workspace-content" className="bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/90 dark:border-white/10 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-sm space-y-3.5 transition-colors scroll-mt-6">
+        {/* Top Header Row: Section info, Page X of 8, and Quick Stepper Buttons */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100 dark:border-white/10">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-200/60 dark:border-indigo-800/60 shadow-xs">
+              {activePageObj && React.createElement(activePageObj.icon, { className: "w-5 h-5" })}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide uppercase bg-indigo-100/80 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
+                  Page {activePageObj?.pageNum || 1} of {TEACHER_COURSE_PAGES.length}
+                </span>
+                <span className="text-xs font-semibold text-slate-400 dark:text-slate-500">•</span>
+                <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 font-mono">
+                  {getPageCount(activePageObj?.id)}
+                </span>
+              </div>
+              <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
+                {activePageObj?.title}
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium line-clamp-1">
+                {activePageObj?.description}
+              </p>
+            </div>
+          </div>
+
+          {/* Stepper Buttons (Previous & Next) */}
+          <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
             <button
-              key={tab.id}
-              onClick={() => handleTabChange(tab.id)}
-              className={`inline-flex items-center gap-2 px-5 py-3 rounded-2xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-                isActive
-                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 scale-[1.02]"
-                  : "bg-white dark:bg-slate-900/70 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-white/10"
+              type="button"
+              onClick={() => prevPageObj && goToPage(prevPageObj.id)}
+              disabled={!prevPageObj}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
+                prevPageObj
+                  ? "bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 border-slate-200/80 dark:border-white/10 shadow-xs cursor-pointer active:scale-95"
+                  : "bg-slate-50 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 border-slate-100 dark:border-white/5 cursor-not-allowed opacity-60"
               }`}
+              title={prevPageObj ? `Go to Page ${prevPageObj.pageNum}: ${prevPageObj.title}` : "First Page"}
             >
-              <Icon className="w-4 h-4" />
-              <span>{tab.label}</span>
-              <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
-                isActive ? "bg-white/20 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500"
-              }`}>
-                {tab.count}
-              </span>
+              <ChevronLeft className="w-4 h-4" />
+              <span className="hidden xs:inline">Previous</span>
             </button>
-          );
-        })}
+
+            <button
+              type="button"
+              onClick={() => nextPageObj && goToPage(nextPageObj.id)}
+              disabled={!nextPageObj}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
+                nextPageObj
+                  ? "bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-600 shadow-xs shadow-indigo-600/20 cursor-pointer active:scale-95"
+                  : "bg-slate-50 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 border-slate-100 dark:border-white/5 cursor-not-allowed opacity-60"
+              }`}
+              title={nextPageObj ? `Go to Page ${nextPageObj.pageNum}: ${nextPageObj.title}` : "Last Page"}
+            >
+              <span className="hidden xs:inline">Next</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* 8 Interactive Step Pills with Numbers, Icons, Labels, and Counts */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-0.5 scrollbar-thin">
+          {TEACHER_COURSE_PAGES.map((page) => {
+            const isCurrent = page.id === activeTab;
+            const Icon = page.icon;
+            const countText = getPageCount(page.id);
+            return (
+              <button
+                key={page.id}
+                type="button"
+                onClick={() => goToPage(page.id)}
+                className={`group flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer shrink-0 border ${
+                  isCurrent
+                    ? "bg-indigo-600 text-white border-indigo-600 shadow-sm shadow-indigo-600/30 scale-[1.02]"
+                    : "bg-slate-100/90 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-400 border-slate-200/70 dark:border-white/5"
+                }`}
+                title={`Page ${page.pageNum}: ${page.title}`}
+              >
+                <span className={`inline-flex items-center justify-center w-5 h-5 rounded-lg text-[10px] font-black ${
+                  isCurrent 
+                    ? "bg-white/20 text-white" 
+                    : "bg-slate-200/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/60 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"
+                }`}>
+                  {page.pageNum}
+                </span>
+                <Icon className={`w-3.5 h-3.5 shrink-0 ${isCurrent ? "text-white" : "text-slate-500 dark:text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"}`} />
+                <span>{page.shortLabel}</span>
+                {countText && (
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-semibold ${
+                    isCurrent ? "bg-white/20 text-white" : "bg-slate-200/70 dark:bg-slate-700/80 text-slate-600 dark:text-slate-400"
+                  }`}>
+                    {countText}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* ════════════════════════════════════════════════════════════════
@@ -3858,6 +4038,91 @@ export default function TeacherCourseWorkspacePage() {
           />
         </div>
       )}
+
+      {/* ════════════════════════════════════════════════════════════════
+          TAB: AI NOTE SUMMARY & QUIZ GENERATOR (AI STUDY STUDIO)
+          ════════════════════════════════════════════════════════════════ */}
+      {activeTab === "ai-study" && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <StudentCourseAIStudy
+            courseCode={courseCode}
+            courseTitle={course?.title || `${courseCode} Course`}
+          />
+        </div>
+      )}
+
+      {/* ── COURSE WORKSPACE BOTTOM PAGINATION BAR ────────────────── */}
+      <div className="bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/90 dark:border-white/10 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-sm transition-colors mt-8">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+          {/* Previous Page Button with Label */}
+          <div className="w-full md:w-auto">
+            {prevPageObj ? (
+              <button
+                type="button"
+                onClick={() => goToPage(prevPageObj.id)}
+                className="w-full md:w-auto inline-flex items-center justify-center md:justify-start gap-2.5 px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 border border-slate-200/80 dark:border-white/10 text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+              >
+                <ChevronLeft className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                <div className="text-left">
+                  <span className="block text-[10px] uppercase font-semibold text-slate-400 dark:text-slate-500">
+                    Previous Section (Page {prevPageObj.pageNum})
+                  </span>
+                  <span className="font-bold text-slate-900 dark:text-white">
+                    {prevPageObj.shortLabel}
+                  </span>
+                </div>
+              </button>
+            ) : (
+              <div className="hidden md:block w-32" />
+            )}
+          </div>
+
+          {/* Center Quick Jump Numbered Pills */}
+          <div className="flex items-center gap-1.5">
+            {TEACHER_COURSE_PAGES.map((page) => {
+              const isCurrent = page.id === activeTab;
+              return (
+                <button
+                  key={page.id}
+                  type="button"
+                  onClick={() => goToPage(page.id)}
+                  className={`w-9 h-9 rounded-xl text-xs font-extrabold flex items-center justify-center transition-all cursor-pointer ${
+                    isCurrent
+                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30 scale-105"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-400 border border-slate-200/60 dark:border-white/5"
+                  }`}
+                  title={`Page ${page.pageNum}: ${page.title}`}
+                >
+                  {page.pageNum}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Next Page Button with Label */}
+          <div className="w-full md:w-auto">
+            {nextPageObj ? (
+              <button
+                type="button"
+                onClick={() => goToPage(nextPageObj.id)}
+                className="w-full md:w-auto inline-flex items-center justify-center md:justify-end gap-2.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all cursor-pointer shadow-md shadow-indigo-600/20 active:scale-95"
+              >
+                <div className="text-right">
+                  <span className="block text-[10px] uppercase font-semibold text-indigo-200">
+                    Next Section (Page {nextPageObj.pageNum})
+                  </span>
+                  <span className="font-bold text-white">
+                    {nextPageObj.shortLabel}
+                  </span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-white" />
+              </button>
+            ) : (
+              <div className="hidden md:block w-32" />
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* ════════════════════════════════════════════════════════════════
           MODAL 1: RECORD ATTENDANCE (ENHANCED ROLL CALL)

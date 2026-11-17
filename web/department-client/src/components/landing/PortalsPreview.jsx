@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { GraduationCap, Presentation, Briefcase, ShieldCheck, ArrowRight, Sparkles } from "lucide-react";
+import { GraduationCap, Presentation, ShieldCheck, ArrowRight, Sparkles } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 
 const PANELS = [
@@ -29,18 +29,6 @@ const PANELS = [
     loginPath: "/login",
     signupPath: "/register",
     dashboardPath: "/dashboard/teacher",
-  },
-  {
-    role: "Employee",
-    title: "Staff Desk",
-    description: "Monitor computer labs, track hardware maintenance work tickets, log duty shifts, and oversee facility readiness.",
-    icon: <Briefcase className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />,
-    iconBg: "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800/60",
-    badgeColor: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 ring-emerald-200 dark:ring-emerald-800",
-    btnColor: "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200/50 dark:shadow-none",
-    loginPath: "/login",
-    signupPath: "/register",
-    dashboardPath: "/dashboard/employee",
   },
   {
     role: "Admin",
@@ -71,11 +59,11 @@ export function PortalsPreview() {
           Choose Your Department Portal
         </h2>
         <p className="text-sm md:text-base text-slate-500 dark:text-slate-400 max-w-2xl mx-auto">
-          Tailored dashboards designed specifically for students, faculty members, staff technicians, and department administrators.
+          Tailored dashboards designed specifically for students, faculty members, and department administrators.
         </p>
       </div>
 
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 max-w-6xl mx-auto">
         {PANELS.map((panel, idx) => (
           <article
             key={panel.role || idx}

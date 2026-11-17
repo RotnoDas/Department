@@ -19,8 +19,7 @@ export function HeroSection() {
     if (user?.role) return user.role;
     const email = (user?.email || "").toLowerCase().trim();
     if (email === "admin@cse.edu" || email.includes("admin")) return "admin";
-    if (email.endsWith("@teacher.cse.edu") || (email.endsWith("@cse.edu") && !email.includes("student") && !email.includes("staff") && !email.includes("admin") && !email.includes("employee"))) return "teacher";
-    if (email.endsWith("@employee.cse.edu") || email.endsWith("@staff.cse.edu")) return "employee";
+    if (email.endsWith("@teacher.cse.edu") || (email.endsWith("@cse.edu") && !email.includes("student") && !email.includes("admin"))) return "teacher";
     return "student";
   };
 
@@ -29,7 +28,6 @@ export function HeroSection() {
     switch (role) {
       case "admin": return "/dashboard/admin";
       case "teacher": return "/dashboard/teacher";
-      case "employee": return "/dashboard/employee";
       case "student":
       default: return "/dashboard/student";
     }
@@ -40,7 +38,6 @@ export function HeroSection() {
     switch (role) {
       case "admin": return "Go to Admin Console";
       case "teacher": return "Go to Faculty Hub";
-      case "employee": return "Go to Staff Desk";
       case "student":
       default: return "Go to Student Portal";
     }

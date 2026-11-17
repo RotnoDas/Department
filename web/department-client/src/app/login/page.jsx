@@ -19,10 +19,8 @@ const redirectByRole = (role, email, redirectParam) => {
     const cleanEmail = (email || "").toLowerCase().trim();
     if (role === "admin" || cleanEmail === "admin@cse.edu") {
         window.location.href = "/dashboard/admin";
-    } else if (role === "teacher" || cleanEmail.endsWith("@teacher.cse.edu") || (cleanEmail.endsWith("@cse.edu") && !cleanEmail.includes("student") && !cleanEmail.includes("staff") && !cleanEmail.includes("admin"))) {
+    } else if (role === "teacher" || cleanEmail.endsWith("@teacher.cse.edu") || (cleanEmail.endsWith("@cse.edu") && !cleanEmail.includes("student") && !cleanEmail.includes("admin"))) {
         window.location.href = "/dashboard/teacher";
-    } else if (role === "employee" || cleanEmail.endsWith("@employee.cse.edu") || cleanEmail.endsWith("@staff.cse.edu")) {
-        window.location.href = "/dashboard/employee";
     } else {
         window.location.href = "/dashboard/student";
     }
@@ -41,7 +39,7 @@ const LoginContent = () => {
             const role = sessionData.user.role;
             const isStudent = role === "student" || cleanEmail.endsWith("@student.cse.edu");
 
-            const isTeacher = role === "teacher" || cleanEmail.endsWith("@teacher.cse.edu") || (cleanEmail.endsWith("@cse.edu") && !cleanEmail.includes("student") && !cleanEmail.includes("staff") && !cleanEmail.includes("admin"));
+            const isTeacher = role === "teacher" || cleanEmail.endsWith("@teacher.cse.edu") || (cleanEmail.endsWith("@cse.edu") && !cleanEmail.includes("student") && !cleanEmail.includes("admin"));
 
             if (isStudent) {
                 // Verify student approval before auto-redirecting
@@ -147,7 +145,7 @@ const LoginContent = () => {
             return;
         }
 
-        const isTeacher = email.endsWith("@teacher.cse.edu") || signInData?.user?.role === "teacher" || (email.endsWith("@cse.edu") && !email.includes("student") && !email.includes("staff") && !email.includes("admin"));
+        const isTeacher = email.endsWith("@teacher.cse.edu") || signInData?.user?.role === "teacher" || (email.endsWith("@cse.edu") && !email.includes("student") && !email.includes("admin"));
 
         if (isTeacher) {
             // Check teacher approval status from database

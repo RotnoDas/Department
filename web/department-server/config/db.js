@@ -27,7 +27,6 @@ const connectDB = async () => {
     users: db.collection('user'),
     students: db.collection('students'),
     teachers: db.collection('teachers'),
-    employees: db.collection('employees'),
     admins: db.collection('admins'),
     notices: db.collection('notices'),
     courses: db.collection('courses'),
@@ -43,10 +42,6 @@ const connectDB = async () => {
     assignmentSubmissions: db.collection('assignment_submissions'),
     materials: db.collection('materials'),
     classTests: db.collection('class_tests'),
-    // Employee operations
-    maintenanceTasks: db.collection('maintenance_tasks'),
-    employeeShifts: db.collection('employee_shifts'),
-    labFacilities: db.collection('lab_facilities'),
     // Support & Complaints system
     complaints: db.collection('complaints'),
     supportTickets: db.collection('support_tickets'),

@@ -105,6 +105,7 @@ export default function AdminResultsSection() {
   const [entryMode, setEntryMode] = useState("total"); // Default to simple Total Marks view ("total" | "criteria")
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isSeedingVariations, setIsSeedingVariations] = useState(false);
 
   // Form State for Fill/Edit
   const [formState, setFormState] = useState({
@@ -159,6 +160,24 @@ export default function AdminResultsSection() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSeedVariations = async () => {
+    try {
+      setIsSeedingVariations(true);
+      const res = await apiFetch("/api/results/admin/seed-variations", {
+        method: "POST",
+        body: { session: selectedSession !== "all" ? selectedSession : null },
+      });
+      if (!res.ok) throw new Error(res.data?.error || "Failed to populate result variations");
+      toast.success(res.data?.message || "Varied semester results populated successfully!");
+      await loadData(false);
+    } catch (err) {
+      console.error("Error populating variations:", err);
+      toast.error(err.message || "Failed to populate varied results.");
+    } finally {
+      setIsSeedingVariations(false);
     }
   };
 
@@ -546,16 +565,16 @@ export default function AdminResultsSection() {
       <div className="p-7 sm:p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6">
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pb-2 border-b border-slate-100 dark:border-white/10">
           <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 text-xs font-bold mb-2 border border-purple-200 dark:border-purple-800">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-xs font-bold mb-2 border border-indigo-200 dark:border-indigo-800">
               <ShieldCheck className="w-3.5 h-3.5" />
               <span>Academic Session Examination Controller</span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white flex items-center gap-3">
-              <Award className="w-7 h-7 text-purple-600" />
+              <Award className="w-7 h-7 text-indigo-600 dark:text-indigo-400" />
               <span>Semester Results Management by Session</span>
             </h2>
             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-              Select an academic session to manage semester results (Sem 1, Sem 2, etc.) for students currently enrolled in that session.
+              Select an academic session to manage semester results (Sem 1 to 8) with realistic performance variations (Honors, Passes & Backlogs).
             </p>
           </div>
 
@@ -563,15 +582,25 @@ export default function AdminResultsSection() {
             <button
               onClick={() => loadData(true)}
               disabled={loading}
-              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors"
+              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
               title="Refresh results list"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
               <span>Refresh</span>
             </button>
             <button
+              type="button"
+              onClick={handleSeedVariations}
+              disabled={isSeedingVariations || loading}
+              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 cursor-pointer shadow-xs disabled:opacity-50"
+              title="Populate realistic varied semester results across students (Dean's list, passes, and backlogs)"
+            >
+              <Sparkles className={`w-3.5 h-3.5 text-indigo-500 ${isSeedingVariations ? "animate-spin" : ""}`} />
+              <span>{isSeedingVariations ? "Populating Variations..." : "Auto-Populate Varied Results"}</span>
+            </button>
+            <button
               onClick={() => openAddModal()}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-lg shadow-purple-500/25 transition-all hover:scale-[1.02]"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-lg shadow-indigo-500/25 transition-all hover:scale-[1.02] cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>+ Fill / Publish Semester Result</span>
@@ -580,13 +609,13 @@ export default function AdminResultsSection() {
         </div>
 
         {/* ── 1. PRIMARY SELECTION: ACADEMIC SESSIONS ──────────────── */}
-        <div className="space-y-2 p-4 rounded-2xl bg-purple-50/60 dark:bg-purple-950/30 border border-purple-100 dark:border-purple-900/40">
-          <div className="flex items-center justify-between text-xs font-bold text-purple-900 dark:text-purple-200 uppercase tracking-wider px-1">
+        <div className="space-y-2 p-4 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40">
+          <div className="flex items-center justify-between text-xs font-bold text-indigo-900 dark:text-indigo-200 uppercase tracking-wider px-1">
             <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+              <Calendar className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
               <span>Step 1: Select Academic Session (Batch)</span>
             </div>
-            <span className="text-[11px] font-normal normal-case text-purple-700 dark:text-purple-300">
+            <span className="text-[11px] font-normal normal-case text-indigo-700 dark:text-indigo-300">
               Students and semesters will dynamically adapt to the selected session
             </span>
           </div>
@@ -601,23 +630,23 @@ export default function AdminResultsSection() {
                     setSelectedSession(sess.session);
                     setSelectedSemesterFilter("all");
                   }}
-                  className={`flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all shrink-0 border ${
+                  className={`flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all shrink-0 border cursor-pointer ${
                     isSelected
-                      ? "bg-purple-600 text-white border-purple-600 shadow-md shadow-purple-500/25 scale-[1.02]"
-                      : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-white/10 hover:bg-purple-50/50 dark:hover:bg-slate-700"
+                      ? "bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-500/25 scale-[1.02]"
+                      : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-white/10 hover:bg-indigo-50/50 dark:hover:bg-slate-700"
                   }`}
                 >
-                  <Calendar className={`w-4 h-4 ${isSelected ? "text-amber-300" : "text-purple-500"}`} />
+                  <Calendar className={`w-4 h-4 ${isSelected ? "text-amber-300" : "text-indigo-500"}`} />
                   <div className="text-left">
                     <div className="leading-tight font-extrabold flex items-center gap-1.5">
                       <span>Session {sess.session}</span>
                       {sess.batch && (
-                        <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${isSelected ? "bg-white/20 text-white" : "bg-purple-100 text-purple-700 dark:bg-purple-900/60 dark:text-purple-300"}`}>
+                        <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${isSelected ? "bg-white/20 text-white" : "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300"}`}>
                           Batch {sess.batch}
                         </span>
                       )}
                     </div>
-                    <div className={`text-[10px] font-medium leading-none mt-1 ${isSelected ? "text-purple-200" : "text-slate-500 dark:text-slate-400"}`}>
+                    <div className={`text-[10px] font-medium leading-none mt-1 ${isSelected ? "text-indigo-200" : "text-slate-500 dark:text-slate-400"}`}>
                       Current: <strong>Semester {sess.currentSemester}</strong> • {sess.studentsCount} Students
                     </div>
                   </div>
@@ -630,9 +659,9 @@ export default function AdminResultsSection() {
                 setSelectedSession("all");
                 setSelectedSemesterFilter("all");
               }}
-              className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all shrink-0 border ${
+              className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all shrink-0 border cursor-pointer ${
                 selectedSession === "all"
-                  ? "bg-purple-600 text-white border-purple-600 shadow-md"
+                  ? "bg-indigo-600 text-white border-indigo-600 shadow-md"
                   : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-white/10 hover:bg-slate-100"
               }`}
             >
@@ -645,15 +674,15 @@ export default function AdminResultsSection() {
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-1">
           <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1">
             <span className="text-xs font-extrabold text-slate-600 dark:text-slate-300 shrink-0 flex items-center gap-1.5">
-              <Layers className="w-3.5 h-3.5 text-purple-600" />
+              <Layers className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
               <span>Step 2: Semesters for this Session:</span>
             </span>
 
             <button
               onClick={() => setSelectedSemesterFilter("all")}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
                 selectedSemesterFilter === "all"
-                  ? "bg-purple-600 text-white shadow-sm"
+                  ? "bg-indigo-600 text-white shadow-sm"
                   : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
               }`}
             >
@@ -667,9 +696,9 @@ export default function AdminResultsSection() {
                 <button
                   key={s}
                   onClick={() => setSelectedSemesterFilter(String(s))}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
                     isSelected
-                      ? "bg-purple-600 text-white shadow-sm"
+                      ? "bg-indigo-600 text-white shadow-sm"
                       : isCurrent
                       ? "bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 hover:bg-amber-200"
                       : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
@@ -694,7 +723,7 @@ export default function AdminResultsSection() {
               placeholder="Search Student ID, Name..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-1.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="w-full pl-9 pr-4 py-1.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </form>
         </div>
@@ -703,7 +732,7 @@ export default function AdminResultsSection() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1 text-xs text-slate-600 dark:text-slate-400">
           <div className="flex items-center gap-2">
             <span>Session:</span>
-            <strong className="px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 font-extrabold">
+            <strong className="px-2 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 font-extrabold">
               {selectedSession === "all" ? "All Sessions" : `Session ${selectedSession}`}
             </strong>
             {activeSessionMeta && (
@@ -712,7 +741,7 @@ export default function AdminResultsSection() {
               </span>
             )}
             <span>•</span>
-            <span>Showing <strong className="text-purple-600 dark:text-purple-400">{resultsList.length}</strong> {resultsList.length === 1 ? "student record" : "student records"} {selectedSemesterFilter !== "all" ? `in Semester ${selectedSemesterFilter}` : ""}</span>
+            <span>Showing <strong className="text-indigo-600 dark:text-indigo-400">{resultsList.length}</strong> {resultsList.length === 1 ? "student record" : "student records"} {selectedSemesterFilter !== "all" ? `in Semester ${selectedSemesterFilter}` : ""}</span>
           </div>
 
           {selectedSemesterFilter !== "all" && resultsList.length > 1 && (
@@ -744,7 +773,7 @@ export default function AdminResultsSection() {
               {loading && resultsList.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="py-8 text-center text-slate-500">
-                    <RefreshCw className="w-6 h-6 mx-auto animate-spin mb-2 text-purple-600" />
+                    <RefreshCw className="w-6 h-6 mx-auto animate-spin mb-2 text-indigo-600" />
                     Loading semester results...
                   </td>
                 </tr>
@@ -756,21 +785,45 @@ export default function AdminResultsSection() {
                       No results found for {selectedSession === "all" ? "this filter" : `Session ${selectedSession}`} {selectedSemesterFilter !== "all" ? `Semester ${selectedSemesterFilter}` : ""}.
                     </p>
                     <p className="text-xs text-slate-400 mt-1">
-                      Click "+ Fill / Publish Semester Result" above to create or publish results for this session.
+                      Click "+ Fill / Publish Semester Result" or "Auto-Populate Varied Results" above to manage results.
                     </p>
                   </td>
                 </tr>
               ) : (
                 resultsList.map((r) => {
                   const isDeans = r.isDeansList || Number(r.cgpa || 0) >= 3.80;
+                  const hasBacklog = Number(r.earnedCredits || 0) < Number(r.totalCredits || 0) || (r.courses || []).some(c => c.status === "failed");
+                  const cgpaVal = Number(r.cgpa || 0);
+                  const sgpaVal = Number(r.sgpa || 0);
+
                   return (
                     <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                       <td className="py-3 px-4">
-                        <div className="font-bold text-slate-800 dark:text-slate-100">{r.studentName}</div>
-                        <div className="text-[11px] text-slate-400 flex items-center gap-1.5 mt-0.5">
-                          <span className="font-mono font-semibold text-purple-600 dark:text-purple-400">{r.studentId}</span>
-                          <span>•</span>
-                          <span>{r.studentEmail}</span>
+                        <div className="flex items-center gap-2.5">
+                          <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs shrink-0 ${
+                            isDeans
+                              ? "bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 ring-1 ring-amber-300 dark:ring-amber-700"
+                              : hasBacklog
+                              ? "bg-rose-100 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300 ring-1 ring-rose-300 dark:ring-rose-700"
+                              : "bg-indigo-100 text-indigo-800 dark:bg-indigo-950/70 dark:text-indigo-300 ring-1 ring-indigo-200 dark:ring-indigo-800"
+                          }`}>
+                            {r.studentName ? r.studentName.charAt(0).toUpperCase() : "S"}
+                          </div>
+                          <div>
+                            <div className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                              <span>{r.studentName}</span>
+                              {hasBacklog && (
+                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-black bg-rose-100 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300">
+                                  Backlog
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-slate-400 flex items-center gap-1.5 mt-0.5">
+                              <span className="font-mono font-semibold text-indigo-600 dark:text-indigo-400">{r.studentId}</span>
+                              <span>•</span>
+                              <span className="truncate max-w-[150px]">{r.studentEmail}</span>
+                            </div>
+                          </div>
                         </div>
                       </td>
                       <td className="py-3 px-3 text-center">
@@ -779,12 +832,21 @@ export default function AdminResultsSection() {
                         </span>
                       </td>
                       <td className="py-3 px-3 text-center">
-                        <span className="px-2.5 py-1 rounded-lg text-[11px] font-black bg-purple-100 text-purple-800 dark:bg-purple-950/70 dark:text-purple-300">
+                        <span className="px-2.5 py-1 rounded-lg text-[11px] font-black bg-indigo-50 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300 border border-indigo-200/70 dark:border-indigo-800/60">
                           Semester {r.semester}
                         </span>
                       </td>
-                      <td className="py-3 px-3 text-center text-slate-700 dark:text-slate-300 font-bold">
-                        {Number(r.totalCredits || 0).toFixed(2)}
+                      <td className="py-3 px-3 text-center">
+                        <div className="flex flex-col items-center">
+                          <span className={`font-bold ${hasBacklog ? "text-rose-600 dark:text-rose-400" : "text-slate-700 dark:text-slate-300"}`}>
+                            {Number(r.earnedCredits || 0).toFixed(2)} / {Number(r.totalCredits || 0).toFixed(2)}
+                          </span>
+                          {hasBacklog && (
+                            <span className="text-[9.5px] font-bold text-rose-500">
+                              -{(Number(r.totalCredits || 0) - Number(r.earnedCredits || 0)).toFixed(1)} Cr Lost
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3 px-3 text-center font-mono font-bold text-indigo-700 dark:text-indigo-300">
                         {r.totalGradePoints !== undefined && r.totalGradePoints !== null
@@ -792,8 +854,14 @@ export default function AdminResultsSection() {
                           : "—"}
                       </td>
                       <td className="py-3 px-3 text-center">
-                        <div className="font-black text-indigo-600 dark:text-indigo-400 text-sm">
-                          {Number(r.sgpa || 0).toFixed(2)}
+                        <div className={`text-sm font-black ${
+                          hasBacklog || sgpaVal < 2.00
+                            ? "text-rose-600 dark:text-rose-400"
+                            : sgpaVal >= 3.75
+                            ? "text-indigo-600 dark:text-indigo-400"
+                            : "text-sky-600 dark:text-sky-400"
+                        }`}>
+                          {sgpaVal.toFixed(2)}
                         </div>
                         {r.sgpaExact && (
                           <div className="text-[10px] text-slate-400 font-mono">
@@ -810,8 +878,16 @@ export default function AdminResultsSection() {
                         </div>
                       </td>
                       <td className="py-3 px-3 text-center">
-                        <div className="font-black text-amber-600 dark:text-amber-400 text-sm">
-                          {Number(r.cgpa || 0).toFixed(2)}
+                        <div className={`text-sm font-black ${
+                          cgpaVal >= 3.80
+                            ? "text-amber-600 dark:text-amber-400"
+                            : cgpaVal >= 3.00
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : cgpaVal >= 2.25
+                            ? "text-sky-600 dark:text-sky-400"
+                            : "text-rose-600 dark:text-rose-400"
+                        }`}>
+                          {cgpaVal.toFixed(2)}
                         </div>
                         {r.cgpaExact && (
                           <div className="text-[10px] text-slate-400 font-mono">
@@ -820,22 +896,56 @@ export default function AdminResultsSection() {
                         )}
                       </td>
                       <td className="py-3 px-3 text-center">
-                        {isDeans ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950/80 dark:text-amber-200 dark:border-amber-700 shadow-sm" title="Section 20.9 Dean's List (CGPA ≥ 3.80)">
-                            <Sparkles className="w-3 h-3 text-amber-500 fill-amber-500" />
-                            <span>★ Dean's List</span>
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                            Good Standing
-                          </span>
-                        )}
+                        {(() => {
+                          if (hasBacklog || cgpaVal < 2.00) {
+                            return (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-50 text-rose-700 dark:bg-rose-950/70 dark:text-rose-300 border border-rose-200 dark:border-rose-800 shadow-2xs">
+                                <AlertCircle className="w-3 h-3 text-rose-500" />
+                                <span>Academic Warning</span>
+                              </span>
+                            );
+                          }
+                          if (cgpaVal >= 3.80) {
+                            return (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-50 text-amber-900 border border-amber-300 dark:bg-amber-950/80 dark:text-amber-200 dark:border-amber-700 shadow-2xs" title="Section 20.9 Dean's List (CGPA ≥ 3.80)">
+                                <Sparkles className="w-3 h-3 text-amber-500 fill-amber-500" />
+                                <span>★ Dean's List</span>
+                              </span>
+                            );
+                          }
+                          if (cgpaVal >= 3.00) {
+                            return (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                First Class
+                              </span>
+                            );
+                          }
+                          if (cgpaVal >= 2.50) {
+                            return (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300 border border-sky-200 dark:border-sky-800">
+                                Second Class (Upper)
+                              </span>
+                            );
+                          }
+                          if (cgpaVal >= 2.25) {
+                            return (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                                Second Class (Lower)
+                              </span>
+                            );
+                          }
+                          return (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                              Pass (Third Class)
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="py-3 px-4 text-right">
                         <div className="inline-flex items-center gap-1">
                           <button
                             onClick={() => openEditModal(r)}
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/50 hover:bg-purple-100 text-[11px] font-bold transition-colors"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-[11px] font-bold transition-colors cursor-pointer"
                             title="Edit Semester Result"
                           >
                             <Edit3 className="w-3.5 h-3.5" />
@@ -843,7 +953,7 @@ export default function AdminResultsSection() {
                           </button>
                           <button
                             onClick={() => setDeleteTarget(r)}
-                            className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-700 transition-colors"
+                            className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-700 transition-colors cursor-pointer"
                             title="Delete Semester Result"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -858,7 +968,6 @@ export default function AdminResultsSection() {
           </table>
         </div>
       </div>
-
       {/* ── Fill / Edit Modal ───────────────────────────────────────── */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm">
@@ -866,7 +975,7 @@ export default function AdminResultsSection() {
             {/* Modal Header */}
             <div className="px-6 py-4 bg-slate-50/90 dark:bg-slate-800/80 border-b border-slate-200 dark:border-white/10 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-purple-600/10 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center border border-purple-500/20">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-600/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center border border-indigo-500/20">
                   <Award className="w-5 h-5" />
                 </div>
                 <div>
@@ -876,7 +985,7 @@ export default function AdminResultsSection() {
                         ? `Edit Semester ${formState.semester} Result`
                         : `Fill & Publish Result`}
                     </h3>
-                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-300">
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-300">
                       Session {formState.session}
                     </span>
                   </div>
@@ -902,9 +1011,9 @@ export default function AdminResultsSection() {
               {/* Student & Session Info */}
               {isEditing ? (
                 /* Sleek Profile Banner in Edit Mode */
-                <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-500/10 via-indigo-500/5 to-transparent border border-purple-500/20 flex flex-wrap items-center justify-between gap-4">
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-500/10 via-sky-500/5 to-transparent border border-indigo-500/20 flex flex-wrap items-center justify-between gap-4">
                   <div className="flex items-center gap-3.5">
-                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-600 text-white flex items-center justify-center font-black text-base shadow-md shadow-purple-500/25">
+                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-600 to-sky-600 text-white flex items-center justify-center font-black text-base shadow-md shadow-indigo-500/25">
                       {formState.studentName?.charAt(0) || "S"}
                     </div>
                     <div>
@@ -912,14 +1021,14 @@ export default function AdminResultsSection() {
                         <h4 className="font-extrabold text-slate-900 dark:text-white text-base">
                           {formState.studentName}
                         </h4>
-                        <span className="font-mono text-xs font-bold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/60 px-2 py-0.5 rounded-md border border-purple-200 dark:border-purple-800">
+                        <span className="font-mono text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800">
                           {formState.studentId}
                         </span>
                       </div>
                       <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                         <span>Session: <strong className="text-slate-700 dark:text-slate-200">{formState.session}</strong></span>
                         <span>•</span>
-                        <span>Semester: <strong className="text-purple-600 dark:text-purple-400">{formState.semester} ({SEMESTER_LABELS[formState.semester] || `${formState.semester}th Semester`})</strong></span>
+                        <span>Semester: <strong className="text-indigo-600 dark:text-indigo-400">{formState.semester} ({SEMESTER_LABELS[formState.semester] || `${formState.semester}th Semester`})</strong></span>
                         {formState.studentEmail && (
                           <>
                             <span>•</span>
@@ -938,7 +1047,7 @@ export default function AdminResultsSection() {
                       type="number"
                       value={formState.examYear}
                       onChange={(e) => setFormState((prev) => ({ ...prev, examYear: e.target.value }))}
-                      className="w-24 px-3 py-1.5 rounded-xl text-xs font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 focus:ring-2 focus:ring-purple-500 shadow-sm"
+                      className="w-24 px-3 py-1.5 rounded-xl text-xs font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 focus:ring-2 focus:ring-indigo-500 shadow-sm"
                       required
                     />
                   </div>
@@ -957,7 +1066,7 @@ export default function AdminResultsSection() {
                         const newSess = e.target.value;
                         setFormState((prev) => ({ ...prev, session: newSess }));
                       }}
-                      className="w-full px-3 py-2 rounded-xl text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 focus:ring-2 focus:ring-purple-500 font-bold"
+                      className="w-full px-3 py-2 rounded-xl text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 focus:ring-2 focus:ring-indigo-500 font-bold"
                     >
                       {sessionsList.map((s) => (
                         <option key={s.session} value={s.session}>
@@ -975,7 +1084,7 @@ export default function AdminResultsSection() {
                     <select
                       value={formState.studentId}
                       onChange={(e) => handleStudentSelect(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 focus:ring-2 focus:ring-purple-500 font-medium"
+                      className="w-full px-3 py-2 rounded-xl text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 focus:ring-2 focus:ring-indigo-500 font-medium"
                       required
                     >
                       <option value="">Select Student...</option>
@@ -1017,7 +1126,7 @@ export default function AdminResultsSection() {
                           autoFetchCAMetrics(formState.studentId, semNum);
                         }
                       }}
-                      className="w-full px-3 py-2 rounded-xl text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 focus:ring-2 focus:ring-purple-500 font-bold"
+                      className="w-full px-3 py-2 rounded-xl text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 focus:ring-2 focus:ring-indigo-500 font-bold"
                     >
                       {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => (
                         <option key={s} value={s}>
@@ -1036,7 +1145,7 @@ export default function AdminResultsSection() {
                       type="number"
                       value={formState.examYear}
                       onChange={(e) => setFormState((prev) => ({ ...prev, examYear: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-xl text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 focus:ring-2 focus:ring-purple-500 font-bold"
+                      className="w-full px-3 py-2 rounded-xl text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 focus:ring-2 focus:ring-indigo-500 font-bold"
                       required
                     />
                   </div>
@@ -1052,7 +1161,7 @@ export default function AdminResultsSection() {
                     onClick={() => setEntryMode("total")}
                     className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
                       entryMode === "total"
-                        ? "bg-purple-600 text-white shadow-sm"
+                        ? "bg-indigo-600 text-white shadow-sm"
                         : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                     }`}
                     title="Direct Total Marks Entry (100 Marks per course)"
@@ -1065,7 +1174,7 @@ export default function AdminResultsSection() {
                     onClick={() => setEntryMode("criteria")}
                     className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
                       entryMode === "criteria"
-                        ? "bg-purple-600 text-white shadow-sm"
+                        ? "bg-indigo-600 text-white shadow-sm"
                         : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                     }`}
                     title="Continuous Assessment: Attendance (10%) + CA (20/30%) + Final Exam (70/60%) = 100"
@@ -1103,11 +1212,11 @@ export default function AdminResultsSection() {
                         <>
                           <th className="py-3 px-2 text-center w-24 text-emerald-700 dark:text-emerald-300 font-extrabold" title="Attendance Marks (Max 10 per Section 20.8 iv)">Att (10)</th>
                           <th className="py-3 px-2 text-center w-28 text-indigo-700 dark:text-indigo-300 font-extrabold" title="Continuous Assessment / Class Tests & Assignments (Max 20 for theory, 30 for sessional)">Teacher CA (20/30)</th>
-                          <th className="py-3 px-2 text-center w-28 text-purple-700 dark:text-purple-300 font-extrabold" title="Semester Final Examination Marks (Max 70 for theory, 60 for sessional)">Final Exam (70/60)</th>
+                          <th className="py-3 px-2 text-center w-28 text-sky-700 dark:text-sky-300 font-extrabold" title="Semester Final Examination Marks (Max 70 for theory, 60 for sessional)">Final Exam (70/60)</th>
                           <th className="py-3 px-2 text-center w-24 font-black text-slate-900 dark:text-white">Total (100)</th>
                         </>
                       ) : (
-                        <th className="py-3 px-3 text-center w-28 font-black text-purple-700 dark:text-purple-300">Marks (100)</th>
+                        <th className="py-3 px-3 text-center w-28 font-black text-indigo-700 dark:text-indigo-300">Marks (100)</th>
                       )}
 
                       <th className="py-3 px-2 text-center w-24">Grade (LG)</th>
@@ -1126,7 +1235,7 @@ export default function AdminResultsSection() {
                         <tr key={idx} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
                           {/* Course Code (Clean badge derived from official curriculum) */}
                           <td className="py-2.5 px-3">
-                            <span className="font-mono font-extrabold text-xs text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/60 px-2.5 py-1 rounded-lg border border-purple-200 dark:border-purple-800/60 inline-block">
+                            <span className="font-mono font-extrabold text-xs text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800/60 inline-block">
                               {course.courseCode}
                             </span>
                           </td>
@@ -1140,7 +1249,7 @@ export default function AdminResultsSection() {
                               <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide uppercase shrink-0 ${
                                 isSessional
                                   ? "bg-sky-100 text-sky-800 dark:bg-sky-950/80 dark:text-sky-300 border border-sky-200 dark:border-sky-800"
-                                  : "bg-purple-100 text-purple-800 dark:bg-purple-950/80 dark:text-purple-300 border border-purple-200 dark:border-purple-800"
+                                  : "bg-indigo-100 text-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800"
                               }`}>
                                 {isSessional ? "Lab" : "Theory"}
                               </span>
@@ -1200,7 +1309,7 @@ export default function AdminResultsSection() {
                                   value={course.finalMarks ?? ""}
                                   onChange={(e) => handleCourseChange(idx, "finalMarks", e.target.value)}
                                   placeholder={isSessional ? "50" : "55"}
-                                  className="w-20 h-10 px-2 mx-auto rounded-xl text-center font-black text-sm text-purple-600 dark:text-purple-400 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none block"
+                                  className="w-20 h-10 px-2 mx-auto rounded-xl text-center font-black text-sm text-sky-600 dark:text-sky-400 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none block"
                                   title={`Semester Final Exam Marks (Max ${isSessional ? 60 : 70})`}
                                 />
                               </td>
@@ -1215,7 +1324,7 @@ export default function AdminResultsSection() {
                                   value={course.marks ?? ""}
                                   onChange={(e) => handleCourseChange(idx, "marks", e.target.value)}
                                   placeholder="0"
-                                  className="w-20 h-10 px-2 mx-auto rounded-xl text-center font-black text-base text-slate-900 dark:text-white bg-purple-50/60 dark:bg-purple-950/40 border-2 border-purple-500/60 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none block"
+                                  className="w-20 h-10 px-2 mx-auto rounded-xl text-center font-black text-base text-slate-900 dark:text-white bg-indigo-50/60 dark:bg-indigo-950/40 border-2 border-indigo-500/60 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none block"
                                   title="Total Marks (100) = Attendance + Teacher CA + Final Exam"
                                 />
                               </td>
@@ -1231,7 +1340,7 @@ export default function AdminResultsSection() {
                                 value={course.marks ?? ""}
                                 onChange={(e) => handleCourseChange(idx, "marks", e.target.value)}
                                 placeholder="0"
-                                className="w-24 h-10 px-3 mx-auto rounded-xl text-center font-black text-base text-slate-900 dark:text-white bg-slate-100 dark:bg-slate-800 border-2 border-purple-500/60 focus:border-purple-500 focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-purple-500/20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none shadow-sm block"
+                                className="w-24 h-10 px-3 mx-auto rounded-xl text-center font-black text-base text-slate-900 dark:text-white bg-slate-100 dark:bg-slate-800 border-2 border-indigo-500/60 focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-indigo-500/20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none shadow-sm block"
                                 title="Enter Total Marks directly (0–100)"
                               />
                             </td>
@@ -1266,7 +1375,7 @@ export default function AdminResultsSection() {
                       <td colSpan={2} className="py-2.5 px-3 text-right uppercase tracking-wider text-slate-500">
                         Total Σ:
                       </td>
-                      <td className="py-2.5 px-2 text-center font-black text-purple-700 dark:text-purple-300">
+                      <td className="py-2.5 px-2 text-center font-black text-indigo-700 dark:text-indigo-300">
                         {modalMetrics.totCredits}
                       </td>
                       {entryMode === "criteria" ? (
@@ -1305,8 +1414,8 @@ export default function AdminResultsSection() {
                     </div>
                   </div>
                   <div className="pl-3 border-l border-slate-200 dark:border-white/10">
-                    <span className="text-[10px] uppercase font-bold text-purple-600 dark:text-purple-400 block">Semester GPA</span>
-                    <div className="text-2xl font-black text-purple-700 dark:text-purple-300 leading-tight">
+                    <span className="text-[10px] uppercase font-bold text-indigo-600 dark:text-indigo-400 block">Semester GPA</span>
+                    <div className="text-2xl font-black text-indigo-700 dark:text-indigo-300 leading-tight">
                       {modalMetrics.sgpa.toFixed(2)}
                     </div>
                   </div>
@@ -1323,7 +1432,7 @@ export default function AdminResultsSection() {
                   <button
                     type="submit"
                     disabled={saving}
-                    className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-lg shadow-purple-500/25 transition-all hover:scale-[1.02] disabled:opacity-50"
+                    className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-500/25 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
                   >
                     <Save className="w-4 h-4" />
                     <span>{saving ? "Saving..." : "Save Result"}</span>

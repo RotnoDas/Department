@@ -31,8 +31,7 @@ function isProtectedLink(url) {
     clean.startsWith("/attendance") ||
     clean.startsWith("/teacher") ||
     clean.startsWith("/admin") ||
-    clean.startsWith("/student") ||
-    clean.startsWith("/employee")
+    clean.startsWith("/student")
   );
 }
 

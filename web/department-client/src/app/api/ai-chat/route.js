@@ -195,7 +195,6 @@ Semester 8 (4th Year, 2nd Term):
    - Student: /dashboard/student
    - Teacher: /dashboard/teacher
    - Admin: /dashboard/admin
-   - Staff/Employee: /dashboard/employee
 `;
 
 // Helper: check if text contains Bengali Unicode characters

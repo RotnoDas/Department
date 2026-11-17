@@ -58,14 +58,6 @@ function LoginRequiredContent() {
       icon: ShieldAlert,
       href: `/login?redirect=${encodeURIComponent("/dashboard/admin")}`,
       color: "from-purple-500 to-indigo-600"
-    },
-    {
-      title: "Staff & Employee Desk",
-      desc: "Laboratory maintenance duties, inventory updates, and official departmental circulars.",
-      role: "Support & Lab Staff",
-      icon: Layers,
-      href: `/login?redirect=${encodeURIComponent("/dashboard/employee")}`,
-      color: "from-amber-500 to-orange-600"
     }
   ];
 

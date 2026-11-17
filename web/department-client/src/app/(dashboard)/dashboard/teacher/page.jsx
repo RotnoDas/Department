@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { authClient, safeSignOut } from "@/lib/auth-client";
 import { 
@@ -39,9 +39,12 @@ import {
   Check,
   Coffee,
   ChevronRight,
+  ChevronLeft,
   Search,
   ArrowRight,
   Bell,
+  BarChart3,
+  LayoutDashboard,
 } from "lucide-react";
 import { FaGithub, FaLinkedin } from "react-icons/fa";
 import toast from "react-hot-toast";
@@ -49,11 +52,6 @@ import Loading from "@/components/common/Loading";
 import { TeacherAnalyticsCharts } from "@/components/dashboard/DashboardCharts";
 import NoticeBoardSection from "@/components/notice/NoticeBoardSection";
 import CourseNoticeModal from "@/components/notice/CourseNoticeModal";
-import { 
-  SectionCollapseToggle, 
-  CollapsibleBody, 
-  DashboardCollapseControls 
-} from "@/components/dashboard/CollapsibleSection";
 import { apiFetch } from "@/lib/api";
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
@@ -80,6 +78,64 @@ const DESIGNATIONS = [
   "Department Head"
 ];
 
+// 6 Dedicated Pages for the Teacher Dashboard (Matching Student Panel Architecture)
+export const TEACHER_DASHBOARD_PAGES = [
+  {
+    pageNum: 1,
+    id: "profile",
+    title: "Faculty Overview & Hub",
+    shortLabel: "Overview",
+    description: "Academic profile, quick workload summary, and active course portals",
+    badge: "Faculty Hub",
+    icon: LayoutDashboard,
+  },
+  {
+    pageNum: 2,
+    id: "profile-settings",
+    title: "Profile & Research Portfolio",
+    shortLabel: "Bio & Settings",
+    description: "Personal contact details, designation, publications & research interests",
+    badge: "Profile",
+    icon: User,
+  },
+  {
+    pageNum: 3,
+    id: "assigned-courses",
+    title: "Assigned Course Workspaces",
+    shortLabel: "Courses",
+    description: "Active teaching courses, live geofenced attendance & workspaces",
+    badge: "Courses",
+    icon: BookOpen,
+  },
+  {
+    pageNum: 4,
+    id: "routine",
+    title: "Academic Routine & Schedule",
+    shortLabel: "Routine",
+    description: "Weekly lecture timetable, classroom allocation & full routine matrix",
+    badge: "Schedule",
+    icon: Clock,
+  },
+  {
+    pageNum: 5,
+    id: "analytics",
+    title: "Workload & Teaching Analytics",
+    shortLabel: "Analytics",
+    description: "Weekly lecture hours, course distribution & attendance metrics",
+    badge: "Analytics",
+    icon: BarChart3,
+  },
+  {
+    pageNum: 6,
+    id: "notices",
+    title: "Department Notice Board",
+    shortLabel: "Notices",
+    description: "Official circulars, student announcements & notice publishing",
+    badge: "Notices",
+    icon: Bell,
+  },
+];
+
 export default function TeacherDashboardPage() {
   const { data: sessionData, isPending: sessionLoading } = authClient.useSession();
   const user = sessionData?.user;
@@ -93,7 +149,10 @@ export default function TeacherDashboardPage() {
   const [scheduleLoading, setScheduleLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState("All Days");
 
-  // Course Notice Modal State (Teacher top button & notice management)
+  // Pagination Active Page State
+  const [currentPage, setCurrentPage] = useState("profile");
+
+  // Course Notice Modal State
   const [isCourseNoticeModalOpen, setIsCourseNoticeModalOpen] = useState(false);
   const [editingCourseNotice, setEditingCourseNotice] = useState(null);
   const [defaultNoticeCourse, setDefaultNoticeCourse] = useState("");
@@ -185,52 +244,65 @@ export default function TeacherDashboardPage() {
     return () => clearInterval(timer);
   }, []);
 
-  // Collapsible sections state
-  const [collapsedSections, setCollapsedSections] = useState({
-    profile: false,
-    courses: false,
-    routine: false,
-    analytics: false,
-    notices: false,
-  });
-
-  const toggleSection = (key) => setCollapsedSections((p) => ({ ...p, [key]: !p[key] }));
-  const collapseAllSections = () => setCollapsedSections({ profile: true, courses: true, routine: true, analytics: true, notices: true });
-  const expandAllSections = () => setCollapsedSections({ profile: false, courses: false, routine: false, analytics: false, notices: false });
-  const allCollapsed = Object.values(collapsedSections).every(Boolean);
+  // ── Pagination and Hash Navigation Synchronization ──
+  const goToPage = useCallback((pageId) => {
+    if (TEACHER_DASHBOARD_PAGES.some((p) => p.id === pageId)) {
+      setCurrentPage(pageId);
+      if (typeof window !== "undefined") {
+        const newUrl = pageId === "profile" 
+          ? window.location.pathname 
+          : `${window.location.pathname}#${pageId}`;
+        window.history.pushState(null, "", newUrl);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    }
+  }, []);
 
   useEffect(() => {
-    const handleHash = (customId) => {
-      const hash = (typeof customId === "string" ? customId : window.location.hash).replace("#", "");
-      if (!hash) return;
-      if (hash === "profile-settings" || hash === "profile") setCollapsedSections((p) => ({ ...p, profile: false }));
-      if (hash === "assigned-courses" || hash === "courses") setCollapsedSections((p) => ({ ...p, courses: false }));
-      if (hash === "routine") setCollapsedSections((p) => ({ ...p, routine: false }));
-      if (hash === "analytics") setCollapsedSections((p) => ({ ...p, analytics: false }));
-      if (hash === "notices") setCollapsedSections((p) => ({ ...p, notices: false }));
+    if (typeof window !== "undefined") {
+      const rawHash = window.location.hash.replace("#", "");
+      if (rawHash && TEACHER_DASHBOARD_PAGES.some((p) => p.id === rawHash)) {
+        setCurrentPage(rawHash);
+      }
+    }
 
-      setTimeout(() => {
-        const el = document.getElementById(hash);
-        if (el) {
-          el.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
-      }, 60);
-    };
-
-    const handleCustomExpand = (e) => {
-      if (e.detail?.id) {
-        handleHash(e.detail.id);
+    const handleHash = () => {
+      const rawHash = window.location.hash.replace("#", "");
+      if (rawHash && TEACHER_DASHBOARD_PAGES.some((p) => p.id === rawHash)) {
+        setCurrentPage(rawHash);
+        window.scrollTo({ top: 0, behavior: "smooth" });
       }
     };
 
-    handleHash();
+    const handleChangePage = (e) => {
+      const targetId = e?.detail?.sectionId;
+      if (targetId && TEACHER_DASHBOARD_PAGES.some((p) => p.id === targetId)) {
+        setCurrentPage(targetId);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    };
+
     window.addEventListener("hashchange", handleHash);
-    window.addEventListener("dashboard-expand-section", handleCustomExpand);
+    window.addEventListener("popstate", handleHash);
+    window.addEventListener("dashboard-change-page", handleChangePage);
+
     return () => {
       window.removeEventListener("hashchange", handleHash);
-      window.removeEventListener("dashboard-expand-section", handleCustomExpand);
+      window.removeEventListener("popstate", handleHash);
+      window.removeEventListener("dashboard-change-page", handleChangePage);
     };
   }, []);
+
+  // Notify left sidebar whenever currentPage changes
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("dashboard-sync-sidebar", {
+          detail: { sectionId: currentPage },
+        })
+      );
+    }
+  }, [currentPage]);
 
   const syncFormData = (data) => {
     setFormData({
@@ -273,7 +345,6 @@ export default function TeacherDashboardPage() {
         } else if (data.status === "pending" && showFeedback) {
           toast("Status: Still pending department administrator approval.", { icon: "⏳" });
         }
-        // Load schedule for this teacher
         loadSchedule(data);
       } else {
         syncFormData(null);
@@ -300,7 +371,7 @@ export default function TeacherDashboardPage() {
       if (teacherName) params.set("teacherName", teacherName);
       if (email) params.set("email", email);
 
-      const [myRes, allRes, coursesRes] = await Promise.all([
+      const [myRes, allRes] = await Promise.all([
         fetch(`${SERVER_URL}/api/teacher/routine?${params.toString()}`),
         fetch(`${SERVER_URL}/api/routines`),
       ]);
@@ -362,7 +433,6 @@ export default function TeacherDashboardPage() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  // Client-side image optimization & base64 converter
   const handleImageFileChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -381,7 +451,6 @@ export default function TeacherDashboardPage() {
     reader.onload = (event) => {
       const img = new window.Image();
       img.onload = () => {
-        // Optimize on canvas: max 600px width/height for avatar fidelity
         const maxDim = 600;
         let width = img.width;
         let height = img.height;
@@ -414,7 +483,6 @@ export default function TeacherDashboardPage() {
     e.target.value = "";
   };
 
-  // Instant save for profile picture
   const handleQuickSavePhoto = async (newImageUrl) => {
     const targetEmail = user?.email || profile?.email;
     if (!targetEmail) {
@@ -529,7 +597,7 @@ export default function TeacherDashboardPage() {
     setIsEditing(false);
   };
 
-  // ── Routine Scheduled Class Time Validation Helpers ──
+  // Routine Timing Helpers
   const parseSlotMinutes = (slotStr) => {
     if (!slotStr || typeof slotStr !== "string") return null;
     const m = slotStr.match(/^\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*[-\u2013\u2014]\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*$/i);
@@ -585,7 +653,6 @@ export default function TeacherDashboardPage() {
       };
     }
 
-    // Teacher can start attendance from 5 minutes before scheduled start until scheduled end
     if (currentMinutes < slot.startMin - 5) {
       return {
         canTake: false,
@@ -665,7 +732,6 @@ export default function TeacherDashboardPage() {
     const targetDay = cls.day || (cls.slots && cls.slots[0]?.day) || "Saturday";
     const routineId = cls.id || cls.routineId || (cls.slots && cls.slots[0]?.id) || undefined;
 
-    // Validate routine timing
     const timing = getSlotRoutineTiming(targetDay, targetTime);
     if (!timing.canTake) {
       toast.error(timing.reason || "Attendance can only be taken during scheduled routine class time.");
@@ -715,7 +781,6 @@ export default function TeacherDashboardPage() {
 
   const isPending = (profile?.status || user?.status) === "pending";
 
-  // Dynamically group unique courses assigned to this teacher from the routine schedule
   const assignedCourses = useMemo(() => {
     const map = new Map();
     (teacherSchedule || []).forEach((slot) => {
@@ -753,6 +818,13 @@ export default function TeacherDashboardPage() {
     ? teacherSchedule
     : teacherSchedule.filter(s => s.day === selectedDay);
 
+  const { currentDay } = getCurrentDayAndMinutes();
+  const todayClasses = useMemo(() => {
+    return (teacherSchedule || []).filter(
+      (s) => (s.day || "").toLowerCase() === currentDay.toLowerCase()
+    );
+  }, [teacherSchedule, currentDay]);
+
   const displayImage = formData.image || profile?.image || user?.image || null;
   const activeName = profile?.name || user?.name || "Faculty Member";
   const activeDesignation = profile?.designation || user?.designation || "Faculty Member";
@@ -764,12 +836,14 @@ export default function TeacherDashboardPage() {
   if (!sessionLoading && !user && !profile) {
     return (
       <div className="min-h-[50vh] flex flex-col items-center justify-center text-center p-8 space-y-4 bg-white/80 dark:bg-slate-900/80 rounded-3xl border border-slate-200 dark:border-white/10 backdrop-blur-xl">
-        <div className="w-14 h-14 rounded-2xl bg-sky-100 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center">
+        <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
           <User className="w-7 h-7" />
         </div>
         <h2 className="text-xl font-bold text-slate-800 dark:text-white">Faculty Session Required</h2>
-        <p className="text-xs text-slate-500 max-w-md leading-relaxed font-medium">Please sign in with your faculty email and password to access your teaching dashboard, schedule, and profile management.</p>
-        <a href="/login" className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs shadow-md transition-transform hover:scale-105 active:scale-95">
+        <p className="text-xs text-slate-500 max-w-md leading-relaxed font-medium">
+          Please sign in with your faculty email and password to access your teaching dashboard, schedule, and profile management.
+        </p>
+        <a href="/login" className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-600/30 transition-transform hover:scale-105 active:scale-95">
           Sign In Now
         </a>
       </div>
@@ -786,648 +860,942 @@ export default function TeacherDashboardPage() {
     );
   }
 
+  const currentIdx = TEACHER_DASHBOARD_PAGES.findIndex((p) => p.id === currentPage);
+  const activePageObj = TEACHER_DASHBOARD_PAGES[currentIdx >= 0 ? currentIdx : 0];
+  const prevPageObj = currentIdx > 0 ? TEACHER_DASHBOARD_PAGES[currentIdx - 1] : null;
+  const nextPageObj = currentIdx >= 0 && currentIdx < TEACHER_DASHBOARD_PAGES.length - 1 ? TEACHER_DASHBOARD_PAGES[currentIdx + 1] : null;
+
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      {/* Faculty Profile Hero Card */}
-      <div id="profile" className="p-7 sm:p-8 rounded-[2rem] bg-gradient-to-r from-sky-950 via-indigo-950 to-slate-900 text-white shadow-xl relative overflow-hidden scroll-mt-6 border border-white/10">
-        {/* Decorative background glow */}
-        <div className="absolute -right-20 -top-20 w-80 h-80 bg-sky-500/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -left-20 -bottom-20 w-80 h-80 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
-          <div className="flex items-center gap-5">
-            <div className="relative group shrink-0">
-              <div className="h-20 w-20 sm:h-24 sm:w-24 rounded-3xl bg-white/10 backdrop-blur-md flex items-center justify-center text-sky-300 font-extrabold text-3xl border border-white/20 shadow-inner overflow-hidden ring-2 ring-white/10">
-                {displayImage ? (
-                  <img src={displayImage} alt={activeName} className="h-full w-full object-cover" />
-                ) : (
-                  <span>{activeName ? activeName.charAt(0).toUpperCase() : "T"}</span>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsEditing(true);
-                  setTimeout(() => {
-                    fileInputRef.current?.click();
-                    const el = document.getElementById("profile-settings");
-                    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-                  }, 60);
-                }}
-                title="Change Faculty Picture"
-                className="absolute -bottom-1 -right-1 p-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white shadow-lg border border-white/30 transition-transform active:scale-95 cursor-pointer group-hover:scale-110"
-              >
-                <Camera className="w-3.5 h-3.5" />
-              </button>
+    <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-500">
+      {/* ── Top Dashboard Pagination & Section Stepper Bar (Parity with Student Panel) ── */}
+      <div className="bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/90 dark:border-white/10 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-sm space-y-3.5 transition-colors">
+        {/* Top Header Row: Active Section Title, Page Count, and Navigation Steppers */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100 dark:border-white/10">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-200/60 dark:border-indigo-800/60 shadow-xs">
+              {activePageObj && React.createElement(activePageObj.icon, { className: "w-5 h-5" })}
             </div>
-
-            <div className="space-y-1">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/20 text-xs font-semibold text-sky-200 backdrop-blur-md mb-1 border border-sky-400/20">
-                <Presentation className="w-3.5 h-3.5 text-sky-400" />
-                <span>{activeDesignation}</span>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide uppercase bg-indigo-100/80 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
+                  Page {activePageObj?.pageNum || 1} of {TEACHER_DASHBOARD_PAGES.length}
+                </span>
+                <span className="text-xs font-semibold text-slate-400 dark:text-slate-500">•</span>
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 hidden sm:inline">
+                  {activePageObj?.badge}
+                </span>
               </div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-                {activeName}
-              </h1>
-              <p className="text-xs text-sky-200/80 font-medium flex items-center gap-2 flex-wrap">
-                <span>ID: {activeTeacherId}</span>
-                <span>•</span>
-                <span>Domain: {activeSpecialization}</span>
-                {profile?.education && (
-                  <>
-                    <span>•</span>
-                    <span>{profile.education}</span>
-                  </>
-                )}
+              <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
+                {activePageObj?.title}
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium line-clamp-1">
+                {activePageObj?.description}
               </p>
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row lg:flex-col gap-3 w-full lg:w-auto">
-            <div className="flex flex-col gap-2 text-xs font-medium text-slate-300 bg-white/5 p-4 rounded-2xl border border-white/10 backdrop-blur-sm flex-1">
-              <span className="flex items-center gap-2 truncate">
-                <Mail className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                <span className="truncate">{user?.email}</span>
-              </span>
-              <span className="flex items-center gap-2">
-                <Phone className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                <span>{activePhone}</span>
-              </span>
-              <span className="flex items-center gap-2">
-                <MapPin className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                <span className="truncate">Office: {activeOffice}</span>
-              </span>
-            </div>
+          {/* Previous / Next Quick Stepper Buttons */}
+          <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+            <button
+              type="button"
+              onClick={() => prevPageObj && goToPage(prevPageObj.id)}
+              disabled={!prevPageObj}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
+                prevPageObj
+                  ? "bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 border-slate-200/80 dark:border-white/10 shadow-xs cursor-pointer active:scale-95"
+                  : "bg-slate-50 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 border-slate-100 dark:border-white/5 cursor-not-allowed opacity-60"
+              }`}
+              title={prevPageObj ? `Go to Page ${prevPageObj.pageNum}: ${prevPageObj.title}` : "First Page"}
+            >
+              <ChevronLeft className="w-4 h-4" />
+              <span className="hidden xs:inline">Previous</span>
+            </button>
 
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingCourseNotice(null);
-                  setDefaultNoticeCourse("");
-                  setIsCourseNoticeModalOpen(true);
-                }}
-                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                title="Publish Course Notice for Enrolled Students"
-              >
-                <Bell className="w-4 h-4" />
-                <span>Give Course Notice</span>
-              </button>
-              <DashboardCollapseControls
-                onCollapseAll={collapseAllSections}
-                onExpandAll={expandAllSections}
-                allCollapsed={allCollapsed}
-              />
-              <button
-                onClick={() => {
-                  setIsEditing(!isEditing);
-                  const el = document.getElementById("profile-settings");
-                  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-                }}
-                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/20 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-sm"
-              >
-                <Edit3 className="w-4 h-4 text-sky-300" />
-                <span>{isEditing ? "Close Profile Editor" : "Edit Profile Data"}</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => nextPageObj && goToPage(nextPageObj.id)}
+              disabled={!nextPageObj}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
+                nextPageObj
+                  ? "bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-600 shadow-xs shadow-indigo-600/20 cursor-pointer active:scale-95"
+                  : "bg-slate-50 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 border-slate-100 dark:border-white/5 cursor-not-allowed opacity-60"
+              }`}
+              title={nextPageObj ? `Go to Page ${nextPageObj.pageNum}: ${nextPageObj.title}` : "Last Page"}
+            >
+              <span className="hidden xs:inline">Next</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
+        </div>
+
+        {/* 6 Section Step Pills */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-0.5 scrollbar-thin">
+          {TEACHER_DASHBOARD_PAGES.map((page) => {
+            const isCurrent = page.id === currentPage;
+            const Icon = page.icon;
+            return (
+              <button
+                key={page.id}
+                type="button"
+                onClick={() => goToPage(page.id)}
+                className={`group flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer shrink-0 border ${
+                  isCurrent
+                    ? "bg-indigo-600 text-white border-indigo-600 shadow-sm shadow-indigo-600/30 scale-[1.02]"
+                    : "bg-slate-100/90 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-400 border-slate-200/70 dark:border-white/5"
+                }`}
+                title={`Page ${page.pageNum}: ${page.title}`}
+              >
+                <span className={`inline-flex items-center justify-center w-5 h-5 rounded-lg text-[10px] font-black ${
+                  isCurrent 
+                    ? "bg-white/20 text-white" 
+                    : "bg-slate-200/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/60 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"
+                }`}>
+                  {page.pageNum}
+                </span>
+                <Icon className={`w-3.5 h-3.5 shrink-0 ${isCurrent ? "text-white" : "text-slate-500 dark:text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"}`} />
+                <span>{page.shortLabel}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Account Verification Gate / Status Banner */}
-      {isPending ? (
-        <div className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-amber-200/80 dark:border-amber-800/60 shadow-lg space-y-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-start gap-4">
-              <div className="h-12 w-12 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                <AlertCircle className="w-6 h-6" />
-              </div>
-              <div className="space-y-1">
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/60 text-[11px] font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider">
-                  <Clock className="w-3 h-3" />
-                  <span>Awaiting Administrator Approval</span>
-                </div>
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Faculty Registration Under Review</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium max-w-2xl">
-                  Your faculty registration has been submitted and is currently in the <strong>CSE Department Faculty Verification Queue</strong>. Once an administrator verifies and approves your account from the Admin Panel, your teaching workload, lecture attendance controls, and course material dispatcher will be fully unlocked.
-                </p>
-              </div>
-            </div>
+      {/* ── Page 1: Faculty Overview & Academic Hub ── */}
+      {currentPage === "profile" && (
+        <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-300">
+          {/* Faculty Profile Hero Card (Remastered for Light & Dark Theme Excellence) */}
+          <div id="profile" className="p-7 sm:p-8 rounded-[2rem] bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl text-slate-900 dark:text-white shadow-sm relative overflow-hidden scroll-mt-6 border border-slate-200/90 dark:border-white/10 transition-colors">
+            {/* Subtle brand decorative background glows */}
+            <div className="absolute -right-20 -top-20 w-80 h-80 bg-indigo-500/[0.05] dark:bg-indigo-500/15 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -left-20 -bottom-20 w-80 h-80 bg-sky-500/[0.04] dark:bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
 
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => loadProfile(true)}
-                disabled={isRefreshing}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-200 dark:shadow-none transition-colors cursor-pointer"
-              >
-                <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
-                <span>{isRefreshing ? "Checking..." : "Check Approval Status"}</span>
-              </button>
-              <button
-                onClick={handleSignOut}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer"
-              >
-                <LogOut className="w-4 h-4" />
-                <span>Sign Out</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-            <span className="text-xs font-bold text-emerald-900 dark:text-emerald-200">Faculty Account Approved & Verified by Department Admin</span>
-          </div>
-          <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/60 px-3 py-1 rounded-lg">
-            Active Faculty Member
-          </span>
-        </div>
-      )}
-
-      {/* ── Faculty Profile & Information Center ─────────────────── */}
-      <div id="profile-settings" className="p-7 sm:p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-white/10">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-50 dark:bg-sky-950/60 text-xs font-semibold text-sky-600 dark:text-sky-400 mb-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-sky-500" />
-              <span>Faculty Academic Identity Management</span>
-            </div>
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <User className="w-5 h-5 text-sky-600 dark:text-sky-400" />
-              <span>Faculty Profile & Information Center</span>
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
-              Update your academic credentials, office hours, contact numbers, and profile photo.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {!isEditing ? (
-              <button
-                onClick={() => setIsEditing(true)}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold shadow-md shadow-sky-200/50 dark:shadow-sky-950/40 transition-all hover:scale-105 active:scale-95 cursor-pointer"
-              >
-                <Edit3 className="w-4 h-4" />
-                <span>Update Profile Data</span>
-              </button>
-            ) : (
-              <button
-                onClick={handleCancelEdit}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-300 border border-slate-200/80 dark:border-slate-700/80 hover:border-indigo-200 dark:hover:border-indigo-800/60 text-xs font-bold transition-all cursor-pointer shadow-2xs active:scale-95"
-              >
-                <X className="w-4 h-4" />
-                <span>Cancel</span>
-              </button>
-            )}
-            <SectionCollapseToggle
-              isCollapsed={collapsedSections.profile}
-              onToggle={() => toggleSection("profile")}
-              label="Faculty Profile"
-            />
-          </div>
-        </div>
-
-        <CollapsibleBody
-          isCollapsed={collapsedSections.profile}
-          onExpand={() => toggleSection("profile")}
-          sectionName="Faculty Profile & Information Center"
-        >
-        {isEditing ? (
-          /* Profile Edit Form */
-          <form onSubmit={handleUpdateProfile} className="space-y-6">
-            {/* Profile Picture Studio */}
-            <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-sky-50/80 via-indigo-50/50 to-slate-50/80 dark:from-sky-950/40 dark:via-indigo-950/30 dark:to-slate-900/50 border border-sky-100/80 dark:border-white/10 shadow-xs">
-              <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
-                {/* Photo Preview Container */}
+            <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+              <div className="flex items-center gap-5">
                 <div className="relative group shrink-0">
-                  <div className="h-24 w-24 sm:h-28 sm:w-28 rounded-3xl bg-white dark:bg-slate-800 flex items-center justify-center text-sky-600 dark:text-sky-400 font-extrabold text-3xl border-2 border-sky-200 dark:border-sky-800 shadow-md overflow-hidden ring-4 ring-sky-500/10">
-                    {formData.image ? (
-                      <img src={formData.image} alt="Preview" className="h-full w-full object-cover" />
-                    ) : profile?.image ? (
-                      <img src={profile.image} alt="Profile" className="h-full w-full object-cover" />
+                  <div className="h-20 w-20 sm:h-22 sm:w-22 rounded-3xl bg-indigo-50/80 dark:bg-white/10 backdrop-blur-md flex items-center justify-center text-indigo-700 dark:text-indigo-300 font-extrabold text-3xl border border-indigo-200/80 dark:border-white/20 shadow-xs overflow-hidden ring-2 ring-indigo-500/10 dark:ring-white/10">
+                    {displayImage ? (
+                      <img src={displayImage} alt={activeName} className="h-full w-full object-cover" />
                     ) : (
-                      <span>{formData.name?.charAt(0) || activeName.charAt(0) || "T"}</span>
+                      <span>{activeName ? activeName.charAt(0).toUpperCase() : "T"}</span>
                     )}
                   </div>
                   <button
                     type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    title="Choose Picture from Device"
-                    className="absolute -bottom-1 -right-1 p-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white shadow-md border-2 border-white dark:border-slate-900 cursor-pointer transition-transform hover:scale-110 active:scale-95"
+                    onClick={() => {
+                      goToPage("profile-settings");
+                      setIsEditing(true);
+                      setTimeout(() => {
+                        fileInputRef.current?.click();
+                      }, 120);
+                    }}
+                    title="Change Faculty Picture"
+                    className="absolute -bottom-1 -right-1 p-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/30 transition-transform active:scale-95 cursor-pointer group-hover:scale-110"
                   >
-                    <Camera className="w-4 h-4" />
+                    <Camera className="w-3.5 h-3.5" />
                   </button>
                 </div>
 
-                <div className="space-y-2 text-center sm:text-left flex-1">
-                  <div className="flex flex-col sm:flex-row items-center sm:items-baseline gap-2">
-                    <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                      <ImageIcon className="w-4 h-4 text-sky-500" />
-                      <span>Official Faculty Picture</span>
-                    </h4>
-                    <span className="text-[10px] text-slate-400 font-medium">JPEG, PNG, WEBP up to 10MB</span>
+                <div className="space-y-1">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-500/20 text-xs font-semibold text-indigo-700 dark:text-indigo-200 backdrop-blur-md mb-1 border border-indigo-200/80 dark:border-indigo-400/20 shadow-xs">
+                    <Presentation className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                    <span>{activeDesignation}</span>
                   </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed max-w-xl">
-                    Upload your high-resolution portrait photograph. The image will be displayed on student schedules, routine cards, and department rosters.
+                  <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 dark:text-white">
+                    {activeName}
+                  </h1>
+                  <p className="text-xs text-slate-500 dark:text-indigo-200/80 font-medium flex items-center gap-2 flex-wrap">
+                    <span>ID: {activeTeacherId}</span>
+                    <span>•</span>
+                    <span>Domain: {activeSpecialization}</span>
+                    {profile?.education && (
+                      <>
+                        <span>•</span>
+                        <span>{profile.education}</span>
+                      </>
+                    )}
                   </p>
+                </div>
+              </div>
 
-                  {/* Hidden File Input */}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageFileChange}
-                    className="hidden"
-                  />
+              <div className="flex flex-col sm:flex-row lg:flex-col gap-3 w-full lg:w-auto">
+                <div className="flex flex-col gap-2 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-50/90 dark:bg-white/5 p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 shadow-xs flex-1">
+                  <span className="flex items-center gap-2 truncate">
+                    <Mail className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                    <span className="truncate">{user?.email}</span>
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <Phone className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                    <span>{activePhone}</span>
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <MapPin className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                    <span className="truncate">Office: {activeOffice}</span>
+                  </span>
+                </div>
 
-                  {/* Action Buttons for Picture */}
-                  <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-1">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingCourseNotice(null);
+                      setDefaultNoticeCourse("");
+                      setIsCourseNoticeModalOpen(true);
+                    }}
+                    className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-600/25 transition-all hover:scale-105 active:scale-95 cursor-pointer flex-1"
+                    title="Publish Course Notice for Enrolled Students"
+                  >
+                    <Bell className="w-4 h-4" />
+                    <span>Give Course Notice</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      goToPage("profile-settings");
+                      setIsEditing(true);
+                    }}
+                    className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 border border-slate-200/80 dark:border-white/10 font-bold text-xs transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-xs flex-1"
+                  >
+                    <Edit3 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    <span>Edit Profile Data</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Account Verification Gate / Status Banner */}
+          {isPending ? (
+            <div className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-amber-200/80 dark:border-amber-800/60 shadow-lg space-y-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-start gap-4">
+                  <div className="h-12 w-12 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                    <AlertCircle className="w-6 h-6" />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/60 text-[11px] font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider">
+                      <Clock className="w-3 h-3" />
+                      <span>Awaiting Administrator Approval</span>
+                    </div>
+                    <h3 className="text-xl font-bold text-slate-900 dark:text-white">Registration Under Review</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium max-w-2xl">
+                      Your faculty registration has been submitted and is currently in the <strong>CSE Department Approval Queue</strong>. Once verified, full classroom attendance launch, grading, routine studio, and student notices will be unlocked.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => loadProfile(true)}
+                    disabled={isRefreshing}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-200 dark:shadow-none transition-colors cursor-pointer"
+                  >
+                    <Clock className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
+                    <span>{isRefreshing ? "Checking..." : "Check Status"}</span>
+                  </button>
+                  <button
+                    onClick={handleSignOut}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    <span>Sign Out</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                <span className="text-xs font-bold text-emerald-900 dark:text-emerald-200">
+                  Faculty Account Approved & Verified by Department Admin
+                </span>
+              </div>
+              <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/60 px-3 py-1 rounded-lg">
+                Active Faculty Member
+              </span>
+            </div>
+          )}
+
+          {/* Quick Metrics & Workload Stats Grid */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div 
+              onClick={() => goToPage("assigned-courses")}
+              className="p-5 rounded-2xl bg-white/90 dark:bg-slate-900/80 border border-slate-200/80 dark:border-white/10 shadow-xs hover:border-indigo-400 dark:hover:border-indigo-500/60 transition cursor-pointer group"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Assigned Courses</span>
+                <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform">
+                  <BookOpen className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-black text-slate-900 dark:text-white">
+                  {assignedCourses.length}
+                </span>
+                <span className="text-[11px] text-slate-400 font-medium">Active Portals</span>
+              </div>
+            </div>
+
+            <div 
+              onClick={() => goToPage("routine")}
+              className="p-5 rounded-2xl bg-white/90 dark:bg-slate-900/80 border border-slate-200/80 dark:border-white/10 shadow-xs hover:border-blue-400 dark:hover:border-blue-500/60 transition cursor-pointer group"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Weekly Lectures</span>
+                <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform">
+                  <Clock className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-black text-slate-900 dark:text-white">
+                  {teacherSchedule.length}
+                </span>
+                <span className="text-[11px] text-slate-400 font-medium">Class Slots</span>
+              </div>
+            </div>
+
+            <div 
+              onClick={() => goToPage("assigned-courses")}
+              className="p-5 rounded-2xl bg-white/90 dark:bg-slate-900/80 border border-slate-200/80 dark:border-white/10 shadow-xs hover:border-emerald-400 dark:hover:border-emerald-500/60 transition cursor-pointer group"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Live Attendance</span>
+                <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform">
+                  <UserCheck className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-black text-slate-900 dark:text-white">
+                  {Object.keys(activeAttendanceSessions).length}
+                </span>
+                <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold">
+                  {Object.keys(activeAttendanceSessions).length > 0 ? "Running 10m" : "Standby"}
+                </span>
+              </div>
+            </div>
+
+            <div 
+              onClick={() => goToPage("notices")}
+              className="p-5 rounded-2xl bg-white/90 dark:bg-slate-900/80 border border-slate-200/80 dark:border-white/10 shadow-xs hover:border-purple-400 dark:hover:border-purple-500/60 transition cursor-pointer group"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Circulars & Notices</span>
+                <div className="p-2 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 group-hover:scale-110 transition-transform">
+                  <Bell className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-black text-slate-900 dark:text-white">
+                  Board
+                </span>
+                <span className="text-[11px] text-slate-400 font-medium">Broadcasts</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Today's Routine Schedule Preview */}
+          <div className="p-6 sm:p-7 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/90 dark:border-white/10 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5 border border-indigo-200/60 dark:border-indigo-800/60">
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>Today's Lecture Agenda • {currentDay}</span>
+                </div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                  Today's Scheduled Classes
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => goToPage("routine")}
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+              >
+                <span>View Full Weekly Routine</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {todayClasses.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {todayClasses.map((cls, idx) => {
+                  const timing = getSlotRoutineTiming(cls.day, cls.time);
+                  const isLive = activeAttendanceSessions[cls.code.toUpperCase()]?.isOpen;
+                  return (
+                    <div 
+                      key={cls.id || idx}
+                      className="p-4 rounded-2xl bg-slate-50/90 dark:bg-slate-800/60 border border-slate-200/80 dark:border-white/5 space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
+                          {cls.code}
+                        </span>
+                        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                          {cls.semester}
+                        </span>
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                          {cls.title}
+                        </h4>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          {cls.time} • Room {cls.room}
+                        </p>
+                      </div>
+                      <div className="pt-1 flex items-center justify-between">
+                        <span className={`text-[11px] font-bold ${
+                          isLive 
+                            ? "text-emerald-600 dark:text-emerald-400 animate-pulse" 
+                            : timing.canTake 
+                            ? "text-indigo-600 dark:text-indigo-400" 
+                            : "text-slate-400"
+                        }`}>
+                          {isLive ? `Live: ${formatTimer(activeAttendanceSessions[cls.code.toUpperCase()].secondsLeft)}` : timing.label}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleStartAttendance(cls)}
+                          disabled={isLive || !timing.canTake || startingAttendanceCode === cls.code.toUpperCase()}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                            isLive 
+                              ? "bg-emerald-600 text-white cursor-default" 
+                              : timing.canTake 
+                              ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-xs active:scale-95" 
+                              : "bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed opacity-60"
+                          }`}
+                        >
+                          {isLive ? "Active" : "Start Attendance"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="py-8 px-4 text-center rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-200 dark:border-slate-800">
+                <Coffee className="w-8 h-8 text-indigo-400 mx-auto mb-2" />
+                <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  No lectures scheduled for today ({currentDay}).
+                </p>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Enjoy your academic research, curriculum preparation & student consultation hours.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Quick Assigned Courses Portals */}
+          <div className="p-6 sm:p-7 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/90 dark:border-white/10 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5 border border-indigo-200/60 dark:border-indigo-800/60">
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span>Course Portals ({assignedCourses.length} Assigned)</span>
+                </div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                  Active Course Workspaces
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => goToPage("assigned-courses")}
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+              >
+                <span>View All Course Details</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {assignedCourses.map((c) => (
+                <Link
+                  key={c.code}
+                  href={`/dashboard/teacher/courses/${encodeURIComponent(c.code)}`}
+                  className="p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/50 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 border border-slate-200/80 dark:border-white/5 hover:border-indigo-300 dark:hover:border-indigo-800/80 transition-all duration-200 group flex flex-col justify-between"
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono font-black text-xs px-2.5 py-1 rounded-lg bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
+                        {c.code}
+                      </span>
+                      <span className="text-[11px] font-semibold text-slate-400">
+                        {c.semester}
+                      </span>
+                    </div>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                      {c.title}
+                    </h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {c.slots?.length || 1} weekly lecture slot{c.slots?.length === 1 ? "" : "s"}
+                    </p>
+                  </div>
+                  <div className="pt-3 border-t border-slate-200/60 dark:border-white/5 mt-3 flex items-center justify-between text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                    <span>Enter Workspace</span>
+                    <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Page 2: Faculty Profile & Settings Editor ── */}
+      {currentPage === "profile-settings" && (
+        <div id="profile-settings" className="p-7 sm:p-8 rounded-[2rem] bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/90 dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6 animate-in fade-in duration-300">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-white/10">
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5 border border-indigo-200/60 dark:border-indigo-800/60">
+                <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                <span>Faculty Academic Identity Management</span>
+              </div>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <User className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                <span>Faculty Profile & Research Portfolio</span>
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                Update your academic credentials, office hours, contact numbers, and profile photo.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {!isEditing ? (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/30 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                >
+                  <Edit3 className="w-4 h-4" />
+                  <span>Update Profile Data</span>
+                </button>
+              ) : (
+                <button
+                  onClick={handleCancelEdit}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-300 border border-slate-200/80 dark:border-slate-700/80 text-xs font-bold transition-all cursor-pointer active:scale-95"
+                >
+                  <X className="w-4 h-4" />
+                  <span>Cancel</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {isEditing ? (
+            /* Profile Edit Form */
+            <form onSubmit={handleUpdateProfile} className="space-y-6">
+              {/* Profile Picture Studio */}
+              <div className="p-5 sm:p-6 rounded-3xl bg-slate-50/90 dark:bg-slate-800/60 border border-slate-200/80 dark:border-white/10 shadow-xs">
+                <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
+                  <div className="relative group shrink-0">
+                    <div className="h-24 w-24 sm:h-28 sm:w-28 rounded-3xl bg-white dark:bg-slate-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-extrabold text-3xl border-2 border-indigo-200 dark:border-indigo-800 shadow-md overflow-hidden ring-4 ring-indigo-500/10">
+                      {formData.image ? (
+                        <img src={formData.image} alt="Preview" className="h-full w-full object-cover" />
+                      ) : profile?.image ? (
+                        <img src={profile.image} alt="Profile" className="h-full w-full object-cover" />
+                      ) : (
+                        <span>{formData.name?.charAt(0) || activeName.charAt(0) || "T"}</span>
+                      )}
+                    </div>
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold transition-all shadow-xs active:scale-95 cursor-pointer"
+                      title="Choose Picture from Device"
+                      className="absolute -bottom-1 -right-1 p-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-md border-2 border-white dark:border-slate-900 cursor-pointer transition-transform hover:scale-110 active:scale-95"
                     >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>Upload Device Photo</span>
-                    </button>
-
-                    {(formData.image || profile?.image) && (
-                      <button
-                        type="button"
-                        onClick={() => handleQuickSavePhoto()}
-                        disabled={isUploadingPhoto}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-xs active:scale-95 cursor-pointer disabled:opacity-50"
-                      >
-                        <Save className="w-3.5 h-3.5" />
-                        <span>{isUploadingPhoto ? "Saving..." : "Save Picture Now"}</span>
-                      </button>
-                    )}
-
-                    {(formData.image || profile?.image) && (
-                      <button
-                        type="button"
-                        onClick={handleRemovePhoto}
-                        disabled={isUploadingPhoto}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 text-rose-600 dark:text-rose-400 text-xs font-bold border border-rose-200 dark:border-rose-900 transition-all cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>Remove Picture</span>
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => setShowUrlInput(!showUrlInput)}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-slate-500 dark:text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 text-xs font-semibold transition-colors cursor-pointer"
-                    >
-                      <Link2 className="w-3 h-3" />
-                      <span>{showUrlInput ? "Hide URL input" : "Or use web URL"}</span>
+                      <Camera className="w-4 h-4" />
                     </button>
                   </div>
 
-                  {/* Optional Image URL Input */}
-                  {showUrlInput && (
-                    <div className="pt-2 flex items-center gap-2 max-w-md animate-in fade-in duration-200">
-                      <input
-                        type="url"
-                        placeholder="https://example.com/my-photo.jpg"
-                        value={formData.image}
-                        onChange={(e) => setFormData((prev) => ({ ...prev, image: e.target.value }))}
-                        className="flex-1 h-9 px-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-white outline-none focus:border-sky-500"
-                      />
+                  <div className="space-y-2 text-center sm:text-left flex-1">
+                    <div className="flex flex-col sm:flex-row items-center sm:items-baseline gap-2">
+                      <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <ImageIcon className="w-4 h-4 text-indigo-500" />
+                        <span>Official Faculty Picture</span>
+                      </h4>
+                      <span className="text-[10px] text-slate-400 font-medium">JPEG, PNG, WEBP up to 10MB</span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed max-w-xl">
+                      Upload your portrait photograph. The image is displayed on student schedules, routine cards, and department rosters.
+                    </p>
+
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageFileChange}
+                      className="hidden"
+                    />
+
+                    <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-1">
                       <button
                         type="button"
-                        onClick={() => handleQuickSavePhoto()}
-                        disabled={!formData.image || isUploadingPhoto}
-                        className="h-9 px-3 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold cursor-pointer disabled:opacity-50"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-xs active:scale-95 cursor-pointer"
                       >
-                        Apply
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Upload Device Photo</span>
+                      </button>
+
+                      {(formData.image || profile?.image) && (
+                        <button
+                          type="button"
+                          onClick={() => handleQuickSavePhoto()}
+                          disabled={isUploadingPhoto}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-xs active:scale-95 cursor-pointer disabled:opacity-50"
+                        >
+                          <Save className="w-3.5 h-3.5" />
+                          <span>{isUploadingPhoto ? "Saving..." : "Save Picture Now"}</span>
+                        </button>
+                      )}
+
+                      {(formData.image || profile?.image) && (
+                        <button
+                          type="button"
+                          onClick={handleRemovePhoto}
+                          disabled={isUploadingPhoto}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 text-rose-600 dark:text-rose-400 text-xs font-bold border border-rose-200 dark:border-rose-900 transition-all cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Remove Picture</span>
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => setShowUrlInput(!showUrlInput)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs font-semibold transition-colors cursor-pointer"
+                      >
+                        <Link2 className="w-3 h-3" />
+                        <span>{showUrlInput ? "Hide URL input" : "Or use web URL"}</span>
                       </button>
                     </div>
-                  )}
+
+                    {showUrlInput && (
+                      <div className="pt-2 flex items-center gap-2 max-w-md animate-in fade-in duration-200">
+                        <input
+                          type="url"
+                          placeholder="https://example.com/my-photo.jpg"
+                          value={formData.image}
+                          onChange={(e) => setFormData((prev) => ({ ...prev, image: e.target.value }))}
+                          className="flex-1 h-9 px-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-white outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Profile Input Fields */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              {/* Full Name */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Full Name <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Dr. John Smith"
-                  required
-                  className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-sky-500"
-                />
+              {/* Identity & Department Credentials Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Full Name <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleInputChange}
+                    required
+                    placeholder="Prof. Dr. Firstname Lastname"
+                    className="w-full h-11 px-3.5 rounded-xl bg-slate-50/90 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:border-indigo-500 transition-colors"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Teacher ID / Department Code
+                  </label>
+                  <input
+                    type="text"
+                    name="teacherId"
+                    value={formData.teacherId}
+                    onChange={handleInputChange}
+                    placeholder="T-1002"
+                    className="w-full h-11 px-3.5 rounded-xl bg-slate-50/90 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:border-indigo-500 transition-colors"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Academic Designation
+                  </label>
+                  <select
+                    name="designation"
+                    value={formData.designation}
+                    onChange={handleInputChange}
+                    className="w-full h-11 px-3.5 rounded-xl bg-slate-50/90 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:border-indigo-500 transition-colors cursor-pointer"
+                  >
+                    {DESIGNATIONS.map((d) => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Primary Specialization / Research Domain
+                  </label>
+                  <input
+                    type="text"
+                    name="specialization"
+                    value={formData.specialization}
+                    onChange={handleInputChange}
+                    placeholder="e.g. Distributed Systems, Artificial Intelligence"
+                    className="w-full h-11 px-3.5 rounded-xl bg-slate-50/90 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:border-indigo-500 transition-colors"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Office / Faculty Chamber Room
+                  </label>
+                  <input
+                    type="text"
+                    name="officeRoom"
+                    value={formData.officeRoom}
+                    onChange={handleInputChange}
+                    placeholder="e.g. Room 402, CSE Academic Building"
+                    className="w-full h-11 px-3.5 rounded-xl bg-slate-50/90 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:border-indigo-500 transition-colors"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Phone Number
+                  </label>
+                  <input
+                    type="tel"
+                    name="phone"
+                    value={formData.phone}
+                    onChange={handleInputChange}
+                    placeholder="+8801700000000"
+                    className="w-full h-11 px-3.5 rounded-xl bg-slate-50/90 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:border-indigo-500 transition-colors"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Joining Date
+                  </label>
+                  <input
+                    type="date"
+                    name="joiningDate"
+                    value={formData.joiningDate}
+                    onChange={handleInputChange}
+                    className="w-full h-11 px-3.5 rounded-xl bg-slate-50/90 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:border-indigo-500 transition-colors"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Blood Group
+                  </label>
+                  <select
+                    name="bloodGroup"
+                    value={formData.bloodGroup}
+                    onChange={handleInputChange}
+                    className="w-full h-11 px-3.5 rounded-xl bg-slate-50/90 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:border-indigo-500 transition-colors cursor-pointer"
+                  >
+                    <option value="">Select Blood Group</option>
+                    {BLOOD_GROUPS.map((bg) => (
+                      <option key={bg} value={bg}>{bg}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
-              {/* Teacher ID */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Faculty / Teacher ID
-                </label>
-                <input
-                  type="text"
-                  name="teacherId"
-                  value={formData.teacherId}
-                  onChange={handleInputChange}
-                  placeholder="e.g. T-101"
-                  className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-sky-500"
-                />
+              {/* Bio & Academic Background */}
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Short Biography & Research Overview
+                  </label>
+                  <textarea
+                    name="bio"
+                    rows={3}
+                    value={formData.bio}
+                    onChange={handleInputChange}
+                    placeholder="Brief overview of teaching philosophy, academic achievements, and research interests..."
+                    className="w-full p-3.5 rounded-xl bg-slate-50/90 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:border-indigo-500 transition-colors resize-none"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Educational Qualifications
+                  </label>
+                  <textarea
+                    name="education"
+                    rows={2}
+                    value={formData.education}
+                    onChange={handleInputChange}
+                    placeholder="e.g. Ph.D. in Computer Engineering (2018), M.Sc. in CSE (2014), B.Sc. in CSE (2011)"
+                    className="w-full p-3.5 rounded-xl bg-slate-50/90 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:border-indigo-500 transition-colors resize-none"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Research Interests & Publications
+                  </label>
+                  <textarea
+                    name="researchInterests"
+                    rows={2}
+                    value={formData.researchInterests}
+                    onChange={handleInputChange}
+                    placeholder="e.g. Edge AI, Microservices Architecture, Cloud Computing, Neural Networks"
+                    className="w-full p-3.5 rounded-xl bg-slate-50/90 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:border-indigo-500 transition-colors resize-none"
+                  />
+                </div>
               </div>
 
-              {/* Designation */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Academic Designation
-                </label>
-                <select
-                  name="designation"
-                  value={formData.designation}
-                  onChange={handleInputChange}
-                  className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-sky-500"
+              {/* Social and Academic Links */}
+              <div className="space-y-3 pt-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Academic & Professional Links
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <FaGithub className="w-3.5 h-3.5" />
+                      <span>GitHub Profile URL</span>
+                    </label>
+                    <input
+                      type="url"
+                      name="github"
+                      value={formData.github}
+                      onChange={handleInputChange}
+                      placeholder="https://github.com/username"
+                      className="w-full h-11 px-3.5 rounded-xl bg-slate-50/90 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:border-indigo-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <FaLinkedin className="w-3.5 h-3.5 text-blue-500" />
+                      <span>LinkedIn Profile URL</span>
+                    </label>
+                    <input
+                      type="url"
+                      name="linkedin"
+                      value={formData.linkedin}
+                      onChange={handleInputChange}
+                      placeholder="https://linkedin.com/in/username"
+                      className="w-full h-11 px-3.5 rounded-xl bg-slate-50/90 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:border-indigo-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <GraduationCap className="w-3.5 h-3.5 text-indigo-500" />
+                      <span>Google Scholar URL</span>
+                    </label>
+                    <input
+                      type="url"
+                      name="googleScholar"
+                      value={formData.googleScholar}
+                      onChange={handleInputChange}
+                      placeholder="https://scholar.google.com/citations?user=..."
+                      className="w-full h-11 px-3.5 rounded-xl bg-slate-50/90 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:border-indigo-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <Globe className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>Personal Portfolio / Lab Website</span>
+                    </label>
+                    <input
+                      type="url"
+                      name="website"
+                      value={formData.website}
+                      onChange={handleInputChange}
+                      placeholder="https://faculty.dept.edu/~name"
+                      className="w-full h-11 px-3.5 rounded-xl bg-slate-50/90 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Form Action Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200/80 dark:border-white/10">
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  className="px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition-all cursor-pointer"
                 >
-                  {DESIGNATIONS.map((des) => (
-                    <option key={des} value={des}>{des}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Specialization */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Specialization & Domain
-                </label>
-                <input
-                  type="text"
-                  name="specialization"
-                  value={formData.specialization}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Artificial Intelligence & Distributed Systems"
-                  className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-sky-500"
-                />
-              </div>
-
-              {/* Office Room */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Office / Cabin Room
-                </label>
-                <input
-                  type="text"
-                  name="officeRoom"
-                  value={formData.officeRoom}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Room 402, Academic Bldg 2"
-                  className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-sky-500"
-                />
-              </div>
-
-              {/* Phone */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Contact Phone Number
-                </label>
-                <input
-                  type="tel"
-                  name="phone"
-                  value={formData.phone}
-                  onChange={handleInputChange}
-                  placeholder="+880 1711-000000"
-                  className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-sky-500"
-                />
-              </div>
-
-              {/* Highest Degree */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Highest Degree / Qualifications
-                </label>
-                <input
-                  type="text"
-                  name="education"
-                  value={formData.education}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Ph.D. in Computer Science (BUET)"
-                  className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-sky-500"
-                />
-              </div>
-
-              {/* Joining Date */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Department Joining Date
-                </label>
-                <input
-                  type="date"
-                  name="joiningDate"
-                  value={formData.joiningDate}
-                  onChange={handleInputChange}
-                  className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-sky-500"
-                />
-              </div>
-
-              {/* Blood Group */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Blood Group
-                </label>
-                <select
-                  name="bloodGroup"
-                  value={formData.bloodGroup}
-                  onChange={handleInputChange}
-                  className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-sky-500"
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/30 transition-all hover:scale-105 active:scale-95 cursor-pointer disabled:opacity-50"
                 >
-                  <option value="">Select Blood Group</option>
-                  {BLOOD_GROUPS.map((bg) => (
-                    <option key={bg} value={bg}>{bg}</option>
-                  ))}
-                </select>
+                  <Save className="w-4 h-4" />
+                  <span>{isSaving ? "Saving..." : "Save Profile Changes"}</span>
+                </button>
+              </div>
+            </form>
+          ) : (
+            /* Read-Only Profile View & Public Portfolio Summary */
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/80 dark:border-white/5 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Designation</span>
+                  <p className="text-sm font-bold text-slate-900 dark:text-white">{activeDesignation}</p>
+                </div>
+                <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/80 dark:border-white/5 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Specialization</span>
+                  <p className="text-sm font-bold text-slate-900 dark:text-white">{activeSpecialization}</p>
+                </div>
+                <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/80 dark:border-white/5 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Office Location</span>
+                  <p className="text-sm font-bold text-slate-900 dark:text-white">{activeOffice}</p>
+                </div>
+                <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/80 dark:border-white/5 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Contact Phone</span>
+                  <p className="text-sm font-bold text-slate-900 dark:text-white">{activePhone}</p>
+                </div>
+                <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/80 dark:border-white/5 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Joining Date</span>
+                  <p className="text-sm font-bold text-slate-900 dark:text-white">{profile?.joiningDate || "Not recorded"}</p>
+                </div>
+                <div className="p-4 rounded-2xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/80 dark:border-white/5 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Blood Group</span>
+                  <p className="text-sm font-bold text-slate-900 dark:text-white">{profile?.bloodGroup || "Not specified"}</p>
+                </div>
               </div>
 
-              {/* Address */}
-              <div className="space-y-1.5 sm:col-span-2 lg:col-span-3">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Campus / Residential Address
-                </label>
-                <input
-                  type="text"
-                  name="address"
-                  value={formData.address}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Teachers Quarters, PUST Campus, Pabna"
-                  className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-sky-500"
-                />
-              </div>
+              {profile?.bio && (
+                <div className="p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/80 dark:border-white/5 space-y-1.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Biography</span>
+                  <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">{profile.bio}</p>
+                </div>
+              )}
 
-              {/* Bio & Research Statement */}
-              <div className="space-y-1.5 sm:col-span-2 lg:col-span-3">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Academic Biography & Research Summary
-                </label>
-                <textarea
-                  name="bio"
-                  rows={3}
-                  value={formData.bio}
-                  onChange={handleInputChange}
-                  placeholder="Brief overview of teaching philosophy, active research domains, publications, and laboratory groups..."
-                  className="w-full p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-sky-500 resize-none"
-                />
-              </div>
+              {profile?.education && (
+                <div className="p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/80 dark:border-white/5 space-y-1.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Education</span>
+                  <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">{profile.education}</p>
+                </div>
+              )}
 
-              {/* Academic & Social Profiles */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Google Scholar / Research URL
-                </label>
-                <input
-                  type="url"
-                  name="googleScholar"
-                  value={formData.googleScholar}
-                  onChange={handleInputChange}
-                  placeholder="https://scholar.google.com/citations?..."
-                  className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-sky-500"
-                />
-              </div>
+              {profile?.researchInterests && (
+                <div className="p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/80 dark:border-white/5 space-y-1.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Research & Publications</span>
+                  <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">{profile.researchInterests}</p>
+                </div>
+              )}
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  LinkedIn Profile URL
-                </label>
-                <input
-                  type="url"
-                  name="linkedin"
-                  value={formData.linkedin}
-                  onChange={handleInputChange}
-                  placeholder="https://linkedin.com/in/..."
-                  className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-sky-500"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  GitHub Profile URL
-                </label>
-                <input
-                  type="url"
-                  name="github"
-                  value={formData.github}
-                  onChange={handleInputChange}
-                  placeholder="https://github.com/..."
-                  className="w-full h-11 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-sky-500"
-                />
-              </div>
-            </div>
-
-            {/* Form Footer Action Buttons */}
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-white/10">
-              <button
-                type="button"
-                onClick={handleCancelEdit}
-                disabled={isSaving}
-                className="px-5 py-2.5 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300 border border-slate-200/80 dark:border-slate-700/80 hover:border-indigo-200 dark:hover:border-indigo-800/60 font-bold text-xs transition-all cursor-pointer shadow-2xs active:scale-95"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold shadow-md shadow-sky-200/50 dark:shadow-none transition-all hover:scale-105 active:scale-95 cursor-pointer disabled:opacity-50"
-              >
-                <Save className="w-4 h-4" />
-                <span>{isSaving ? "Saving Changes..." : "Save Profile Changes"}</span>
-              </button>
-            </div>
-          </form>
-        ) : (
-          /* Static Display Mode with Details Cards */
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Card 1: Academic Credentials */}
-            <div className="p-6 rounded-2xl bg-slate-50/70 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 space-y-4">
-              <div className="flex items-center gap-2 pb-2 border-b border-slate-200/60 dark:border-slate-700/60">
-                <GraduationCap className="w-4 h-4 text-sky-500" />
-                <h4 className="font-bold text-sm text-slate-900 dark:text-white">Academic Details</h4>
-              </div>
-              <div className="space-y-2 text-xs">
-                <div>
-                  <span className="text-slate-400 font-medium block">Designation</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-100">{activeDesignation}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 font-medium block">Department ID</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-100">{activeTeacherId}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 font-medium block">Specialization</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-100">{activeSpecialization}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 font-medium block">Education / Degree</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-100">{profile?.education || "Not specified"}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 font-medium block">Joining Date</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-100">{profile?.joiningDate || "Not recorded"}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Card 2: Contact & Office */}
-            <div className="p-6 rounded-2xl bg-slate-50/70 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 space-y-4">
-              <div className="flex items-center gap-2 pb-2 border-b border-slate-200/60 dark:border-slate-700/60">
-                <MapPin className="w-4 h-4 text-sky-500" />
-                <h4 className="font-bold text-sm text-slate-900 dark:text-white">Office & Contact</h4>
-              </div>
-              <div className="space-y-2 text-xs">
-                <div>
-                  <span className="text-slate-400 font-medium block">Office / Cabin</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-100">{activeOffice}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 font-medium block">Official Email</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-100 truncate block">{user?.email}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 font-medium block">Phone Number</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-100">{activePhone}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 font-medium block">Residential Location</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-100">{profile?.address || "PUST Campus"}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 font-medium block">Blood Group</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-100">{profile?.bloodGroup || "Not specified"}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Card 3: Research & Social Profiles */}
-            <div className="p-6 rounded-2xl bg-slate-50/70 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 space-y-4">
-              <div className="flex items-center gap-2 pb-2 border-b border-slate-200/60 dark:border-slate-700/60">
-                <BookOpen className="w-4 h-4 text-sky-500" />
-                <h4 className="font-bold text-sm text-slate-900 dark:text-white">Bio & Web Profiles</h4>
-              </div>
-              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed italic">
-                "{profile?.bio || "No academic bio provided yet. Click 'Update Profile Data' to add your research summary, active labs, and teaching philosophy."}"
-              </p>
-              <div className="pt-2 flex flex-wrap items-center gap-2">
-                {profile?.googleScholar && (
+              {/* Social links */}
+              <div className="flex items-center gap-3 flex-wrap pt-2">
+                {profile?.github && (
                   <a
-                    href={profile.googleScholar}
+                    href={profile.github}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 text-xs font-semibold hover:underline"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs font-bold transition-all border border-slate-200/80 dark:border-white/5"
                   >
-                    <BookOpen className="w-3.5 h-3.5" />
-                    <span>Google Scholar</span>
+                    <FaGithub className="w-3.5 h-3.5" />
+                    <span>GitHub</span>
                   </a>
                 )}
                 {profile?.linkedin && (
@@ -1435,21 +1803,21 @@ export default function TeacherDashboardPage() {
                     href={profile.linkedin}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-xs font-semibold hover:underline"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 text-blue-700 dark:text-blue-300 text-xs font-bold transition-all border border-blue-200/60 dark:border-blue-900/60"
                   >
                     <FaLinkedin className="w-3.5 h-3.5" />
                     <span>LinkedIn</span>
                   </a>
                 )}
-                {profile?.github && (
+                {profile?.googleScholar && (
                   <a
-                    href={profile.github}
+                    href={profile.googleScholar}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold hover:underline"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 text-xs font-bold transition-all border border-indigo-200/60 dark:border-indigo-900/60"
                   >
-                    <FaGithub className="w-3.5 h-3.5" />
-                    <span>GitHub</span>
+                    <GraduationCap className="w-3.5 h-3.5" />
+                    <span>Google Scholar</span>
                   </a>
                 )}
                 {profile?.website && (
@@ -1457,718 +1825,414 @@ export default function TeacherDashboardPage() {
                     href={profile.website}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-xs font-semibold hover:underline"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 text-xs font-bold transition-all border border-emerald-200/60 dark:border-emerald-900/60"
                   >
                     <Globe className="w-3.5 h-3.5" />
-                    <span>Website</span>
+                    <span>Lab / Website</span>
                   </a>
                 )}
               </div>
             </div>
-          </div>
-        )}
-        </CollapsibleBody>
-      </div>
-
-      {/* ── Dynamic My Assigned Courses Section (Synchronized with Routine) ── */}
-      <div id="assigned-courses" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-50 dark:bg-sky-950/60 text-xs font-semibold text-sky-600 dark:text-sky-400 mb-1.5">
-              <BookOpen className="w-3.5 h-3.5 text-sky-500" />
-              <span>Dynamic Course Workspaces • Assigned by Admin</span>
-            </div>
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">My Assigned Courses</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-              Courses dynamically assigned to you in the academic routine. Select any course to access its dedicated workspace for individual attendance tracking, lecture materials, and coursework assignments.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-bold text-sky-600 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/60 px-3 py-1.5 rounded-xl ring-1 ring-sky-200 dark:ring-sky-800">
-              {assignedCourses.length} Assigned {assignedCourses.length === 1 ? "Course" : "Courses"}
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                setEditingCourseNotice(null);
-                setDefaultNoticeCourse("");
-                setIsCourseNoticeModalOpen(true);
-              }}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-all hover:scale-105 active:scale-95 cursor-pointer"
-              title="Broadcast notice to students of any course"
-            >
-              <Bell className="w-3.5 h-3.5" />
-              <span>Give Course Notice</span>
-            </button>
-            <button
-              onClick={() => loadProfile(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
-              title="Refresh Assigned Courses"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${scheduleLoading ? "animate-spin text-sky-500" : ""}`} />
-              <span>Sync</span>
-            </button>
-            <SectionCollapseToggle
-              isCollapsed={collapsedSections.courses}
-              onToggle={() => toggleSection("courses")}
-              label="Assigned Courses"
-            />
-          </div>
+          )}
         </div>
+      )}
 
-        <CollapsibleBody
-          isCollapsed={collapsedSections.courses}
-          onExpand={() => toggleSection("courses")}
-          sectionName="My Assigned Courses"
-        >
+      {/* ── Page 3: Assigned Course Workspaces ── */}
+      {currentPage === "assigned-courses" && (
+        <div id="assigned-courses" className="p-7 sm:p-8 rounded-[2rem] bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/90 dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6 animate-in fade-in duration-300">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-white/10">
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5 border border-indigo-200/60 dark:border-indigo-800/60">
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>Dynamic Routine Modules • Assigned by Admin</span>
+              </div>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                My Assigned Courses
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                Courses dynamically assigned to you in the academic routine. Select any course to access its dedicated workspace for individual attendance tracking, lecture materials, and coursework assignments.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 px-3 py-1.5 rounded-xl border border-indigo-200/80 dark:border-indigo-800/60 shadow-xs">
+                {assignedCourses.length} Assigned {assignedCourses.length === 1 ? "Course" : "Courses"}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingCourseNotice(null);
+                  setDefaultNoticeCourse("");
+                  setIsCourseNoticeModalOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-sm shadow-indigo-600/30 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                title="Broadcast notice to students of any course"
+              >
+                <Bell className="w-3.5 h-3.5" />
+                <span>Give Course Notice</span>
+              </button>
+              <button
+                onClick={() => loadProfile(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer border border-slate-200/80 dark:border-white/5"
+                title="Refresh Assigned Courses"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${scheduleLoading ? "animate-spin text-indigo-500" : ""}`} />
+                <span>Sync</span>
+              </button>
+            </div>
+          </div>
+
           {scheduleLoading ? (
             <div className="py-12 flex justify-center items-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-600"></div>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
             </div>
           ) : assignedCourses.length === 0 ? (
             <div className="py-12 text-center rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
-              <div className="h-12 w-12 rounded-2xl bg-sky-100 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center mx-auto">
+              <div className="h-12 w-12 rounded-2xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto">
                 <BookOpen className="w-6 h-6" />
               </div>
               <h4 className="text-base font-bold text-slate-800 dark:text-slate-200">
                 No Courses Assigned in Routine
               </h4>
               <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-                When the department administrator assigns you to lecture courses in the Academic Routine Studio, your courses will dynamically appear here with individual workspaces for attendance calculation, course materials, and assignments.
+                When the department administrator assigns you to lecture courses in the Academic Routine Studio, your courses will dynamically appear here with individual workspaces.
               </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {assignedCourses.map((course) => (
-                <div
-                  key={course.code}
-                  className="p-6 rounded-[1.75rem] bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 hover:border-sky-400 dark:hover:border-sky-500/60 hover:shadow-xl transition-all duration-300 flex flex-col justify-between space-y-5 group"
-                >
-                  <div className="space-y-3.5">
-                    {/* Header Badges */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono font-extrabold text-xs text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/60 px-3 py-1 rounded-lg border border-sky-200/60 dark:border-sky-900/60 uppercase tracking-wider">
+              {assignedCourses.map((course) => {
+                const courseTiming = getCourseRoutineTiming(course);
+                const activeSession = activeAttendanceSessions[course.code.toUpperCase()];
+                const isSessionActive = activeSession?.isOpen && activeSession?.secondsLeft > 0;
+                const isStarting = startingAttendanceCode === course.code.toUpperCase();
+
+                return (
+                  <div
+                    key={course.code}
+                    className="p-6 rounded-[1.75rem] bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 hover:border-indigo-400 dark:hover:border-indigo-500/60 hover:shadow-xl transition-all duration-300 flex flex-col justify-between space-y-5 group"
+                  >
+                    <div className="space-y-3.5">
+                      {/* Header Badges */}
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="px-3 py-1.5 rounded-xl font-mono font-bold text-xs bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
                           {course.code}
                         </span>
-                        <span className="text-[10px] font-bold px-2.5 py-1 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300">
-                          {course.semester}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                            {course.semester}
+                          </span>
+                          <span className="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+                            {course.enrolled} Students
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                        <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
-                          {course.slots.length} {course.slots.length === 1 ? "Slot" : "Slots"} / Wk
-                        </span>
+
+                      {/* Course Title & Room Details */}
+                      <div>
+                        <h3 className="text-base font-bold text-slate-900 dark:text-white line-clamp-2 leading-snug group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                          {course.title}
+                        </h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-2">
+                          <MapPin className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                          <span>{course.rooms.size > 0 ? Array.from(course.rooms).join(", ") : "Assigned Room"}</span>
+                        </p>
                       </div>
-                    </div>
 
-                    {/* Course Title Link */}
-                    <Link
-                      href={`/dashboard/teacher/courses/${encodeURIComponent(course.code)}`}
-                      className="block group/link"
-                      title="Enter Dedicated Course Workspace"
-                    >
-                      <h3 className="font-extrabold text-slate-900 dark:text-white text-lg leading-snug group-hover/link:text-sky-600 dark:group-hover/link:text-sky-400 transition-colors flex items-center justify-between gap-2">
-                        <span>{course.title}</span>
-                        <ChevronRight className="w-5 h-5 text-slate-400 group-hover/link:text-sky-600 dark:group-hover/link:text-sky-400 group-hover/link:translate-x-1 transition-all shrink-0" />
-                      </h3>
-                    </Link>
-
-                    {/* Scheduled Slots Pills */}
-                    <div className="space-y-1.5 pt-1">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                        Routine Timetable:
-                      </span>
-                      <div className="flex flex-col gap-1.5">
-                        {course.slots.map((s, idx) => (
-                          <div
-                            key={idx}
-                            className="flex items-center justify-between text-xs px-3 py-1.5 rounded-xl bg-white/80 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800 text-slate-600 dark:text-slate-300 font-medium"
-                          >
-                            <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                              <Calendar className="w-3.5 h-3.5 text-sky-500 shrink-0" />
-                              <span>{s.day}</span>
-                            </span>
-                            <span className="flex items-center gap-2">
-                              <span>{s.time}</span>
-                              <span className="text-[10px] text-slate-400 font-mono">({s.room})</span>
-                            </span>
+                      {/* Weekly Slots Pill List */}
+                      {course.slots && course.slots.length > 0 && (
+                        <div className="space-y-1.5 pt-1">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            Weekly Lecture Timetable
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {course.slots.map((s, idx) => (
+                              <span 
+                                key={idx}
+                                className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-white dark:bg-slate-900/80 border border-slate-200/80 dark:border-white/5 text-slate-600 dark:text-slate-300"
+                              >
+                                <Clock className="w-3 h-3 text-indigo-500" />
+                                <span>{s.day.slice(0, 3)}: {s.time}</span>
+                              </span>
+                            ))}
                           </div>
-                        ))}
-                      </div>
+                        </div>
+                      )}
                     </div>
 
-                    {/* Dedicated Capabilities */}
-                    <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center gap-2 text-[10px] font-semibold text-slate-500 dark:text-slate-400 flex-wrap">
-                      <Link
-                        href={`/dashboard/teacher/courses/${encodeURIComponent(course.code)}?tab=attendance`}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 font-bold transition cursor-pointer"
-                        title="View student attendance records with exact dates & timestamps"
-                      >
-                        <UserCheck className="w-3 h-3" />
-                        <span>Attendance Records</span>
-                      </Link>
-                      <Link
-                        href={`/dashboard/teacher/courses/${encodeURIComponent(course.code)}?tab=assignments`}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/50 dark:hover:bg-purple-900/60 text-purple-700 dark:text-purple-300 font-bold transition cursor-pointer"
-                        title="Open course assignments & continuous grading workspace"
-                      >
-                        <FileText className="w-3 h-3" />
-                        <span>Assignments</span>
-                      </Link>
-                      <Link
-                        href={`/dashboard/teacher/courses/${encodeURIComponent(course.code)}?tab=class-tests`}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-bold transition cursor-pointer"
-                        title="Manage offline Class Tests (CT) & input student marks"
-                      >
-                        <Award className="w-3 h-3 text-indigo-500" />
-                        <span>Class Tests (CT)</span>
-                      </Link>
+                    {/* Action Hub & Live Attendance Trigger */}
+                    <div className="space-y-2 pt-2 border-t border-slate-200/60 dark:border-white/5">
+                      {/* Live Attendance Launch Button */}
                       <button
                         type="button"
-                        onClick={() => {
-                          setEditingCourseNotice(null);
-                          setDefaultNoticeCourse(course.code);
-                          setIsCourseNoticeModalOpen(true);
-                        }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-bold transition cursor-pointer"
-                        title={`Publish course notice specifically for ${course.code}`}
+                        onClick={() => handleStartAttendance(courseTiming.targetSlot || course)}
+                        disabled={isSessionActive || !courseTiming.canTake || isStarting}
+                        className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          isSessionActive
+                            ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/30 cursor-default"
+                            : courseTiming.canTake
+                            ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/25 active:scale-95"
+                            : "bg-slate-200/80 dark:bg-slate-700/60 text-slate-400 dark:text-slate-500 cursor-not-allowed"
+                        }`}
+                        title={courseTiming.reason}
                       >
-                        <Bell className="w-3 h-3 text-indigo-500" />
-                        <span>Notice</span>
+                        <div className="flex items-center gap-2">
+                          <UserCheck className="w-4 h-4 shrink-0" />
+                          <span>
+                            {isSessionActive 
+                              ? `Live Window: ${formatTimer(activeSession.secondsLeft)}` 
+                              : isStarting 
+                              ? "Starting Session..." 
+                              : courseTiming.label}
+                          </span>
+                        </div>
+                        {isSessionActive && (
+                          <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+                        )}
                       </button>
+
+                      <div className="flex items-center gap-2">
+                        {/* Course Notice Quick Trigger */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingCourseNotice(null);
+                            setDefaultNoticeCourse(course.code);
+                            setIsCourseNoticeModalOpen(true);
+                          }}
+                          className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-700/60 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs font-bold transition-colors cursor-pointer"
+                          title="Broadcast course notice"
+                        >
+                          <Bell className="w-3.5 h-3.5" />
+                          <span>Notice</span>
+                        </button>
+
+                        {/* Enter Workspace Direct Link */}
+                        <Link
+                          href={`/dashboard/teacher/courses/${encodeURIComponent(course.code)}`}
+                          className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/80 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 text-indigo-700 dark:text-indigo-300 text-xs font-bold transition-all border border-indigo-200/60 dark:border-indigo-800/60 group-hover:shadow-xs"
+                        >
+                          <span>Enter Workspace</span>
+                          <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                        </Link>
+                      </div>
                     </div>
                   </div>
-
-                  {/* Primary CTA Buttons */}
-                  <div className="pt-2 flex items-center gap-2.5">
-                    <Link
-                      href={`/dashboard/teacher/courses/${encodeURIComponent(course.code)}`}
-                      className="flex-1 inline-flex items-center justify-center gap-2 h-11 px-4 rounded-xl font-bold text-xs bg-sky-600 hover:bg-sky-500 text-white shadow-md shadow-sky-600/20 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
-                    >
-                      <BookOpen className="w-4 h-4" />
-                      <span>Course Workspace ➔</span>
-                    </Link>
-                    {(() => {
-                      const codeKey = (course.code || "").toUpperCase();
-                      const session = activeAttendanceSessions[codeKey];
-                      const isActive = session?.isOpen && session?.secondsLeft > 0;
-                      const isStarting = startingAttendanceCode === codeKey;
-                      const timing = getCourseRoutineTiming(course);
-
-                      if (isStarting) {
-                        return (
-                          <button
-                            disabled
-                            className="inline-flex items-center justify-center gap-1.5 px-3 h-11 rounded-xl font-bold text-xs bg-slate-100 dark:bg-slate-800 text-slate-500 shrink-0 cursor-not-allowed"
-                          >
-                            <RefreshCw className="w-4 h-4 animate-spin text-sky-500" />
-                            <span>Starting...</span>
-                          </button>
-                        );
-                      }
-
-                      if (isActive) {
-                        return (
-                          <button
-                            disabled
-                            title={`Session active: ${formatTimer(session.secondsLeft)} remaining`}
-                            className="inline-flex items-center justify-center gap-1.5 px-3 h-11 rounded-xl font-bold text-xs bg-emerald-600 text-white ring-2 ring-emerald-400/50 shadow-md shadow-emerald-600/30 animate-pulse shrink-0 cursor-default"
-                          >
-                            <span className="relative flex h-2.5 w-2.5">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75"></span>
-                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
-                            </span>
-                            <span>Active ({formatTimer(session.secondsLeft)})</span>
-                          </button>
-                        );
-                      }
-
-                      if (!timing.canTake) {
-                        return (
-                          <button
-                            disabled
-                            title={timing.reason}
-                            className="inline-flex items-center justify-center gap-1.5 px-3 h-11 rounded-xl font-bold text-xs bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 border border-slate-200/60 dark:border-slate-700/60 cursor-not-allowed shrink-0"
-                          >
-                            {timing.status === "upcoming" ? (
-                              <Clock className="w-4 h-4 text-amber-500" />
-                            ) : (
-                              <Calendar className="w-4 h-4 text-slate-400" />
-                            )}
-                            <span>{timing.label}</span>
-                          </button>
-                        );
-                      }
-
-                      return (
-                        <button
-                          onClick={() => handleStartAttendance(timing.targetSlot || course)}
-                          disabled={isPending}
-                          title={timing.reason}
-                          className="inline-flex items-center justify-center gap-1.5 px-3.5 h-11 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/20 transition-all hover:scale-105 active:scale-95 cursor-pointer shrink-0 disabled:opacity-50"
-                        >
-                          <UserCheck className="w-4 h-4" />
-                          <span>Take Attendance</span>
-                        </button>
-                      );
-                    })()}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
-        </CollapsibleBody>
-      </div>
-
-      {/* Routine & Class Schedule */}
-      <div id="routine" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-50 dark:bg-sky-950/60 text-xs font-semibold text-sky-600 dark:text-sky-400 mb-1.5">
-              <Calendar className="w-3.5 h-3.5 text-sky-500" />
-              <span>Teaching Timetable & Routine Studio</span>
-            </div>
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Academic Routine & Class Schedule</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Live departmental schedules synchronized directly with administrator routine planning</p>
-          </div>
-          
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-bold text-sky-600 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/60 px-3 py-1.5 rounded-xl ring-1 ring-sky-200 dark:ring-sky-800">
-              {routineViewMode === "my" ? `${teacherSchedule.length} Assigned Lectures` : `${allRoutines.length} Active Classes`}
-            </span>
-            <button
-              onClick={() => loadProfile(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
-              title="Refresh Schedule"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${scheduleLoading ? "animate-spin text-sky-500" : ""}`} />
-              <span>Sync Routine</span>
-            </button>
-            <SectionCollapseToggle
-              isCollapsed={collapsedSections.routine}
-              onToggle={() => toggleSection("routine")}
-              label="Academic Routine"
-            />
-          </div>
         </div>
+      )}
 
-        <CollapsibleBody
-          isCollapsed={collapsedSections.routine}
-          onExpand={() => toggleSection("routine")}
-          sectionName="Academic Routine & Class Schedule"
-        >
-        {/* View Mode Tabs: My Assigned Lectures vs Full Department Routine Grid */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-1">
-          <div className="inline-flex items-center p-1 rounded-2xl bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/50 dark:border-slate-700/50 text-xs font-bold">
-            <button
-              type="button"
-              onClick={() => setRoutineViewMode("my")}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl transition-all cursor-pointer ${
-                routineViewMode === "my"
-                  ? "bg-sky-600 text-white shadow-xs"
-                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-              }`}
-            >
-              <Presentation className="w-4 h-4" />
-              <span>My Assigned Lectures</span>
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                routineViewMode === "my" ? "bg-white/20 text-white" : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400"
-              }`}>
-                {teacherSchedule.length}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setRoutineViewMode("full")}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl transition-all cursor-pointer ${
-                routineViewMode === "full"
-                  ? "bg-sky-600 text-white shadow-xs"
-                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-              }`}
-            >
-              <Calendar className="w-4 h-4" />
-              <span>Full Department Routine</span>
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                routineViewMode === "full" ? "bg-white/20 text-white" : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400"
-              }`}>
-                {allRoutines.length}
-              </span>
-            </button>
-          </div>
-
-          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-            {routineViewMode === "my"
-              ? `${filteredSchedule.length} lecture${filteredSchedule.length === 1 ? "" : "s"} visible on current filter`
-              : `Master Routine (${allRoutines.length} classes across active semesters)`}
-          </span>
-        </div>
-
-        {/* View 1: My Assigned Lectures */}
-        {routineViewMode === "my" && (
-          <div className="space-y-4">
-            {/* Day Filter Tabs */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-              {ROUTINE_DAYS.map((day) => (
-                <button
-                  key={day}
-                  onClick={() => setSelectedDay(day)}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                    selectedDay === day
-                      ? "bg-sky-600 text-white shadow-sm shadow-sky-200 dark:shadow-none"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
-                  }`}
-                >
-                  {day}
-                </button>
-              ))}
+      {/* ── Page 4: Academic Routine & Class Schedule ── */}
+      {currentPage === "routine" && (
+        <div id="routine" className="p-7 sm:p-8 rounded-[2rem] bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/90 dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6 animate-in fade-in duration-300">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-white/10">
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5 border border-indigo-200/60 dark:border-indigo-800/60">
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Teaching Timetable & Routine Studio</span>
+              </div>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                Academic Routine & Class Schedule
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                Live departmental schedules synchronized directly with administrator routine planning.
+              </p>
             </div>
-
-            {/* Schedule Cards Grid */}
-            {scheduleLoading ? (
-              <div className="py-12 flex justify-center items-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-600"></div>
-              </div>
-            ) : filteredSchedule.length === 0 ? (
-              <div className="py-12 text-center rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
-                <div className="h-12 w-12 rounded-2xl bg-sky-100 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center mx-auto">
-                  <Calendar className="w-6 h-6" />
-                </div>
-                <h4 className="text-base font-bold text-slate-800 dark:text-slate-200">
-                  {selectedDay === "All Days" ? "No Classes Assigned Yet" : `No Classes Scheduled on ${selectedDay}`}
-                </h4>
-                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-                  Your faculty account is active. Once the department administrator schedules your course assignments in the Class Routine Studio, your routine slots and student cohorts will appear here automatically.
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {filteredSchedule.map((cls, idx) => (
-                  <div 
-                    key={cls.id || idx} 
-                    className="p-6 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 hover:border-indigo-400 dark:hover:border-indigo-500/60 hover:shadow-lg transition-all duration-200 flex flex-col justify-between space-y-4 group"
-                  >
-                    <div className="space-y-3">
-                      <div className="flex items-start justify-between">
-                        <Link
-                          href={`/dashboard/teacher/courses/${encodeURIComponent(cls.code)}`}
-                          className="block flex-1 pr-2 group/title"
-                          title="Click to open course workspace"
-                        >
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-xs font-mono font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider group-hover/title:underline">
-                              {cls.code}
-                            </span>
-                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300">
-                              {cls.day}
-                            </span>
-                          </div>
-                          <h3 className="font-extrabold text-slate-900 dark:text-white text-base leading-snug group-hover/title:text-indigo-600 dark:group-hover/title:text-indigo-400 transition-colors flex items-center gap-1.5">
-                            <span>{cls.title}</span>
-                            <ChevronRight className="w-4 h-4 opacity-0 -translate-x-1 group-hover/title:opacity-100 group-hover/title:translate-x-0 transition-all text-indigo-600 dark:text-indigo-400 shrink-0" />
-                          </h3>
-                        </Link>
-                        <div className="h-8 w-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-                          <Clock className="w-4 h-4" />
-                        </div>
-                      </div>
-
-                      <div className="space-y-1.5 text-xs text-slate-500 dark:text-slate-400">
-                        <div className="flex items-center justify-between">
-                          <span>Time Slot:</span>
-                          <span className="font-semibold text-slate-800 dark:text-slate-200">{cls.time}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span>Classroom / Lab:</span>
-                          <span className="font-semibold text-slate-800 dark:text-slate-200">{cls.room}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span>Target Cohort:</span>
-                          <span className="font-semibold text-slate-800 dark:text-slate-200">{cls.semester}</span>
-                        </div>
-                      </div>
-
-                      {/* Capabilities pills */}
-                      <div className="flex items-center gap-1.5 pt-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400 flex-wrap">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300">
-                          <UserCheck className="w-2.5 h-2.5" />
-                          <span>Attendance</span>
-                        </span>
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300">
-                          <BookOpen className="w-2.5 h-2.5" />
-                          <span>Materials</span>
-                        </span>
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300">
-                          <FileText className="w-2.5 h-2.5" />
-                          <span>Tasks</span>
-                        </span>
-                        <Link
-                          href={`/dashboard/teacher/courses/${encodeURIComponent(cls.code)}?tab=class-tests`}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition cursor-pointer"
-                          title="View CT marks for this course"
-                        >
-                          <Award className="w-2.5 h-2.5 text-indigo-500" />
-                          <span>CT Marks</span>
-                        </Link>
-                      </div>
-                    </div>
-
-                    <div className="pt-2 flex items-center gap-2">
-                      <Link
-                        href={`/dashboard/teacher/courses/${encodeURIComponent(cls.code)}`}
-                        className="flex-1 inline-flex items-center justify-center gap-1.5 h-10 px-3 rounded-xl font-bold text-xs bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white shadow-xs transition-colors cursor-pointer"
-                      >
-                        <BookOpen className="w-3.5 h-3.5" />
-                        <span>Course Workspace ➔</span>
-                      </Link>
-                      {(() => {
-                        const codeKey = (cls.code || "").toUpperCase();
-                        const session = activeAttendanceSessions[codeKey];
-                        const isActive = session?.isOpen && session?.secondsLeft > 0;
-                        const isStarting = startingAttendanceCode === codeKey;
-                        const timing = getSlotRoutineTiming(cls.day, cls.time);
-
-                        if (isStarting) {
-                          return (
-                            <button
-                              disabled
-                              className="inline-flex items-center justify-center gap-1.5 px-3 h-10 rounded-xl font-bold text-xs bg-slate-100 dark:bg-slate-800 text-slate-500 shrink-0 cursor-not-allowed"
-                            >
-                              <RefreshCw className="w-3.5 h-3.5 animate-spin text-sky-500" />
-                              <span>Starting...</span>
-                            </button>
-                          );
-                        }
-
-                        if (isActive) {
-                          return (
-                            <button
-                              disabled
-                              title={`Session active: ${formatTimer(session.secondsLeft)} remaining`}
-                              className="inline-flex items-center justify-center gap-1.5 px-3 h-10 rounded-xl font-bold text-xs bg-emerald-600 text-white ring-2 ring-emerald-400/50 shadow-xs animate-pulse shrink-0 cursor-default"
-                            >
-                              <span className="relative flex h-2 w-2">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
-                              </span>
-                              <span>Active ({formatTimer(session.secondsLeft)})</span>
-                            </button>
-                          );
-                        }
-
-                        if (!timing.canTake) {
-                          return (
-                            <button
-                              disabled
-                              title={timing.reason}
-                              className="inline-flex items-center justify-center gap-1.5 px-2.5 h-10 rounded-xl font-bold text-xs bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-500 border border-slate-200/60 dark:border-slate-700/60 cursor-not-allowed shrink-0"
-                            >
-                              {timing.status === "upcoming" ? (
-                                <Clock className="w-3.5 h-3.5 text-amber-500" />
-                              ) : (
-                                <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                              )}
-                              <span>{timing.label}</span>
-                            </button>
-                          );
-                        }
-
-                        return (
-                          <button
-                            onClick={() => handleStartAttendance(cls)}
-                            disabled={isPending}
-                            title={timing.reason}
-                            className="inline-flex items-center justify-center gap-1.5 px-3 h-10 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition-all hover:scale-105 active:scale-95 cursor-pointer shrink-0 disabled:opacity-50"
-                          >
-                            <UserCheck className="w-3.5 h-3.5" />
-                            <span>Take Attendance</span>
-                          </button>
-                        );
-                      })()}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* View 2: Full Department Routine Grid */}
-        {routineViewMode === "full" && (
-          <div className="space-y-4">
-            {/* Semester Filter Selector Tabs */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
-              <span className="text-xs font-bold text-slate-500 dark:text-slate-400 mr-1 whitespace-nowrap">
-                Semester View:
+            
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 px-3 py-1.5 rounded-xl border border-indigo-200/80 dark:border-indigo-800/60 shadow-xs">
+                {routineViewMode === "my" ? `${teacherSchedule.length} Assigned Lectures` : `${allRoutines.length} Active Classes`}
               </span>
               <button
+                onClick={() => loadProfile(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer border border-slate-200/80 dark:border-white/5"
+                title="Refresh Schedule"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${scheduleLoading ? "animate-spin text-indigo-500" : ""}`} />
+                <span>Sync Routine</span>
+              </button>
+            </div>
+          </div>
+
+          {/* View Mode Toggle: My Assigned Lectures vs Full Department Routine Grid */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-1">
+            <div className="inline-flex items-center p-1 rounded-2xl bg-slate-100/90 dark:bg-slate-800/80 border border-slate-200/70 dark:border-slate-700/60 text-xs font-bold">
+              <button
                 type="button"
-                onClick={() => setSelectedFullSemester("all")}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
-                  selectedFullSemester === "all"
-                    ? "bg-sky-600 text-white shadow-sm shadow-sky-300 dark:shadow-none"
-                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                onClick={() => setRoutineViewMode("my")}
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl transition-all cursor-pointer ${
+                  routineViewMode === "my"
+                    ? "bg-indigo-600 text-white shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
-                <span>Full Department Routine (All Semesters)</span>
+                <Presentation className="w-4 h-4" />
+                <span>My Assigned Lectures</span>
                 <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                  selectedFullSemester === "all" ? "bg-white/20 text-white" : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400"
+                  routineViewMode === "my" ? "bg-white/20 text-white" : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400"
+                }`}>
+                  {teacherSchedule.length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRoutineViewMode("full")}
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl transition-all cursor-pointer ${
+                  routineViewMode === "full"
+                    ? "bg-indigo-600 text-white shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                <Calendar className="w-4 h-4" />
+                <span>Full Department Routine</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                  routineViewMode === "full" ? "bg-white/20 text-white" : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400"
                 }`}>
                   {allRoutines.length}
                 </span>
               </button>
+            </div>
 
-              {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => {
-                const count = allRoutines.filter((r) => Number(r.semester) === sem).length;
-                const isSelected = selectedFullSemester === String(sem);
-                const year = Math.ceil(sem / 2);
-                const term = ((sem - 1) % 2) + 1;
-                return (
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+              {routineViewMode === "my"
+                ? `${filteredSchedule.length} lecture${filteredSchedule.length === 1 ? "" : "s"} on filter`
+                : `Master Routine (${allRoutines.length} classes across semesters)`}
+            </span>
+          </div>
+
+          {/* View 1: My Assigned Lectures */}
+          {routineViewMode === "my" && (
+            <div className="space-y-4">
+              {/* Day Filter Tabs */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                {ROUTINE_DAYS.map((day) => (
                   <button
-                    key={sem}
-                    type="button"
-                    onClick={() => setSelectedFullSemester(String(sem))}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
-                      isSelected
-                        ? "bg-sky-600 text-white shadow-sm shadow-sky-300 dark:shadow-none"
+                    key={day}
+                    onClick={() => setSelectedDay(day)}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                      selectedDay === day
+                        ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/30"
                         : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
                     }`}
                   >
-                    <span>Semester {sem} ({year}-{term})</span>
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                      isSelected ? "bg-white/20 text-white" : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400"
-                    }`}>
-                      {count}
-                    </span>
+                    {day}
                   </button>
-                );
-              })}
-            </div>
+                ))}
+              </div>
 
-            {/* Timetable Grid */}
-            <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 shadow-xs">
-              <div
-                data-lenis-prevent
-                data-smart-scroll="horizontal"
-                className="overflow-auto overscroll-contain max-h-[640px] scrollbar-thin"
-              >
-                <table className="w-full border-collapse text-left">
-                  <thead className="sticky top-0 z-20 shadow-xs">
-                    <tr className="border-b border-slate-200 dark:border-white/10 bg-slate-100/95 dark:bg-slate-800/95 backdrop-blur-md">
-                      <th className="sticky left-0 top-0 z-30 w-24 border-r border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-slate-800 py-4 px-3 text-center text-[10px] font-black tracking-widest text-slate-400 uppercase">
-                        Day
-                      </th>
-                      {ROUTINE_TIME_SLOTS.map((slot) => {
-                        const isBreak = slot === "01:00 - 02:00";
-                        return (
-                          <th
-                            key={slot}
-                            className={`${isBreak ? "w-16 px-1" : "min-w-[175px] px-3"} border-r border-slate-200 dark:border-white/10 py-3.5 text-center font-bold whitespace-nowrap last:border-0`}
+              {filteredSchedule.length === 0 ? (
+                <div className="py-12 text-center rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-2">
+                  <Coffee className="w-8 h-8 text-indigo-400 mx-auto mb-2" />
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    No scheduled lectures on {selectedDay}
+                  </p>
+                  <p className="text-[11px] text-slate-400">Select another day or view full department routine.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredSchedule.map((slot) => {
+                    const timing = getSlotRoutineTiming(slot.day, slot.time);
+                    const isLive = activeAttendanceSessions[slot.code.toUpperCase()]?.isOpen;
+
+                    return (
+                      <div
+                        key={slot.id}
+                        className="p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/80 dark:border-white/5 space-y-3 hover:border-indigo-300 dark:hover:border-indigo-800/60 transition"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono font-bold text-xs px-2.5 py-1 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
+                            {slot.code}
+                          </span>
+                          <span className="text-xs font-semibold text-slate-400">{slot.day}</span>
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-900 dark:text-white line-clamp-1">{slot.title}</h4>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{slot.time} • Room {slot.room}</p>
+                        </div>
+                        <div className="pt-2 border-t border-slate-200/60 dark:border-white/5 flex items-center justify-between">
+                          <span className={`text-[11px] font-bold ${
+                            isLive 
+                              ? "text-emerald-600 dark:text-emerald-400 animate-pulse" 
+                              : timing.canTake 
+                              ? "text-indigo-600 dark:text-indigo-400" 
+                              : "text-slate-400"
+                          }`}>
+                            {isLive ? `Live: ${formatTimer(activeAttendanceSessions[slot.code.toUpperCase()].secondsLeft)}` : timing.label}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleStartAttendance(slot)}
+                            disabled={isLive || !timing.canTake || startingAttendanceCode === slot.code.toUpperCase()}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                              isLive
+                                ? "bg-emerald-600 text-white"
+                                : timing.canTake
+                                ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-xs active:scale-95"
+                                : "bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed opacity-60"
+                            }`}
                           >
-                            <div className="flex flex-col items-center gap-1">
-                              <Clock className={`w-3.5 h-3.5 ${isBreak ? "text-amber-500/50" : "text-sky-500"}`} />
-                              <span className={`text-xs font-black tracking-wider uppercase ${isBreak ? "text-amber-600 dark:text-amber-400 text-[10px]" : "text-slate-700 dark:text-slate-200"}`}>
-                                {isBreak ? "Lunch Break" : slot}
-                              </span>
-                            </div>
-                          </th>
-                        );
-                      })}
+                            {isLive ? "Active" : "Start"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* View 2: Full Department Routine Matrix */}
+          {routineViewMode === "full" && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                {["all", "1", "2", "3", "4", "5", "6", "7", "8"].map((sem) => (
+                  <button
+                    key={sem}
+                    type="button"
+                    onClick={() => setSelectedFullSemester(sem)}
+                    className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                      selectedFullSemester === sem
+                        ? "bg-indigo-600 text-white shadow-xs"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+                    }`}
+                  >
+                    {sem === "all" ? "All Semesters" : `Semester ${sem}`}
+                  </button>
+                ))}
+              </div>
+
+              <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-white/10">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-white/10 text-slate-500 font-bold uppercase tracking-wider">
+                    <tr>
+                      <th className="p-3 w-28">Day</th>
+                      {ROUTINE_TIME_SLOTS.map((slot) => (
+                        <th key={slot} className="p-3 min-w-[130px] text-center font-mono">{slot}</th>
+                      ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-                    {ROUTINE_DAYS.filter(d => d !== "All Days").map((day) => (
-                      <tr
-                        key={day}
-                        className="group transition-colors hover:bg-sky-50/20 dark:hover:bg-sky-950/20"
-                      >
-                        <td className="sticky left-0 z-10 w-24 border-r border-slate-200 dark:border-white/10 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-sm p-4 text-center align-middle font-bold text-slate-800 dark:text-slate-200 text-xs uppercase tracking-wider">
-                          {day}
-                        </td>
-
-                        {ROUTINE_TIME_SLOTS.map((slot) => {
-                          const isBreak = slot === "01:00 - 02:00";
-                          if (isBreak) {
-                            return (
-                              <td
-                                key={slot}
-                                className="w-16 border-r border-slate-200 dark:border-white/10 bg-amber-50/30 dark:bg-amber-950/20 p-2 text-center align-middle"
-                              >
-                                <div className="flex flex-col items-center justify-center text-amber-500">
-                                  <Coffee className="w-4 h-4 mb-1 opacity-60" />
-                                  <span className="text-[9px] font-black tracking-widest text-amber-600 dark:text-amber-400 uppercase">
-                                    Break
-                                  </span>
-                                </div>
-                              </td>
-                            );
-                          }
-
-                          const cells = getFullRoutineCells(day, slot);
+                  <tbody className="divide-y divide-slate-100 dark:divide-white/5 font-medium">
+                    {["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday"].map((day) => (
+                      <tr key={day} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
+                        <td className="p-3 font-bold text-slate-800 dark:text-white bg-slate-50/30 dark:bg-slate-800/20">{day}</td>
+                        {ROUTINE_TIME_SLOTS.map((timeSlot) => {
+                          const cells = getFullRoutineCells(day, timeSlot);
                           return (
-                            <td
-                              key={slot}
-                              className="border-r border-slate-200 dark:border-white/10 p-2.5 align-middle"
-                            >
-                              {cells && cells.length > 0 ? (
-                                <div className="space-y-2">
-                                  {cells.map((cell, cIdx) => {
-                                    const isMyClass = 
-                                      (cell.teacherName && activeName && (
-                                        cell.teacherName.toLowerCase() === activeName.toLowerCase() ||
-                                        activeName.toLowerCase().includes(cell.teacherName.toLowerCase()) ||
-                                        cell.teacherName.toLowerCase().includes(activeName.toLowerCase())
-                                      )) ||
-                                      (cell.teacherId && activeTeacherId && cell.teacherId === activeTeacherId);
-                                    
-                                    return (
-                                      <div
-                                        key={cell._id || cIdx}
-                                        className={`p-3 rounded-xl border shadow-xs transition-all flex flex-col justify-between min-h-[105px] ${
-                                          isMyClass
-                                            ? "bg-sky-50/90 dark:bg-sky-950/80 border-sky-400 dark:border-sky-500 ring-2 ring-sky-300 dark:ring-sky-700/50"
-                                            : "bg-white dark:bg-slate-800/90 border-slate-200/80 dark:border-slate-700/80 hover:border-slate-300 dark:hover:border-slate-600"
-                                        }`}
-                                      >
-                                        <div>
-                                          <div className="flex items-center justify-between gap-1 flex-wrap">
-                                            <span className="font-mono font-black text-[11px] text-sky-600 dark:text-sky-400 bg-sky-100/70 dark:bg-sky-950/80 px-2 py-0.5 rounded-md">
-                                              {cell.courseCode}
-                                            </span>
-                                            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
-                                              Sem {cell.semester}
-                                            </span>
-                                            {isMyClass && (
-                                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-sky-600 text-white shadow-xs">
-                                                ★ My Class
-                                              </span>
-                                            )}
-                                          </div>
-                                          <p className="mt-1.5 font-bold text-slate-800 dark:text-slate-100 text-xs leading-snug line-clamp-2">
-                                            {cell.courseTitle}
-                                          </p>
-                                        </div>
-
-                                        <div className="pt-2 border-t border-slate-100 dark:border-white/5 space-y-1">
-                                          <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400">
-                                            <span className="font-medium truncate max-w-[110px]" title={cell.teacherName}>
-                                              {cell.teacherName || "Unassigned"}
-                                            </span>
-                                            <span className="inline-flex items-center gap-0.5 font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 rounded">
-                                              <MapPin className="w-2.5 h-2.5 text-sky-500" />
-                                              <span>{cell.room || "Room"}</span>
-                                            </span>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
+                            <td key={timeSlot} className="p-2 align-top text-center">
+                              {cells.length > 0 ? (
+                                <div className="space-y-1">
+                                  {cells.map((c, i) => (
+                                    <div key={i} className="p-1.5 rounded-lg bg-indigo-50/90 dark:bg-indigo-950/60 border border-indigo-200/60 dark:border-indigo-800/60 text-left">
+                                      <span className="block font-bold text-indigo-700 dark:text-indigo-300 text-[11px] truncate">{c.courseCode}</span>
+                                      <span className="block text-[10px] text-slate-500 truncate">Rm {c.room} • Sem {c.semester}</span>
+                                    </div>
+                                  ))}
                                 </div>
                               ) : (
-                                <div className="flex flex-col items-center justify-center p-3 text-slate-300 dark:text-slate-600 select-none">
-                                  <span className="text-[10px] font-medium tracking-wide">Free Slot</span>
-                                </div>
+                                <span className="text-slate-300 dark:text-slate-600 text-[10px]">-</span>
                               )}
                             </td>
                           );
@@ -2179,42 +2243,118 @@ export default function TeacherDashboardPage() {
                 </table>
               </div>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Page 5: Workload & Teaching Analytics ── */}
+      {currentPage === "analytics" && (
+        <div id="analytics" className="scroll-mt-6 animate-in fade-in duration-300 space-y-6">
+          <TeacherAnalyticsCharts 
+            teacherSchedule={teacherSchedule} 
+            isCollapsed={false}
+            onToggle={() => {}}
+          />
+        </div>
+      )}
+
+      {/* ── Page 6: Department Notice Board ── */}
+      {currentPage === "notices" && (
+        <div id="notices" className="scroll-mt-6 animate-in fade-in duration-300 space-y-6">
+          <NoticeBoardSection
+            title="Notice Board"
+            subtitle="Department broadcast & official faculty circulars."
+            isCollapsed={false}
+            onToggle={() => {}}
+            userRole="teacher"
+            teacherCourses={assignedCourses}
+            teacherProfile={{
+              name: activeName,
+              email: user?.email,
+              designation: activeDesignation,
+            }}
+            onOpenCourseNotice={() => {
+              setEditingCourseNotice(null);
+              setIsCourseNoticeModalOpen(true);
+            }}
+          />
+        </div>
+      )}
+
+      {/* ── Bottom Dashboard Pagination Navigation (Parity with Student Panel) ── */}
+      <div className="bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/90 dark:border-white/10 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-sm transition-colors mt-8">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+          {/* Previous Page Button with Label */}
+          <div className="w-full md:w-auto">
+            {prevPageObj ? (
+              <button
+                type="button"
+                onClick={() => goToPage(prevPageObj.id)}
+                className="w-full md:w-auto inline-flex items-center justify-center md:justify-start gap-2.5 px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 border border-slate-200/80 dark:border-white/10 text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+              >
+                <ChevronLeft className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                <div className="text-left">
+                  <span className="block text-[10px] uppercase font-semibold text-slate-400 dark:text-slate-500">
+                    Previous Section (Page {prevPageObj.pageNum})
+                  </span>
+                  <span className="font-bold text-slate-900 dark:text-white">
+                    {prevPageObj.shortLabel}
+                  </span>
+                </div>
+              </button>
+            ) : (
+              <div className="hidden md:block w-32" />
+            )}
           </div>
-        )}
-        </CollapsibleBody>
+
+          {/* Center Quick Jump Numbered Pills */}
+          <div className="flex items-center gap-1.5">
+            {TEACHER_DASHBOARD_PAGES.map((page) => {
+              const isCurrent = page.id === currentPage;
+              return (
+                <button
+                  key={page.id}
+                  type="button"
+                  onClick={() => goToPage(page.id)}
+                  className={`w-9 h-9 rounded-xl text-xs font-extrabold flex items-center justify-center transition-all cursor-pointer ${
+                    isCurrent
+                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30 scale-105"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-400 border border-slate-200/60 dark:border-white/5"
+                  }`}
+                  title={`Page ${page.pageNum}: ${page.title}`}
+                >
+                  {page.pageNum}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Next Page Button with Label */}
+          <div className="w-full md:w-auto">
+            {nextPageObj ? (
+              <button
+                type="button"
+                onClick={() => goToPage(nextPageObj.id)}
+                className="w-full md:w-auto inline-flex items-center justify-center md:justify-end gap-2.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all cursor-pointer shadow-md shadow-indigo-600/20 active:scale-95"
+              >
+                <div className="text-right">
+                  <span className="block text-[10px] uppercase font-semibold text-indigo-200">
+                    Next Section (Page {nextPageObj.pageNum})
+                  </span>
+                  <span className="font-bold text-white">
+                    {nextPageObj.shortLabel}
+                  </span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-white" />
+              </button>
+            ) : (
+              <div className="hidden md:block w-32" />
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* Faculty Workload & Engagement Studio */}
-      <div id="analytics" className="scroll-mt-6">
-        <TeacherAnalyticsCharts 
-          teacherSchedule={teacherSchedule} 
-          isCollapsed={collapsedSections.analytics}
-          onToggle={() => toggleSection("analytics")}
-        />
-      </div>
-
-      {/* Official Notice Board */}
-      <div id="notices" className="scroll-mt-6">
-        <NoticeBoardSection
-          title="Notice Board"
-          subtitle="Department broadcast & official faculty circulars."
-          isCollapsed={collapsedSections.notices}
-          onToggle={() => toggleSection("notices")}
-          userRole="teacher"
-          teacherCourses={assignedCourses}
-          teacherProfile={{
-            name: activeName,
-            email: user?.email,
-            designation: activeDesignation,
-          }}
-          onOpenCourseNotice={() => {
-            setEditingCourseNotice(null);
-            setIsCourseNoticeModalOpen(true);
-          }}
-        />
-      </div>
-
-      {/* Course Notice Modal opened from Top Button or Section */}
+      {/* Course Notice Modal opened from Top Button or Course Card */}
       <CourseNoticeModal
         isOpen={isCourseNoticeModalOpen}
         onClose={() => {

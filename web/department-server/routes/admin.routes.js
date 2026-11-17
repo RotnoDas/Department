@@ -28,16 +28,13 @@ router.get('/pending-teachers', async (req, res) => {
 // GET department statistics
 router.get('/stats', async (req, res) => {
   try {
-    const { students, teachers, employees, users, faceProfiles } = getCollections();
+    const { students, teachers, users, faceProfiles } = getCollections();
     const totalStudents = await students.countDocuments();
     const pendingStudents = await students.countDocuments({ status: 'pending' });
     const approvedStudents = await students.countDocuments({ status: 'approved' });
     const totalTeachers = await teachers.countDocuments();
     const pendingTeachers = await teachers.countDocuments({ status: 'pending' });
     const approvedTeachers = await teachers.countDocuments({ status: { $ne: 'pending' } });
-    const totalEmployees = await employees.countDocuments();
-    const pendingEmployees = await employees.countDocuments({ status: 'pending' });
-    const approvedEmployees = await employees.countDocuments({ status: { $ne: 'pending' } });
     const totalUsers = await users.countDocuments();
     const enrolledFaces = faceProfiles ? await faceProfiles.countDocuments() : 0;
 
@@ -49,9 +46,6 @@ router.get('/stats', async (req, res) => {
       totalTeachers,
       pendingTeachers,
       approvedTeachers,
-      totalEmployees,
-      pendingEmployees,
-      approvedEmployees,
       totalUsers,
     });
   } catch (err) {
@@ -92,24 +86,6 @@ router.post('/teachers/approve-all', async (req, res) => {
     res.json({ success: true, modifiedCount: result.modifiedCount, message: `Approved ${result.modifiedCount} pending teachers.` });
   } catch (err) {
     res.status(500).json({ error: "Failed to approve all teachers" });
-  }
-});
-
-// Bulk approve all pending employees
-router.post('/employees/approve-all', async (req, res) => {
-  try {
-    const { employees, users } = getCollections();
-    const result = await employees.updateMany(
-      { status: 'pending' },
-      { $set: { status: 'approved', updatedAt: new Date() } }
-    );
-    await users.updateMany(
-      { role: 'employee', status: 'pending' },
-      { $set: { status: 'approved', updatedAt: new Date() } }
-    );
-    res.json({ success: true, modifiedCount: result.modifiedCount, message: `Approved ${result.modifiedCount} pending employees.` });
-  } catch (err) {
-    res.status(500).json({ error: "Failed to approve all employees" });
   }
 });
 

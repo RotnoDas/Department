@@ -1024,6 +1024,29 @@ router.delete('/admin/:id', verifyToken, async (req, res) => {
   }
 });
 
+// ── POST /api/results/admin/seed-variations ────────────────────────
+// Admin populates or refreshes realistic varied semester results across students
+router.post('/admin/seed-variations', verifyToken, async (req, res) => {
+  try {
+    if (!checkIsAdmin(req)) {
+      return res.status(403).json({ error: 'Administrator access required.', code: 'FORBIDDEN' });
+    }
+
+    const { seedRealisticResults } = require('../utils/seedResultsVariation');
+    const targetSession = req.body?.session || null;
+    const result = await seedRealisticResults(targetSession);
+
+    res.json({
+      success: true,
+      message: `Successfully populated realistic varied semester results (${result.count} records)!`,
+      count: result.count,
+    });
+  } catch (err) {
+    console.error('Error seeding realistic results:', err);
+    res.status(500).json({ error: 'Failed to populate realistic semester results.' });
+  }
+});
+
 router.calculateSemesterMetrics = calculateSemesterMetrics;
 router.recalculateStudentCGPA = recalculateStudentCGPA;
 router.GRADE_SCALE = GRADE_SCALE;

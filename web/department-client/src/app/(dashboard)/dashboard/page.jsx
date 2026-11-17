@@ -18,7 +18,7 @@ export default function DashboardRedirect() {
         const email = (sessionData.user.email || "").toLowerCase().trim();
         if (role === "admin" || email === "admin@cse.edu" || email.includes("admin")) {
           router.push("/dashboard/admin");
-        } else if (role === "teacher" || email.endsWith("@teacher.cse.edu") || (email.endsWith("@cse.edu") && !email.includes("student") && !email.includes("staff") && !email.includes("admin"))) {
+        } else if (role === "teacher" || email.endsWith("@teacher.cse.edu") || (email.endsWith("@cse.edu") && !email.includes("student") && !email.includes("admin"))) {
           const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
           fetch(`${serverUrl}/api/teachers/email/${email}`)
             .then((res) => (res.ok ? res.json() : null))
@@ -34,8 +34,6 @@ export default function DashboardRedirect() {
             .catch(() => {
               router.push("/dashboard/teacher");
             });
-        } else if (role === "employee" || email.endsWith("@employee.cse.edu") || email.endsWith("@staff.cse.edu")) {
-          router.push("/dashboard/employee");
         } else {
           const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:5000";
           fetch(`${serverUrl}/api/students/email/${email}`)

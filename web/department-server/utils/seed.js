@@ -187,7 +187,7 @@ const seedInitialData = async (collections) => {
       {
         title: "Software & Hardware Lab Maintenance Schedule",
         category: "Infrastructure",
-        audience: "Staff & Faculty",
+        audience: "Faculty & Students",
         content: "Routine operating system and toolchain upgrade will be executed on Software Lab 1 workstations this weekend.",
         priority: "Normal",
         date: "Oct 05, 2026",
@@ -236,112 +236,17 @@ const seedInitialData = async (collections) => {
     }
   }
 
-  // 4. Initial Academic Semester Results
+  // 4. Initial Academic Semester Results with Realistic Number & Performance Variations
   if (results && students) {
-    const allStudents = await students.find({ studentId: { $exists: true, $ne: "" } }).toArray();
-
-    const getSampleMarksAndGrade = (sem, courseIdx, seedOffset = 0) => {
-      const pattern = [86, 82, 88, 79, 84, 85, 91, 80, 87, 83];
-      const marks = pattern[(sem * 2 + courseIdx + seedOffset) % pattern.length];
-      let grade = "A";
-      let gradePoint = 3.75;
-      if (marks >= 80) {
-        grade = "A+";
-        gradePoint = 4.00;
-      } else if (marks >= 75) {
-        grade = "A";
-        gradePoint = 3.75;
-      } else if (marks >= 70) {
-        grade = "A-";
-        gradePoint = 3.50;
+    const existingCount = await results.countDocuments({});
+    if (existingCount === 0) {
+      const { seedRealisticResults } = require('./seedResultsVariation');
+      try {
+        const seedRes = await seedRealisticResults();
+        console.log(`Auto-seeded ${seedRes.count} realistic varied semester results into MongoDB!`);
+      } catch (err) {
+        console.warn('Could not auto-seed realistic results during startup:', err.message);
       }
-      return { marks, grade, gradePoint };
-    };
-
-    for (const st of allStudents) {
-      const rawSemester = String(st.semester || "");
-      const semDigits = rawSemester.replace(/\D/g, "");
-      const currentSemNum = semDigits ? parseInt(semDigits, 10) : 0;
-      if (currentSemNum <= 1) continue;
-
-      const studentId = String(st.studentId).trim();
-      const studentName = st.name || "Student";
-      const studentEmail = (st.email || "").toLowerCase();
-
-      // Check how many results already exist
-      const existingCount = await results.countDocuments({ studentId });
-      if (existingCount >= currentSemNum - 1) continue;
-
-      let cumulativePoints = 0;
-      let cumulativeCredits = 0;
-      let cumulativeEarnedCredits = 0;
-
-      for (let s = 1; s < currentSemNum; s++) {
-        const existingSem = await results.findOne({ studentId, semester: s });
-        if (existingSem) {
-          cumulativePoints += (existingSem.totalCredits || 0) * (existingSem.sgpa || 0);
-          cumulativeCredits += (existingSem.totalCredits || 0);
-          cumulativeEarnedCredits += (existingSem.earnedCredits || 0);
-          continue;
-        }
-
-        const semCourses = SEMESTER_COURSES[s] || [];
-        let totalSemCredits = 0;
-        let earnedSemCredits = 0;
-        let semGradePoints = 0;
-
-        const seedOffset = parseInt(studentId.slice(-2) || "0", 10);
-        const courseGrades = semCourses.map((c, idx) => {
-          const { marks, grade, gradePoint } = getSampleMarksAndGrade(s, idx, seedOffset);
-          const cr = Number(c.credits) || 0;
-          totalSemCredits += cr;
-          earnedSemCredits += cr;
-          semGradePoints += cr * gradePoint;
-
-          return {
-            courseCode: c.code,
-            courseTitle: c.title,
-            credits: cr,
-            marks,
-            grade,
-            gradePoint,
-            status: "passed",
-          };
-        });
-
-        const sgpa = totalSemCredits > 0 ? Number((semGradePoints / totalSemCredits).toFixed(2)) : 0.00;
-        cumulativePoints += semGradePoints;
-        cumulativeCredits += totalSemCredits;
-        cumulativeEarnedCredits += earnedSemCredits;
-        const cgpa = cumulativeCredits > 0 ? Number((cumulativePoints / cumulativeCredits).toFixed(2)) : sgpa;
-
-        const examYear = 2020 + s;
-        const session = `${examYear - 1}-${examYear}`;
-
-        await results.insertOne({
-          studentId,
-          studentEmail,
-          studentName,
-          currentSemester: currentSemNum,
-          semester: s,
-          semesterLabel: SEMESTER_LABELS[s] || `${s}th Semester`,
-          session: st.session || session,
-          examYear,
-          courses: courseGrades,
-          totalCredits: Number(totalSemCredits.toFixed(2)),
-          earnedCredits: Number(earnedSemCredits.toFixed(2)),
-          sgpa,
-          cgpa,
-          cumulativeEarnedCredits: Number(cumulativeEarnedCredits.toFixed(2)),
-          remarks: "Official Semester Result Published by Controller of Examinations",
-          status: "published",
-          publishedDate: new Date(Date.now() - (currentSemNum - s) * 90 * 24 * 3600 * 1000),
-          createdBy: "admin@cse.edu",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
-      }
-      console.log(`Auto-seeded published semester results (Semesters 1 to ${currentSemNum - 1}) for ${studentName} (${studentId})!`);
     }
   }
 };

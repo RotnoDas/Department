@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { authClient } from "@/lib/auth-client";
+import React, { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
+import { authClient, safeSignOut } from "@/lib/auth-client";
 import { apiFetch } from "@/lib/api";
+import { ThemeToggle } from "@/components/common/ThemeToggle";
 import { 
   ScanFace,
   RotateCcw,
@@ -11,7 +13,6 @@ import {
   UserX, 
   GraduationCap, 
   Presentation, 
-  Briefcase, 
   ShieldCheck, 
   Clock, 
   Search, 
@@ -44,7 +45,18 @@ import {
   Check,
   LifeBuoy,
   MessageSquareWarning,
-  Eye
+  Eye,
+  ChevronLeft,
+  ChevronRight,
+  BarChart3,
+  Award,
+  ArrowRight,
+  ExternalLink,
+  Layers,
+  Activity,
+  ArrowUpRight,
+  LogOut,
+  ArrowLeft
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { SEMESTER_COURSES, SEMESTER_LABELS, SEMESTER_KEYS } from "@/data/courses";
@@ -82,8 +94,130 @@ const ROUTINE_TIME_SLOTS = [
   "04:00 - 05:00",
 ];
 
+// 10-Page Architecture for Remastered Admin Dashboard (1:1 with Sidebar)
+export const ADMIN_DASHBOARD_PAGES = [
+  {
+    id: "overview",
+    pageNumber: 1,
+    title: "Executive Overview & Metrics",
+    shortLabel: "Overview",
+    description: "Department command center, executive KPIs, rapid action shortcuts & administrative telemetry.",
+    badge: "Command",
+    icon: ShieldCheck,
+  },
+  {
+    id: "analytics",
+    pageNumber: 2,
+    title: "Institutional Analytics & Distribution",
+    shortLabel: "Analytics",
+    description: "Cohort demographics, routine density distribution, and cross-semester academic charts.",
+    badge: "Analytics",
+    icon: BarChart3,
+  },
+  {
+    id: "results",
+    pageNumber: 3,
+    title: "Semester Results & Continuous Grade Studio",
+    shortLabel: "Results",
+    description: "Publish course marks, inspect semester GPAs, and review institutional transcript records.",
+    badge: "Grades",
+    icon: Award,
+  },
+  {
+    id: "support-complaints",
+    pageNumber: 4,
+    title: "Support & Grievance Desk",
+    shortLabel: "Support",
+    description: "Resolve student grievances, technical issues, and anonymous submissions with official audit logs.",
+    badge: "Grievances",
+    icon: LifeBuoy,
+  },
+  {
+    id: "pending",
+    pageNumber: 5,
+    title: "Student Admissions & Biometric Verification",
+    shortLabel: "Students",
+    description: "Review undergraduate registrations, verify biometric enrollment, reset facial features & export rosters.",
+    badge: "Admissions",
+    icon: GraduationCap,
+  },
+  {
+    id: "faculty",
+    pageNumber: 6,
+    title: "Faculty Admissions & Academic Roster",
+    shortLabel: "Faculty",
+    description: "Approve professor & lecturer registrations, assign departments, and maintain academic directory.",
+    badge: "Professors",
+    icon: Presentation,
+  },
+  {
+    id: "routine",
+    pageNumber: 7,
+    title: "Class Routine & Master Timetable",
+    shortLabel: "Timetable",
+    description: "Weekly timetable matrix for Semesters 1 to 8. Interactive slot allocator for courses and lecture rooms.",
+    badge: "Timetable",
+    icon: Calendar,
+  },
+  {
+    id: "courses",
+    pageNumber: 8,
+    title: "Curriculum Matrix & Course Catalog",
+    shortLabel: "Curriculum",
+    description: "8-semester engineering curriculum, syllabus structure, credit weightings & assigned instructor matrix.",
+    badge: "Syllabus",
+    icon: BookOpen,
+  },
+  {
+    id: "notices",
+    pageNumber: 9,
+    title: "Department Notice Dispatcher",
+    shortLabel: "Notices",
+    description: "Broadcast institutional notices, upload attachments, generate AI summaries and publish audio circulars.",
+    badge: "Circulars",
+    icon: Bell,
+  },
+];
+
+const PAGE_ALIASES = {
+  overview: "overview",
+  profile: "overview",
+  analytics: "analytics",
+  results: "results",
+  support: "support-complaints",
+  "support-complaints": "support-complaints",
+  complaints: "support-complaints",
+  grievances: "support-complaints",
+  students: "pending",
+  pending: "pending",
+  faculty: "faculty",
+  "faculty-pending": "faculty",
+  teachers: "faculty",
+  routine: "routine",
+  timetable: "routine",
+  courses: "courses",
+  curriculum: "courses",
+  notices: "notices",
+  notice: "notices",
+};
+
 export default function AdminDashboardPage() {
   const { data: sessionData } = authClient.useSession();
+  const [adminUser, setAdminUser] = useState(null);
+  const sessionUser = sessionData?.user;
+  const activeAdmin = adminUser ? { ...sessionUser, ...adminUser } : sessionUser;
+
+  useEffect(() => {
+    if (sessionUser?.email) {
+      fetch(`${SERVER_URL}/api/users/${encodeURIComponent(sessionUser.email)}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.user) setAdminUser(data.user);
+        })
+        .catch(() => {});
+    }
+  }, [sessionUser?.email]);
+
   const [initialLoading, setInitialLoading] = useState(true);
   const [stats, setStats] = useState({
     totalStudents: 0,
@@ -92,14 +226,10 @@ export default function AdminDashboardPage() {
     totalTeachers: 0,
     pendingTeachers: 0,
     approvedTeachers: 0,
-    totalEmployees: 0,
-    pendingEmployees: 0,
-    approvedEmployees: 0,
     totalUsers: 0,
   });
   const [students, setStudents] = useState([]);
   const [teachers, setTeachers] = useState([]);
-  const [employees, setEmployees] = useState([]);
   const [courses, setCourses] = useState([]);
   const [notices, setNotices] = useState([]);
   const [routines, setRoutines] = useState([]);
@@ -109,8 +239,9 @@ export default function AdminDashboardPage() {
   const [resettingFaceId, setResettingFaceId] = useState(null);
   const [teacherTab, setTeacherTab] = useState("all");
   const [teacherSearch, setTeacherSearch] = useState("");
-  const [employeeTab, setEmployeeTab] = useState("all");
-  const [employeeSearch, setEmployeeSearch] = useState("");
+
+  // Paginated Dashboard Active Page
+  const [currentPage, setCurrentPage] = useState("overview");
 
   // Collapsible sections state
   const [collapsedSections, setCollapsedSections] = useState({
@@ -123,7 +254,6 @@ export default function AdminDashboardPage() {
     courses: false,
     notices: false,
     support: false,
-    employees: false,
   });
 
   const toggleSection = (key) => {
@@ -141,7 +271,6 @@ export default function AdminDashboardPage() {
       courses: true,
       notices: true,
       support: true,
-      employees: true,
     });
   };
 
@@ -156,30 +285,121 @@ export default function AdminDashboardPage() {
       courses: false,
       notices: false,
       support: false,
-      employees: false,
     });
   };
 
   const allCollapsed = Object.values(collapsedSections).every(Boolean);
 
+  const currentPageIndex = useMemo(() => {
+    const idx = ADMIN_DASHBOARD_PAGES.findIndex((p) => p.id === currentPage);
+    return idx >= 0 ? idx : 0;
+  }, [currentPage]);
+
+  const currentPageObj = ADMIN_DASHBOARD_PAGES[currentPageIndex] || ADMIN_DASHBOARD_PAGES[0];
+
+  const goToPage = (pageId) => {
+    const normalized = PAGE_ALIASES[pageId] || pageId;
+    const target = ADMIN_DASHBOARD_PAGES.find((p) => p.id === normalized);
+    if (!target) return;
+    
+    setCurrentPage(target.id);
+    
+    // Also ensure targeted section is uncollapsed
+    setCollapsedSections((prev) => {
+      const copy = { ...prev };
+      if (target.id === "analytics") copy.analytics = false;
+      if (target.id === "results") copy.results = false;
+      if (target.id === "pending") copy.students = false;
+      if (target.id === "faculty") copy.faculty = false;
+      if (target.id === "routine") copy.routine = false;
+      if (target.id === "courses") copy.courses = false;
+      if (target.id === "notices") copy.notices = false;
+      if (target.id === "support-complaints") copy.support = false;
+      return copy;
+    });
+
+    if (typeof window !== "undefined") {
+      const hash = target.id === "overview" ? "" : `#${target.id}`;
+      if (window.location.hash !== hash) {
+        window.history.pushState(null, "", `/dashboard/admin${hash}`);
+      }
+      window.dispatchEvent(new CustomEvent("dashboard-sync-sidebar", { detail: { sectionId: target.id } }));
+      
+      const el = document.getElementById("admin-content");
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      } else {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    }
+  };
+
+  // Sync page from URL hash & handle custom navigation events
   useEffect(() => {
-    const handleHash = () => {
-      const hash = window.location.hash.replace("#", "");
-      if (!hash) return;
-      if (hash === "analytics") setCollapsedSections((p) => ({ ...p, analytics: false }));
-      if (hash === "results") setCollapsedSections((p) => ({ ...p, results: false }));
-      if (hash === "pending" || hash === "students") setCollapsedSections((p) => ({ ...p, students: false }));
-      if (hash === "faculty") setCollapsedSections((p) => ({ ...p, faculty: false }));
-      if (hash === "routine") setCollapsedSections((p) => ({ ...p, routine: false }));
-      if (hash === "courses") setCollapsedSections((p) => ({ ...p, courses: false }));
-      if (hash === "notices") setCollapsedSections((p) => ({ ...p, notices: false }));
-      if (hash === "support-complaints") setCollapsedSections((p) => ({ ...p, support: false }));
-      if (hash === "directory" || hash === "employees") setCollapsedSections((p) => ({ ...p, employees: false }));
+    if (typeof window === "undefined") return;
+
+    const syncPageFromHash = () => {
+      const raw = window.location.hash.replace("#", "").trim();
+      if (!raw) {
+        setCurrentPage("overview");
+        return;
+      }
+      const resolved = PAGE_ALIASES[raw] || raw;
+      const match = ADMIN_DASHBOARD_PAGES.find((p) => p.id === resolved);
+      if (match) {
+        setCurrentPage(match.id);
+        setCollapsedSections((prev) => {
+          const copy = { ...prev };
+          if (match.id === "analytics") copy.analytics = false;
+          if (match.id === "results") copy.results = false;
+          if (match.id === "pending") copy.students = false;
+          if (match.id === "faculty") copy.faculty = false;
+          if (match.id === "routine") copy.routine = false;
+          if (match.id === "courses") copy.courses = false;
+          if (match.id === "notices") copy.notices = false;
+          if (match.id === "support-complaints") copy.support = false;
+          return copy;
+        });
+      }
     };
-    handleHash();
-    window.addEventListener("hashchange", handleHash);
-    return () => window.removeEventListener("hashchange", handleHash);
+
+    syncPageFromHash();
+
+    const handleHashChange = () => syncPageFromHash();
+    const handlePopState = () => syncPageFromHash();
+    const handleDashboardPageChange = (e) => {
+      if (e?.detail?.sectionId) {
+        const resolved = PAGE_ALIASES[e.detail.sectionId] || e.detail.sectionId;
+        const match = ADMIN_DASHBOARD_PAGES.find((p) => p.id === resolved);
+        if (match) {
+          setCurrentPage(match.id);
+          const el = document.getElementById("admin-content");
+          if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "start" });
+          } else {
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }
+        }
+      }
+    };
+
+    window.addEventListener("hashchange", handleHashChange);
+    window.addEventListener("popstate", handlePopState);
+    window.addEventListener("dashboard-change-page", handleDashboardPageChange);
+
+    return () => {
+      window.removeEventListener("hashchange", handleHashChange);
+      window.removeEventListener("popstate", handlePopState);
+      window.removeEventListener("dashboard-change-page", handleDashboardPageChange);
+    };
   }, []);
+
+  // Sync sidebar active state when currentPage changes
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("dashboard-sync-sidebar", { detail: { sectionId: currentPage } }));
+    }
+  }, [currentPage]);
 
   // Support & Complaints states
   const [supportRecords, setSupportRecords] = useState([]);
@@ -236,14 +456,7 @@ export default function AdminDashboardPage() {
         setTeachers(data.teachers || []);
       }
 
-      // 4. Fetch Employees
-      const employeesRes = await fetch(`${SERVER_URL}/api/employees`);
-      if (employeesRes.ok) {
-        const data = await employeesRes.json();
-        setEmployees(data.employees || []);
-      }
-
-      // 5. Fetch Courses
+      // 4. Fetch Courses
       const coursesRes = await fetch(`${SERVER_URL}/api/courses`);
       if (coursesRes.ok) {
         const data = await coursesRes.json();
@@ -715,91 +928,6 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // Update single employee status
-  const handleUpdateEmployeeStatus = async (employeeId, newStatus) => {
-    try {
-      const res = await fetch(`${SERVER_URL}/api/employees/status/${employeeId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus }),
-      });
-
-      if (res.ok) {
-        toast.success(`Staff member registration status set to ${newStatus}!`);
-        await fetchData();
-      } else {
-        const data = await res.json().catch(() => ({}));
-        toast.error(data.error || "Failed to update employee status");
-      }
-    } catch (err) {
-      toast.error("Network error while updating employee status");
-    }
-  };
-
-  // Bulk Approve all pending employees
-  const handleApproveAllEmployees = async () => {
-    if (!confirm("Are you sure you want to approve ALL pending staff registrations?")) return;
-    try {
-      const res = await fetch(`${SERVER_URL}/api/admin/employees/approve-all`, {
-        method: "POST",
-      });
-      if (res.ok) {
-        const data = await res.json();
-        toast.success(data.message || "All pending staff members approved!");
-        fetchData();
-      } else {
-        toast.error("Failed to approve all employees");
-      }
-    } catch (err) {
-      toast.error("Network error during bulk employee approval");
-    }
-  };
-
-  // Delete employee record
-  const handleDeleteEmployee = async (employeeId, employeeName) => {
-    if (!confirm(`Are you sure you want to delete the record for ${employeeName || 'this staff member'}?`)) return;
-    try {
-      const res = await fetch(`${SERVER_URL}/api/employees/${employeeId}`, {
-        method: "DELETE",
-      });
-      if (res.ok) {
-        toast.success("Staff record deleted successfully");
-        fetchData();
-      } else {
-        toast.error("Failed to delete staff member");
-      }
-    } catch (err) {
-      toast.error("Error deleting staff record");
-    }
-  };
-
-  // Export employees to CSV
-  const handleExportEmployees = () => {
-    if (employees.length === 0) {
-      toast.error("No staff records to export");
-      return;
-    }
-    const headers = ["Name", "Email", "Employee ID", "Designation", "Department", "Phone", "Status"];
-    const rows = employees.map(emp => [
-      `"${emp.name || ''}"`,
-      `"${emp.email || ''}"`,
-      `"${emp.employeeId || ''}"`,
-      `"${emp.designation || ''}"`,
-      `"${emp.department || ''}"`,
-      `"${emp.phone || ''}"`,
-      `"${emp.status || 'approved'}"`
-    ]);
-    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `CSE_Staff_Directory_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success("Staff directory exported as CSV!");
-  };
-
   // Create course
   const handleCreateCourse = async (e) => {
     e.preventDefault();
@@ -991,6 +1119,36 @@ export default function AdminDashboardPage() {
     toast.success("Faculty directory exported as CSV!");
   };
 
+  const handleExportTeachers = handleExportFaculty;
+
+  // Export support and grievances records to CSV
+  const handleExportSupport = () => {
+    if (supportRecords.length === 0) {
+      toast.error("No support or grievance records available to export");
+      return;
+    }
+    const headers = ["Tracking ID", "Type", "Title", "Reporter Name", "Reporter Email", "Anonymous", "Status", "Created At"];
+    const rows = supportRecords.map(r => [
+      `"${r.trackingId || r._id || r.id || ''}"`,
+      `"${r.type || ''}"`,
+      `"${(r.title || '').replace(/"/g, '""')}"`,
+      `"${r.isAnonymous ? 'Anonymous' : (r.authorName || '')}"`,
+      `"${r.isAnonymous ? 'N/A' : (r.authorEmail || '')}"`,
+      `"${r.isAnonymous ? 'Yes' : 'No'}"`,
+      `"${r.status || 'Submitted'}"`,
+      `"${r.createdAt ? new Date(r.createdAt).toLocaleString() : ''}"`
+    ]);
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `CSE_Support_Grievances_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Support and grievances records exported as CSV!");
+  };
+
   const faceEnrolledCount = students.filter((s) => Boolean(s.faceEnrolled)).length;
 
   const filteredStudents = students.filter(s => {
@@ -1022,22 +1180,6 @@ export default function AdminDashboardPage() {
     (t.designation || "").toLowerCase().includes(teacherSearch.toLowerCase()) ||
     (t.specialization || "").toLowerCase().includes(teacherSearch.toLowerCase()) ||
     (t.officeRoom || "").toLowerCase().includes(teacherSearch.toLowerCase())
-  );
-
-  const pendingEmployeesCount = employees.filter(e => e.status === "pending").length;
-  const approvedEmployeesCount = employees.filter(e => e.status !== "pending" && e.status !== "rejected").length;
-
-  const filteredEmployees = employees.filter(e => {
-    if (employeeTab === "pending") return e.status === "pending";
-    if (employeeTab === "approved") return e.status !== "pending" && e.status !== "rejected";
-    if (employeeTab === "rejected") return e.status === "rejected";
-    return true;
-  }).filter(e => 
-    (e.name || "").toLowerCase().includes(employeeSearch.toLowerCase()) ||
-    (e.email || "").toLowerCase().includes(employeeSearch.toLowerCase()) ||
-    (e.employeeId || "").toLowerCase().includes(employeeSearch.toLowerCase()) ||
-    (e.designation || "").toLowerCase().includes(employeeSearch.toLowerCase()) ||
-    (e.department || "").toLowerCase().includes(employeeSearch.toLowerCase())
   );
 
   const filteredCourses = courses.filter((c) => {
@@ -1176,6 +1318,31 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const getPageCount = (pageId) => {
+    switch (pageId) {
+      case "overview":
+        return `${stats.totalStudents + (stats.totalTeachers || teachers.length)} Members`;
+      case "analytics":
+        return "8 Semesters";
+      case "results":
+        return "Grade Studio";
+      case "support-complaints":
+        return pendingSupportCount > 0 ? `${pendingSupportCount} Active` : `${supportRecords.length} Cases`;
+      case "pending":
+        return stats.pendingStudents > 0 ? `${stats.pendingStudents} Pending` : `${stats.totalStudents} Enrolled`;
+      case "faculty":
+        return pendingTeachersCount > 0 ? `${pendingTeachersCount} Pending` : `${stats.totalTeachers || teachers.length} Teachers`;
+      case "routine":
+        return `${routines.length} Slots`;
+      case "courses":
+        return `${courses.length > 0 ? courses.length : "40+"} Courses`;
+      case "notices":
+        return `${notices.length} Notices`;
+      default:
+        return null;
+    }
+  };
+
   if (initialLoading) {
     return (
       <Loading 
@@ -1188,211 +1355,745 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
-      {/* Top Welcome Banner */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-8 rounded-[2rem] bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 text-white shadow-xl relative overflow-hidden">
-        <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-radial from-purple-500/20 to-transparent pointer-events-none" />
-        <div className="relative z-10 space-y-1">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-xs font-semibold text-purple-200 backdrop-blur-md mb-2">
-            <ShieldCheck className="w-4 h-4 text-purple-300" />
-            <span>Department Admin Authority</span>
+      {/* ── Top Executive Administrative Command Navbar (Replacing Left Sidebar) ── */}
+      <header className="sticky top-2 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl border border-slate-200/90 dark:border-white/10 rounded-2xl sm:rounded-3xl px-4 sm:px-6 py-3 shadow-lg shadow-slate-200/40 dark:shadow-none transition-all duration-300">
+        <div className="flex items-center justify-between gap-4">
+          {/* Left: Department Central Command Branding */}
+          <div className="flex items-center gap-3">
+            <Link href="/" className="flex items-center gap-3 group cursor-pointer">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 via-indigo-700 to-sky-600 text-white shadow-md shadow-indigo-200 dark:shadow-none transition-transform group-hover:scale-105">
+                <GraduationCap className="h-5 w-5" />
+              </div>
+              <div className="flex flex-col">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-black text-base sm:text-lg text-slate-900 dark:text-white tracking-tight">
+                    CSE Portal
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-200 dark:ring-indigo-800">
+                    <ShieldCheck className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                    Admin Command
+                  </span>
+                </div>
+                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-400 tracking-wider uppercase">
+                  PUST Central Administrative Registry
+                </span>
+              </div>
+            </Link>
           </div>
-          <h1 className="text-3xl font-extrabold tracking-tight">
-            Administrator Dashboard
-          </h1>
-          <p className="text-sm text-slate-300 font-medium">
-            Manage student verification, publish official circulars, configure courses, and monitor department records.
-          </p>
+
+          {/* Right: Controls, Theme Switcher & Admin Identity */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Quick Public Site Return Link */}
+            <Link
+              href="/"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all border border-slate-200/70 dark:border-white/10 cursor-pointer shadow-2xs"
+              title="Return to Public Department Website"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Public Site</span>
+            </Link>
+
+            {/* Theme Toggle Button */}
+            <div title="Toggle Light / Dark Theme">
+              <ThemeToggle className="h-10 w-10 rounded-xl" />
+            </div>
+
+            {/* Admin User Profile & Sign Out Controls */}
+            <div className="flex items-center gap-2 sm:gap-3 pl-2 sm:pl-3 border-l border-slate-200 dark:border-white/10">
+              <div className="flex items-center gap-2">
+                <div className="relative h-10 w-10 shrink-0 rounded-xl overflow-hidden ring-1 ring-slate-200/80 dark:ring-white/10 shadow-xs bg-slate-100 dark:bg-slate-800">
+                  {activeAdmin?.image ? (
+                    <img
+                      src={activeAdmin.image}
+                      alt={activeAdmin.name || "Admin"}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center bg-gradient-to-tr from-sky-500 to-indigo-600 text-white font-black text-xs">
+                      {(activeAdmin?.name || "A").charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-slate-900 bg-emerald-500" />
+                </div>
+
+                <div className="hidden lg:flex flex-col text-left">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-slate-900 dark:text-white truncate max-w-[130px]">
+                      {activeAdmin?.name || "System Administrator"}
+                    </span>
+                    <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+                      Admin
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-400 truncate max-w-[150px]">
+                    {activeAdmin?.email || "admin@cse.edu"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Secure Sign Out Button */}
+              <button
+                type="button"
+                onClick={() => safeSignOut("/login")}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-rose-50 dark:bg-slate-800 dark:hover:bg-rose-950/40 text-slate-700 hover:text-rose-600 dark:text-slate-200 dark:hover:text-rose-400 text-xs font-bold transition-all border border-slate-200/70 dark:border-white/5 hover:border-rose-200 dark:hover:border-rose-800/60 cursor-pointer shadow-xs active:scale-95"
+                title="Sign out of Admin Session"
+              >
+                <LogOut className="w-3.5 h-3.5 text-rose-500" />
+                <span className="hidden sm:inline">Sign Out</span>
+              </button>
+            </div>
+          </div>
         </div>
-        <div className="flex items-center flex-wrap gap-3 relative z-10">
-          <DashboardCollapseControls
-            onCollapseAll={collapseAllSections}
-            onExpandAll={expandAllSections}
-            allCollapsed={allCollapsed}
+      </header>
+
+      {/* ── Remastered Hero Welcome Banner (Indigo / Light & Dark Theme Master) ── */}
+      <div className="relative overflow-hidden rounded-[2rem] bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/90 dark:border-white/10 shadow-sm p-6 sm:p-8 transition-colors">
+        <div className="absolute -right-20 -top-20 w-80 h-80 bg-indigo-500/[0.05] dark:bg-indigo-500/15 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -left-20 -bottom-20 w-80 h-80 bg-sky-500/[0.04] dark:bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-500/20 text-xs font-semibold text-indigo-700 dark:text-indigo-200 backdrop-blur-md mb-1 border border-indigo-200/80 dark:border-indigo-400/20 shadow-xs">
+              <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <span>Department Admin Authority</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400">System Live</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-slate-900 dark:text-white">
+              Administrator Dashboard
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 font-medium max-w-2xl leading-relaxed">
+              Institutional governance, student verification, curriculum control, examination results, and centralized departmental operations.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              type="button"
+              onClick={fetchData}
+              disabled={isLoading}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-bold shadow-md shadow-indigo-600/30 transition-all cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
+              <span>{isLoading ? "Synchronizing..." : "Sync Live Data"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => goToPage("notices")}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs font-bold transition-all border border-slate-200/80 dark:border-white/10 shadow-xs cursor-pointer active:scale-95"
+            >
+              <Bell className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              <span>Notice Desk</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Quick Access Badges & Live Status Highlights */}
+        <div className="relative z-10 mt-6 pt-5 border-t border-slate-100 dark:border-white/10 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+              Quick Jumps:
+            </span>
+            <button
+              type="button"
+              onClick={() => goToPage("pending")}
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 dark:hover:bg-amber-900/50 border border-amber-200/80 dark:border-amber-800/60 text-amber-700 dark:text-amber-300 font-bold text-xs transition cursor-pointer"
+            >
+              <UserCheck className="w-3.5 h-3.5" />
+              <span>Student Approvals</span>
+              {stats.pendingStudents > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-amber-200 dark:bg-amber-800 text-[10px] font-black">
+                  {stats.pendingStudents}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => goToPage("faculty")}
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/50 dark:hover:bg-sky-900/50 border border-sky-200/80 dark:border-sky-800/60 text-sky-700 dark:text-sky-300 font-bold text-xs transition cursor-pointer"
+            >
+              <Presentation className="w-3.5 h-3.5" />
+              <span>Faculty Approvals</span>
+              {pendingTeachersCount > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-sky-200 dark:bg-sky-800 text-[10px] font-black">
+                  {pendingTeachersCount}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => goToPage("support-complaints")}
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/50 border border-rose-200/80 dark:border-rose-800/60 text-rose-700 dark:text-rose-300 font-bold text-xs transition cursor-pointer"
+            >
+              <LifeBuoy className="w-3.5 h-3.5" />
+              <span>Grievance Desk</span>
+              {pendingSupportCount > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-rose-200 dark:bg-rose-800 text-[10px] font-black">
+                  {pendingSupportCount}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => goToPage("routine")}
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/50 border border-indigo-200/80 dark:border-indigo-800/60 text-indigo-700 dark:text-indigo-300 font-bold text-xs transition cursor-pointer"
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Master Timetable</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 font-medium">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span>CSE Department Registry • Admin Hub</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Top 10-Page Pagination & Stepper Bar ── */}
+      <div 
+        id="admin-content" 
+        className="bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/90 dark:border-white/10 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-sm space-y-3.5 transition-colors scroll-mt-6"
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100 dark:border-white/10">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-200/60 dark:border-indigo-800/60 shadow-xs">
+              {React.createElement(currentPageObj?.icon || ShieldCheck, { className: "w-5 h-5" })}
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide uppercase bg-indigo-100/80 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
+                  Page {currentPageIndex + 1} of {ADMIN_DASHBOARD_PAGES.length}
+                </span>
+                <span className="text-xs font-semibold text-slate-400 dark:text-slate-500">•</span>
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  {getPageCount(currentPage)}
+                </span>
+              </div>
+              <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight mt-0.5">
+                {currentPageObj?.title}
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium line-clamp-1">
+                {currentPageObj?.description}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+            <button
+              type="button"
+              disabled={currentPageIndex === 0}
+              onClick={() => {
+                if (currentPageIndex > 0) {
+                  goToPage(ADMIN_DASHBOARD_PAGES[currentPageIndex - 1].id);
+                }
+              }}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
+                currentPageIndex > 0
+                  ? "bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 border-slate-200/80 dark:border-white/10 shadow-xs cursor-pointer active:scale-95"
+                  : "bg-slate-50 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 border-slate-100 dark:border-white/5 cursor-not-allowed opacity-60"
+              }`}
+            >
+              <ChevronLeft className="w-4 h-4" />
+              <span className="hidden xs:inline">Previous</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={currentPageIndex === ADMIN_DASHBOARD_PAGES.length - 1}
+              onClick={() => {
+                if (currentPageIndex < ADMIN_DASHBOARD_PAGES.length - 1) {
+                  goToPage(ADMIN_DASHBOARD_PAGES[currentPageIndex + 1].id);
+                }
+              }}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
+                currentPageIndex < ADMIN_DASHBOARD_PAGES.length - 1
+                  ? "bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-600 shadow-xs shadow-indigo-600/20 cursor-pointer active:scale-95"
+                  : "bg-slate-50 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 border-slate-100 dark:border-white/5 cursor-not-allowed opacity-60"
+              }`}
+            >
+              <span className="hidden xs:inline">Next</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* 9 Interactive Numbered Step Pills (exact match with student & teacher panels) */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-0.5 scrollbar-thin">
+          {ADMIN_DASHBOARD_PAGES.map((page, idx) => {
+            const isCurrent = page.id === currentPage;
+            const PageIcon = page.icon;
+            const count = getPageCount(page.id);
+            const hasAlert = 
+              (page.id === "pending" && stats.pendingStudents > 0) ||
+              (page.id === "faculty" && pendingTeachersCount > 0) ||
+              (page.id === "support-complaints" && pendingSupportCount > 0);
+
+            return (
+              <button
+                key={page.id}
+                type="button"
+                onClick={() => goToPage(page.id)}
+                className={`group relative flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer shrink-0 border ${
+                  isCurrent
+                    ? "bg-indigo-600 text-white border-indigo-600 shadow-sm shadow-indigo-600/30 scale-[1.02]"
+                    : "bg-slate-100/90 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-400 border-slate-200/70 dark:border-white/5"
+                }`}
+                title={`Page ${idx + 1}: ${page.title}`}
+              >
+                {hasAlert && !isCurrent && (
+                  <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+                  </span>
+                )}
+                <span className={`inline-flex items-center justify-center w-5 h-5 rounded-lg text-[10px] font-black ${
+                  isCurrent 
+                    ? "bg-white/20 text-white" 
+                    : "bg-slate-200/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/60 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"
+                }`}>
+                  {idx + 1}
+                </span>
+                <PageIcon className={`w-3.5 h-3.5 shrink-0 ${isCurrent ? "text-white" : "text-slate-500 dark:text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"}`} />
+                <span>{page.shortLabel}</span>
+                {count && (
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.2 rounded-md ${
+                    isCurrent ? "bg-white/20 text-white" : "bg-slate-200/60 dark:bg-slate-700/60 text-slate-500 dark:text-slate-400"
+                  }`}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Page 1: Overview & Executive Command ─────────────────── */}
+      {currentPage === "overview" && (
+        <div id="overview" className="space-y-6 animate-in fade-in duration-300">
+          {/* KPI Statistic Cards */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Department Overview Metrics
+              </span>
+              <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+                Click any card to jump to section
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5">
+              {/* Total Students */}
+              <div 
+                onClick={() => goToPage("pending")}
+                className="p-6 rounded-3xl bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/80 dark:border-white/10 shadow-sm hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-800 transition-all cursor-pointer group"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400">Total Students</span>
+                  <div className="h-10 w-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <GraduationCap className="w-5 h-5" />
+                  </div>
+                </div>
+                <div className="mt-4 flex items-baseline gap-2">
+                  <span className="text-3xl font-black text-slate-900 dark:text-white">{stats.totalStudents}</span>
+                  <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Enrolled</span>
+                </div>
+              </div>
+
+              {/* Pending Approvals */}
+              <div 
+                onClick={() => goToPage("pending")}
+                className="p-6 rounded-3xl bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/80 dark:border-white/10 shadow-sm hover:shadow-md hover:border-amber-300 dark:hover:border-amber-800 transition-all cursor-pointer group relative overflow-hidden"
+              >
+                {stats.pendingStudents > 0 && (
+                  <div className="absolute top-3 right-3 flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400">Pending Approvals</span>
+                  <div className="h-10 w-10 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <UserCheck className="w-5 h-5" />
+                  </div>
+                </div>
+                <div className="mt-4 flex items-baseline gap-2">
+                  <span className="text-3xl font-black text-amber-600 dark:text-amber-400">{stats.pendingStudents}</span>
+                  <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">Requires Verification</span>
+                </div>
+              </div>
+
+              {/* Faculty Teachers */}
+              <div 
+                onClick={() => goToPage("faculty")}
+                className="p-6 rounded-3xl bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/80 dark:border-white/10 shadow-sm hover:shadow-md hover:border-sky-300 dark:hover:border-sky-800 transition-all cursor-pointer group relative overflow-hidden"
+              >
+                {(stats.pendingTeachers > 0 || pendingTeachersCount > 0) && (
+                  <div className="absolute top-3 right-3 flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400">Faculty Members</span>
+                  <div className="h-10 w-10 rounded-xl bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <Presentation className="w-5 h-5" />
+                  </div>
+                </div>
+                <div className="mt-4 flex items-baseline gap-2">
+                  <span className="text-3xl font-black text-slate-900 dark:text-white">{stats.totalTeachers || teachers.length}</span>
+                  {(stats.pendingTeachers > 0 || pendingTeachersCount > 0) ? (
+                    <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 font-bold">
+                      {stats.pendingTeachers || pendingTeachersCount} Verification
+                    </span>
+                  ) : (
+                    <span className="text-xs font-semibold text-sky-600 dark:text-sky-400">Active Faculty</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Curriculum Courses */}
+              <div 
+                onClick={() => goToPage("courses")}
+                className="p-6 rounded-3xl bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/80 dark:border-white/10 shadow-sm hover:shadow-md hover:border-emerald-300 dark:hover:border-emerald-800 transition-all cursor-pointer group relative overflow-hidden"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400">Curriculum Matrix</span>
+                  <div className="h-10 w-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <BookOpen className="w-5 h-5" />
+                  </div>
+                </div>
+                <div className="mt-4 flex items-baseline gap-2">
+                  <span className="text-3xl font-black text-slate-900 dark:text-white">{courses.length > 0 ? courses.length : "40+"}</span>
+                  <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Active Courses</span>
+                </div>
+              </div>
+
+              {/* Support & Grievances */}
+              <div 
+                onClick={() => goToPage("support-complaints")}
+                className="p-6 rounded-3xl bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/80 dark:border-white/10 shadow-sm hover:shadow-md hover:border-rose-300 dark:hover:border-rose-800 transition-all cursor-pointer group relative overflow-hidden"
+              >
+                {pendingSupportCount > 0 && (
+                  <div className="absolute top-3 right-3 flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400">Support & Grievances</span>
+                  <div className="h-10 w-10 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <LifeBuoy className="w-5 h-5" />
+                  </div>
+                </div>
+                <div className="mt-4 flex items-baseline gap-2">
+                  <span className="text-3xl font-black text-slate-900 dark:text-white">{supportRecords.length}</span>
+                  {pendingSupportCount > 0 ? (
+                    <span className="text-xs font-semibold text-rose-600 dark:text-rose-400 font-bold">
+                      {pendingSupportCount} Active Needs Action
+                    </span>
+                  ) : (
+                    <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">All Addressed</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Rapid Administration Operations Center */}
+          <div className="space-y-3">
+            <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 px-1">
+              Department Operations & Administrative Modules
+            </span>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {/* Module 1: Student Admissions */}
+              <div className="p-6 rounded-3xl bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/80 dark:border-white/10 shadow-sm flex flex-col justify-between space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="h-10 w-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                      <GraduationCap className="w-5 h-5" />
+                    </div>
+                    {stats.pendingStudents > 0 && (
+                      <span className="px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 text-xs font-black animate-pulse">
+                        {stats.pendingStudents} Pending
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
+                    Student Admissions & Face ID
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Review incoming registrations, approve student accounts, inspect enrolled face features, and reset biometrics.
+                  </p>
+                </div>
+                <div className="pt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => goToPage("pending")}
+                    className="flex-1 py-2 px-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 text-xs font-bold transition text-center cursor-pointer"
+                  >
+                    Manage Students →
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportStudents}
+                    className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition cursor-pointer"
+                    title="Export Student Roster (CSV)"
+                  >
+                    <Download className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Module 2: Faculty Roster */}
+              <div className="p-6 rounded-3xl bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/80 dark:border-white/10 shadow-sm flex flex-col justify-between space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="h-10 w-10 rounded-2xl bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center">
+                      <Presentation className="w-5 h-5" />
+                    </div>
+                    {pendingTeachersCount > 0 && (
+                      <span className="px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 text-xs font-black animate-pulse">
+                        {pendingTeachersCount} Pending
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
+                    Faculty Admissions & Roster
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Verify academic professor accounts, assign faculty designations, office rooms, and manage teacher profiles.
+                  </p>
+                </div>
+                <div className="pt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => goToPage("faculty")}
+                    className="flex-1 py-2 px-3 rounded-xl bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/60 dark:hover:bg-sky-900/60 text-sky-600 dark:text-sky-400 text-xs font-bold transition text-center cursor-pointer"
+                  >
+                    Manage Faculty →
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportFaculty}
+                    className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition cursor-pointer"
+                    title="Export Faculty Roster (CSV)"
+                  >
+                    <Download className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Module 3: Master Routine Studio */}
+              <div className="p-6 rounded-3xl bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/80 dark:border-white/10 shadow-sm flex flex-col justify-between space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="h-10 w-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                      <Calendar className="w-5 h-5" />
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 text-xs font-black">
+                      {routines.length} Slots
+                    </span>
+                  </div>
+                  <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
+                    Class Routine & Timetable
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Interactive weekly timetable builder across Semesters 1 through 8. Assign lecture slots, courses, teachers, and classrooms.
+                  </p>
+                </div>
+                <div className="pt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => goToPage("routine")}
+                    className="w-full py-2 px-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 text-xs font-bold transition text-center cursor-pointer"
+                  >
+                    Open Timetable Studio →
+                  </button>
+                </div>
+              </div>
+
+              {/* Module 4: Curriculum Matrix */}
+              <div className="p-6 rounded-3xl bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/80 dark:border-white/10 shadow-sm flex flex-col justify-between space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="h-10 w-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                      <BookOpen className="w-5 h-5" />
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 text-xs font-black">
+                      {courses.length > 0 ? `${courses.length} Courses` : "8 Semesters"}
+                    </span>
+                  </div>
+                  <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
+                    Curriculum & Course Matrix
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Full 8-semester syllabus, credit weightings, theory vs. laboratory classifications, and assigned instructors.
+                  </p>
+                </div>
+                <div className="pt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => goToPage("courses")}
+                    className="w-full py-2 px-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 text-xs font-bold transition text-center cursor-pointer"
+                  >
+                    View Curriculum Matrix →
+                  </button>
+                </div>
+              </div>
+
+              {/* Module 5: Notice Dispatcher */}
+              <div className="p-6 rounded-3xl bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/80 dark:border-white/10 shadow-sm flex flex-col justify-between space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="h-10 w-10 rounded-2xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                      <Bell className="w-5 h-5" />
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 text-xs font-black">
+                      {notices.length} Notices
+                    </span>
+                  </div>
+                  <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
+                    Notice Dispatcher & Circulars
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Publish official announcements, voice notes, upload attachments, generate AI summaries, and manage department notices.
+                  </p>
+                </div>
+                <div className="pt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => goToPage("notices")}
+                    className="w-full py-2 px-3 rounded-xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 text-xs font-bold transition text-center cursor-pointer"
+                  >
+                    Notice Dispatcher →
+                  </button>
+                </div>
+              </div>
+
+              {/* Module 6: Support & Grievances */}
+              <div className="p-6 rounded-3xl bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/80 dark:border-white/10 shadow-sm flex flex-col justify-between space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="h-10 w-10 rounded-2xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+                      <LifeBuoy className="w-5 h-5" />
+                    </div>
+                    {pendingSupportCount > 0 ? (
+                      <span className="px-2.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300 text-xs font-black animate-pulse">
+                        {pendingSupportCount} Action Required
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 text-xs font-black">
+                        All Addressed
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
+                    Support & Grievances Desk
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Investigate technical reports and anonymous submissions, add official administrative resolutions, and resolve issues.
+                  </p>
+                </div>
+                <div className="pt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => goToPage("support-complaints")}
+                    className="flex-1 py-2 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 text-xs font-bold transition text-center cursor-pointer"
+                  >
+                    Grievance Registry →
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportSupport}
+                    className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition cursor-pointer"
+                    title="Export Grievance Records (CSV)"
+                  >
+                    <Download className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Department Administrative & Operations Registry Summary */}
+          <div className="p-6 rounded-[2.5rem] bg-gradient-to-r from-indigo-50/70 via-white to-sky-50/70 dark:from-slate-900/90 dark:via-slate-900/80 dark:to-slate-800/80 backdrop-blur-xl border border-slate-200/80 dark:border-white/10 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-2xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-bold text-sm text-slate-900 dark:text-white">
+                  CSE Department Centralized Administrative Registry
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Academic Building, Room 401 • ext. 4401 • admin@cse.edu
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-xs font-semibold flex-wrap">
+              <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                Biometrics Active
+              </span>
+              <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300">
+                <span className="w-2 h-2 rounded-full bg-indigo-500" />
+                Database Connected
+              </span>
+              <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300">
+                <span className="w-2 h-2 rounded-full bg-sky-500" />
+                Server Online
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Page 2: Institutional Analytics & Distribution ────────── */}
+      {currentPage === "analytics" && (
+        <div id="analytics" className="scroll-mt-6 animate-in fade-in duration-300">
+          <AdminAnalyticsCharts 
+            stats={stats} 
+            students={students} 
+            routines={routines} 
+            courses={courses} 
+            teachers={teachers} 
+            isCollapsed={collapsedSections.analytics}
+            onToggle={() => toggleSection("analytics")}
           />
-          <button
-            onClick={fetchData}
-            disabled={isLoading}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all border border-white/10 backdrop-blur-md shadow-sm cursor-pointer"
-          >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
-            <span>Sync Live</span>
-          </button>
         </div>
-      </div>
+      )}
 
-      {/* KPI Statistic Cards */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between px-1">
-          <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Department Overview Metrics
-          </span>
-          <SectionCollapseToggle
-            isCollapsed={collapsedSections.kpi}
-            onToggle={() => toggleSection("kpi")}
-            label="Overview Metrics"
-            size="sm"
-          />
-        </div>
-
-        <CollapsibleBody
-          isCollapsed={collapsedSections.kpi}
-          onExpand={() => toggleSection("kpi")}
-          sectionName="Department Overview Metrics"
-        >
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5">
-        {/* Total Students */}
-        <div className="p-6 rounded-3xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm hover:shadow-md dark:shadow-none transition-shadow">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400">Total Students</span>
-            <div className="h-10 w-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-              <GraduationCap className="w-5 h-5" />
-            </div>
+      {/* ── Page 3: Semester Results & CGPA Studio ─────────────────── */}
+      {currentPage === "results" && (
+        <div id="results" className="scroll-mt-6 animate-in fade-in duration-300">
+          <div className="flex items-center justify-between gap-3 mb-3 px-1">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Examination Records & Results Studio
+            </span>
+            <SectionCollapseToggle
+              isCollapsed={collapsedSections.results}
+              onToggle={() => toggleSection("results")}
+              label="Semester Results"
+              size="sm"
+            />
           </div>
-          <div className="mt-4 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-slate-900 dark:text-white">{stats.totalStudents}</span>
-            <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Enrolled</span>
-          </div>
-        </div>
-
-        {/* Pending Approvals */}
-        <div className="p-6 rounded-3xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm hover:shadow-md dark:shadow-none transition-shadow relative overflow-hidden">
-          {stats.pendingStudents > 0 && (
-            <div className="absolute top-3 right-3 flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-            </div>
-          )}
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400">Pending Approvals</span>
-            <div className="h-10 w-10 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center">
-              <UserCheck className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-4 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-amber-600 dark:text-amber-400">{stats.pendingStudents}</span>
-            <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">Requires Verification</span>
-          </div>
-        </div>
-
-        {/* Faculty Teachers */}
-        <div className="p-6 rounded-3xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm hover:shadow-md dark:shadow-none transition-shadow relative overflow-hidden">
-          {(stats.pendingTeachers > 0 || pendingTeachersCount > 0) && (
-            <div className="absolute top-3 right-3 flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-            </div>
-          )}
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400">Faculty Members</span>
-            <div className="h-10 w-10 rounded-xl bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center">
-              <Presentation className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-4 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-slate-900 dark:text-white">{stats.totalTeachers || teachers.length}</span>
-            {(stats.pendingTeachers > 0 || pendingTeachersCount > 0) ? (
-              <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 font-bold">
-                {stats.pendingTeachers || pendingTeachersCount} Requires Verification
-              </span>
-            ) : (
-              <span className="text-xs font-semibold text-sky-600 dark:text-sky-400">Teaching Staff</span>
-            )}
-          </div>
-        </div>
-
-        {/* Staff Employees */}
-        <div className="p-6 rounded-3xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm hover:shadow-md dark:shadow-none transition-shadow relative overflow-hidden">
-          {(stats.pendingEmployees > 0 || pendingEmployeesCount > 0) && (
-            <div className="absolute top-3 right-3 flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-            </div>
-          )}
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400">Department Staff</span>
-            <div className="h-10 w-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-              <Briefcase className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-4 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-slate-900 dark:text-white">{stats.totalEmployees || employees.length}</span>
-            {(stats.pendingEmployees > 0 || pendingEmployeesCount > 0) ? (
-              <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 font-bold">
-                {stats.pendingEmployees || pendingEmployeesCount} Requires Verification
-              </span>
-            ) : (
-              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Officers & Staff</span>
-            )}
-          </div>
-        </div>
-
-        {/* Support & Grievances */}
-        <div className="p-6 rounded-3xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm hover:shadow-md dark:shadow-none transition-shadow relative overflow-hidden">
-          {pendingSupportCount > 0 && (
-            <div className="absolute top-3 right-3 flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
-            </div>
-          )}
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400">Support & Grievances</span>
-            <div className="h-10 w-10 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center">
-              <LifeBuoy className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-4 flex items-baseline gap-2">
-            <span className="text-3xl font-black text-slate-900 dark:text-white">{supportRecords.length}</span>
-            {pendingSupportCount > 0 ? (
-              <span className="text-xs font-semibold text-rose-600 dark:text-rose-400 font-bold">
-                {pendingSupportCount} Requires Review
-              </span>
-            ) : (
-              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">All Addressed</span>
-            )}
-          </div>
-        </div>
-      </div>
-      </CollapsibleBody>
-    </div>
-
-      {/* Institutional Analytics & Resource Studio */}
-      <div id="analytics" className="scroll-mt-6">
-        <AdminAnalyticsCharts 
-          stats={stats} 
-          students={students} 
-          routines={routines} 
-          courses={courses} 
-          teachers={teachers} 
-          isCollapsed={collapsedSections.analytics}
-          onToggle={() => toggleSection("analytics")}
-        />
-      </div>
-
-      {/* Academic Semester Results & CGPA Studio */}
-      <div id="results" className="scroll-mt-6">
-        <div className="flex items-center justify-between gap-3 mb-3 px-1">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Examination Records & Results Studio
-          </span>
-          <SectionCollapseToggle
+          <CollapsibleBody
             isCollapsed={collapsedSections.results}
-            onToggle={() => toggleSection("results")}
-            label="Semester Results"
-            size="sm"
-          />
+            onExpand={() => toggleSection("results")}
+            sectionName="Semester Results & CGPA Studio"
+          >
+            <AdminResultsSection />
+          </CollapsibleBody>
         </div>
-        <CollapsibleBody
-          isCollapsed={collapsedSections.results}
-          onExpand={() => toggleSection("results")}
-          sectionName="Semester Results & CGPA Studio"
-        >
-          <AdminResultsSection />
-        </CollapsibleBody>
-      </div>
+      )}
 
-      {/* ── Student Admissions & Verification Hub ─────────────────── */}
-      <div id="students" className="scroll-mt-6">
-        <div id="pending" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
+      {/* ── Page 5: Student Admissions & Biometric Verification ────── */}
+      {currentPage === "pending" && (
+        <div id="students" className="scroll-mt-6 animate-in fade-in duration-300">
+          <div id="pending" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5">
@@ -1716,15 +2417,17 @@ export default function AdminDashboardPage() {
           </CollapsibleBody>
         </div>
       </div>
+      )}
 
-      {/* ── Faculty Admissions & Verification Hub ─────────────────── */}
-      <div id="faculty" className="scroll-mt-6">
-        <div id="faculty-pending" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
+      {/* ── Page 6: Faculty Admissions & Academic Roster ──────────── */}
+      {currentPage === "faculty" && (
+        <div id="faculty" className="scroll-mt-6 animate-in fade-in duration-300">
+          <div id="faculty-pending" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-50 dark:bg-sky-950/60 text-xs font-semibold text-sky-600 dark:text-sky-400 mb-1.5">
                 <Presentation className="w-3.5 h-3.5 text-sky-500" />
-                <span>Academic Staff & Faculty Verification</span>
+                <span>Faculty Verification & Academic Roster</span>
               </div>
               <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2.5">
                 <span>Faculty Admissions & Verification Hub</span>
@@ -1974,9 +2677,11 @@ export default function AdminDashboardPage() {
           </CollapsibleBody>
         </div>
       </div>
+      )}
 
-      {/* ── Routine Management Studio ───────────────────────── */}
-      <div id="routine" className="p-7 sm:p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
+      {/* ── Page 7: Class Routine & Master Timetable ──────────────── */}
+      {currentPage === "routine" && (
+        <div id="routine" className="p-7 sm:p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6 animate-in fade-in duration-300">
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pb-2 border-b border-slate-100 dark:border-white/10">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5">
@@ -2694,10 +3399,12 @@ export default function AdminDashboardPage() {
             </div>
           );
         })()}
-      </div>
+        </div>
+      )}
 
-      {/* Curriculum & Courses Section */}
-      <div id="courses" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
+      {/* ── Page 8: Curriculum Matrix & Course Catalog ────────────── */}
+      {currentPage === "courses" && (
+        <div id="courses" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6 animate-in fade-in duration-300">
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5">
@@ -2989,19 +3696,25 @@ export default function AdminDashboardPage() {
         )}
         </CollapsibleBody>
       </div>
+      )}
 
-      {/* Notice Board Section */}
-      <NoticeBoardSection
-        isAdmin={true}
-        title="Notice Board"
-        subtitle="Publish text announcements with files and voice notes, then revise or remove them whenever the department needs an update."
-        isCollapsed={collapsedSections.notices}
-        onToggle={() => toggleSection("notices")}
-      />
+      {/* ── Page 9: Department Notice Dispatcher ──────────────────── */}
+      {currentPage === "notices" && (
+        <div id="notices" className="scroll-mt-6 animate-in fade-in duration-300">
+          <NoticeBoardSection
+            isAdmin={true}
+            title="Notice Board"
+            subtitle="Publish text announcements with files and voice notes, then revise or remove them whenever the department needs an update."
+            isCollapsed={collapsedSections.notices}
+            onToggle={() => toggleSection("notices")}
+          />
+        </div>
+      )}
 
-      {/* ── Support & Complaints Management Hub ───────────────── */}
-      <div id="support-complaints" className="scroll-mt-6 space-y-6">
-        <div className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
+      {/* ── Page 4: Support & Grievance Desk ──────────────────────── */}
+      {currentPage === "support-complaints" && (
+        <div id="support-complaints" className="scroll-mt-6 space-y-6 animate-in fade-in duration-300">
+          <div className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-50 dark:bg-rose-950/60 text-xs font-semibold text-rose-600 dark:text-rose-400 mb-1.5">
@@ -3234,7 +3947,7 @@ export default function AdminDashboardPage() {
                               isResolved
                                 ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200 dark:ring-emerald-800"
                                 : statusStr.includes("progress") || statusStr.includes("investigating")
-                                ? "bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 ring-1 ring-purple-200 dark:ring-purple-800"
+                                ? "bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 ring-1 ring-sky-200 dark:ring-sky-800"
                                 : "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 ring-1 ring-amber-200 dark:ring-amber-800"
                             }`}>
                               {isResolved ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
@@ -3292,278 +4005,65 @@ export default function AdminDashboardPage() {
           </CollapsibleBody>
         </div>
       </div>
+      )}
 
-      {/* ── Staff & Employee Verification Hub ─────────────────── */}
-      <div id="directory" className="scroll-mt-6 space-y-6">
-        <div id="employees" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-xs font-semibold text-emerald-600 dark:text-emerald-400 mb-1.5">
-                <Briefcase className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Non-Teaching Staff & Operational Verification</span>
-              </div>
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2.5">
-                <span>Staff & Employee Verification Hub</span>
-                {pendingEmployeesCount > 0 && (
-                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 font-extrabold flex items-center gap-1 border border-amber-300 dark:border-amber-700 animate-pulse">
-                    <Clock className="w-3 h-3" />
-                    <span>{pendingEmployeesCount} Pending</span>
-                  </span>
-                )}
-              </h2>
-              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5">
-                Review and approve non-teaching staff registrations, manage laboratory officers and attendants, or export department staff rosters.
-              </p>
-            </div>
-
-            <div className="flex items-center flex-wrap gap-2.5">
-              {pendingEmployeesCount > 0 && (
-                <button
-                  onClick={handleApproveAllEmployees}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-200 dark:shadow-none transition-all cursor-pointer"
-                >
-                  <CheckCheck className="w-4 h-4" />
-                  <span>Approve All Pending ({pendingEmployeesCount})</span>
-                </button>
-              )}
-              <button
-                onClick={handleExportEmployees}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Export CSV</span>
-              </button>
-              <SectionCollapseToggle
-                isCollapsed={collapsedSections.employees}
-                onToggle={() => toggleSection("employees")}
-                label="Staff Verification"
-              />
-            </div>
-          </div>
-
-          <CollapsibleBody
-            isCollapsed={collapsedSections.employees}
-            onExpand={() => toggleSection("employees")}
-            sectionName="Staff & Employee Verification Hub"
+      {/* ── Bottom Stepper & Pagination Bar ── */}
+      <div className="p-4 sm:p-6 rounded-[2.5rem] bg-white/95 dark:bg-slate-900/90 backdrop-blur-xl border border-slate-200/90 dark:border-white/10 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 transition-all">
+        <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
+          <button
+            type="button"
+            disabled={currentPageIndex === 0}
+            onClick={() => {
+              if (currentPageIndex > 0) {
+                goToPage(ADMIN_DASHBOARD_PAGES[currentPageIndex - 1].id);
+              }
+            }}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all border disabled:opacity-40 disabled:cursor-not-allowed bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-white/5 cursor-pointer"
           >
-          {/* Tab & Search Bar */}
-          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-2">
-            <div className="flex items-center gap-1.5 p-1 bg-slate-100/80 dark:bg-slate-800/80 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 self-start">
-              <button
-                onClick={() => setEmployeeTab("pending")}
-                className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
-                  employeeTab === "pending"
-                    ? "bg-white dark:bg-slate-700 text-amber-600 dark:text-amber-400 shadow-xs font-bold"
-                    : "hover:text-slate-900 dark:hover:text-white"
-                }`}
-              >
-                Pending ({pendingEmployeesCount})
-              </button>
-              <button
-                onClick={() => setEmployeeTab("approved")}
-                className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
-                  employeeTab === "approved"
-                    ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-xs font-bold"
-                    : "hover:text-slate-900 dark:hover:text-white"
-                }`}
-              >
-                Approved ({approvedEmployeesCount})
-              </button>
-              <button
-                onClick={() => setEmployeeTab("all")}
-                className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
-                  employeeTab === "all"
-                    ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-bold"
-                    : "hover:text-slate-900 dark:hover:text-white"
-                }`}
-              >
-                All Staff ({employees.length})
-              </button>
-            </div>
+            <ChevronLeft className="w-4 h-4" />
+            <span>Previous: {currentPageIndex > 0 ? ADMIN_DASHBOARD_PAGES[currentPageIndex - 1].shortLabel : "Start"}</span>
+          </button>
 
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
-              <input
-                type="text"
-                placeholder="Search staff by name, email, designation, department, or ID..."
-                value={employeeSearch}
-                onChange={(e) => setEmployeeSearch(e.target.value)}
-                className="w-full h-10 pl-11 pr-4 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none focus:border-emerald-500 dark:focus:border-emerald-400 focus:ring-1 focus:ring-emerald-500 transition-all"
-              />
-            </div>
-          </div>
-
-          {/* Employees Table */}
-          <div
-            data-lenis-prevent
-            className="overflow-auto overscroll-contain max-h-[580px] scrollbar-thin rounded-2xl border border-slate-100 dark:border-white/5"
-          >
-            {filteredEmployees.length === 0 ? (
-              <div className="text-center py-16 text-slate-400 dark:text-slate-500 space-y-2">
-                <Briefcase className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600" />
-                <p className="font-semibold text-sm">No department staff records found for this filter.</p>
-              </div>
-            ) : (
-              <table className="w-full text-left text-sm border-collapse">
-                <thead className="sticky top-0 z-10 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-xs">
-                  <tr className="border-b border-slate-100 dark:border-white/10 text-[11px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider">
-                    <th className="py-3 px-4">Staff Member</th>
-                    <th className="pb-3 px-4">Role & Department</th>
-                    <th className="pb-3 px-4">Office & Staff ID</th>
-                    <th className="pb-3 px-4">Contact</th>
-                    <th className="pb-3 px-4">Status</th>
-                    <th className="pb-3 px-4 text-right">Moderation Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-white/10">
-                  {filteredEmployees.map((emp) => {
-                    const isPending = emp.status === "pending";
-                    const isRejected = emp.status === "rejected";
-                    const isApproved = emp.status === "approved" || (!isPending && !isRejected);
-                    const empIdentifier = emp._id || emp.userId || emp.employeeId || emp.email;
-
-                    return (
-                      <tr key={emp._id || emp.employeeId || emp.email} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/50 transition-colors">
-                        {/* Staff Member Details */}
-                        <td className="py-4 px-4">
-                          <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 shrink-0 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 font-bold flex items-center justify-center text-sm ring-1 ring-emerald-200 dark:ring-emerald-800/60">
-                              {emp.name ? emp.name.charAt(0).toUpperCase() : "S"}
-                            </div>
-                            <div>
-                              <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                                <span>{emp.name}</span>
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 font-bold">
-                                  Staff
-                                </span>
-                              </div>
-                              <div className="text-xs text-slate-400 dark:text-slate-400 flex items-center gap-1">
-                                <Mail className="w-3 h-3" />
-                                {emp.email}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* Role & Department */}
-                        <td className="py-4 px-4">
-                          <div className="flex flex-col gap-0.5 text-xs">
-                            <span className="font-bold text-slate-800 dark:text-slate-200">
-                              {emp.designation || "Staff Officer"}
-                            </span>
-                            <span className="text-slate-500 dark:text-slate-400">
-                              {emp.department || "Operations & Maintenance"}
-                            </span>
-                          </div>
-                        </td>
-
-                        {/* Office & Staff ID */}
-                        <td className="py-4 px-4">
-                          <div className="flex flex-col gap-0.5 text-xs text-slate-600 dark:text-slate-300">
-                            <span className="flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-200">
-                              <MapPin className="w-3 h-3 text-slate-400" />
-                              {emp.officeRoom || "Academic Staff Desk"}
-                            </span>
-                            <span className="text-slate-400 dark:text-slate-500 text-[11px]">
-                              ID: {emp.employeeId || "N/A"}
-                            </span>
-                          </div>
-                        </td>
-
-                        {/* Contact */}
-                        <td className="py-4 px-4">
-                          <div className="flex flex-col gap-0.5 text-xs text-slate-600 dark:text-slate-300">
-                            <span className="flex items-center gap-1">
-                              <Phone className="w-3 h-3 text-slate-400" />
-                              {emp.phone || "Not specified"}
-                            </span>
-                          </div>
-                        </td>
-
-                        {/* Status Badge */}
-                        <td className="py-4 px-4">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold tracking-wider uppercase ${
-                            isApproved
-                              ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200 dark:ring-emerald-800"
-                              : isRejected
-                              ? "bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 ring-1 ring-rose-200 dark:ring-rose-800"
-                              : "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 ring-1 ring-amber-200 dark:ring-amber-800"
-                          }`}>
-                            {isApproved ? <CheckCircle2 className="w-3 h-3" /> :
-                             isRejected ? <XCircle className="w-3 h-3" /> :
-                             <Clock className="w-3 h-3" />}
-                            {isApproved ? "approved" : isRejected ? "rejected" : "pending"}
-                          </span>
-                        </td>
-
-                        {/* Moderation Actions */}
-                        <td className="py-4 px-4 text-right">
-                          <div className="inline-flex items-center gap-2">
-                            {isPending ? (
-                              <>
-                                <button
-                                  onClick={() => handleUpdateEmployeeStatus(empIdentifier, "approved")}
-                                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
-                                >
-                                  <CheckCircle2 className="w-3.5 h-3.5" />
-                                  <span>Approve</span>
-                                </button>
-                                <button
-                                  onClick={() => handleUpdateEmployeeStatus(empIdentifier, "rejected")}
-                                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-300 text-xs font-bold transition-colors cursor-pointer"
-                                >
-                                  <XCircle className="w-3.5 h-3.5" />
-                                  <span>Reject</span>
-                                </button>
-                              </>
-                            ) : (
-                              <button
-                                onClick={() => handleUpdateEmployeeStatus(empIdentifier, isApproved ? "pending" : "approved")}
-                                className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
-                              >
-                                Reset to {isApproved ? "Pending" : "Approved"}
-                              </button>
-                            )}
-                            <button
-                              onClick={() => handleDeleteEmployee(empIdentifier, emp.name)}
-                              className="p-1.5 rounded-lg text-slate-400 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
-                              title="Delete Staff Record"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
-          </CollapsibleBody>
+          <span className="text-xs font-bold text-slate-400 dark:text-slate-500 sm:hidden">
+            Page {currentPageIndex + 1} of {ADMIN_DASHBOARD_PAGES.length}
+          </span>
         </div>
 
-        {/* Department Operations & Administrative Desk Summary Bar */}
-        <div className="p-6 rounded-[2rem] bg-gradient-to-r from-indigo-50/70 via-white to-emerald-50/70 dark:from-slate-900/90 dark:via-slate-900/80 dark:to-slate-800/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-              <ShieldCheck className="w-5 h-5" />
-            </div>
-            <div>
-              <h4 className="font-bold text-sm text-slate-900 dark:text-white">CSE Department Administrative & Operations Registry</h4>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Academic Building, Room 401 • ext. 4401 • admin@cse.edu</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 text-xs font-semibold">
-            <a href="#students" className="text-indigo-600 dark:text-indigo-400 hover:underline">Student Approvals ↑</a>
-            <span className="text-slate-300 dark:text-slate-600">•</span>
-            <a href="#faculty" className="text-sky-600 dark:text-sky-400 hover:underline">Faculty Approvals ↑</a>
-            <span className="text-slate-300 dark:text-slate-600">•</span>
-            <a href="#support-complaints" className="text-rose-600 dark:text-rose-400 hover:underline">Support & Grievances ↑</a>
-            <span className="text-slate-300 dark:text-slate-600">•</span>
-            <a href="#routine" className="text-slate-600 dark:text-slate-400 hover:underline">Academic Routine ↑</a>
-          </div>
+        {/* Quick Jump Page Numbers */}
+        <div className="hidden sm:flex items-center gap-1.5 flex-wrap justify-center">
+          {ADMIN_DASHBOARD_PAGES.map((p, idx) => {
+            const isCurrent = p.id === currentPage;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => goToPage(p.id)}
+                className={`h-8 min-w-[2rem] px-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  isCurrent
+                    ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/30 scale-105"
+                    : "bg-slate-100 hover:bg-indigo-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400"
+                }`}
+                title={p.title}
+              >
+                {idx + 1}
+              </button>
+            );
+          })}
         </div>
+
+        <button
+          type="button"
+          disabled={currentPageIndex === ADMIN_DASHBOARD_PAGES.length - 1}
+          onClick={() => {
+            if (currentPageIndex < ADMIN_DASHBOARD_PAGES.length - 1) {
+              goToPage(ADMIN_DASHBOARD_PAGES[currentPageIndex + 1].id);
+            }
+          }}
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-bold transition-all border disabled:opacity-40 disabled:cursor-not-allowed bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white border-transparent shadow-xs shadow-indigo-600/20 cursor-pointer w-full sm:w-auto justify-center"
+        >
+          <span>Next: {currentPageIndex < ADMIN_DASHBOARD_PAGES.length - 1 ? ADMIN_DASHBOARD_PAGES[currentPageIndex + 1].shortLabel : "End"}</span>
+          <ChevronRight className="w-4 h-4" />
+        </button>
       </div>
 
       {/* ── Support & Grievance Review Modal ── */}

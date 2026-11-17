@@ -476,7 +476,7 @@ export function Footer() {
 
                     <div className="space-y-1">
                       <h4 className="font-bold text-slate-900 dark:text-white">4. Zero Third-Party Commercial Sharing</h4>
-                      <p>The department does not monetize, sell, or share student, faculty, or staff records with third-party vendors or commercial ad trackers.</p>
+                      <p>The department does not monetize, sell, or share student or faculty records with third-party vendors or commercial ad trackers.</p>
                     </div>
                   </div>
 
@@ -517,7 +517,7 @@ export function Footer() {
                   <div className="space-y-4 text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
                     <div className="space-y-1">
                       <h4 className="font-bold text-slate-900 dark:text-white">1. Authorized Academic Use</h4>
-                      <p>The CSE portal and its integrated sub-modules are restricted to active university students, registered faculty members, administrative staff, and verified university applicants.</p>
+                      <p>The CSE portal and its integrated sub-modules are restricted to active university students, registered faculty members, administrators, and verified university applicants.</p>
                     </div>
 
                     <div className="space-y-1">

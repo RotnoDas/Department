@@ -124,15 +124,13 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
   const resolveRole = useCallback(() => {
     if (pathname?.startsWith("/dashboard/admin")) return "admin";
     if (pathname?.startsWith("/dashboard/teacher")) return "teacher";
-    if (pathname?.startsWith("/dashboard/employee")) return "employee";
     if (pathname?.startsWith("/dashboard/student")) return "student";
 
     if (user?.role) return user.role;
 
     const email = (user?.email || "").toLowerCase().trim();
     if (email === "admin@cse.edu" || email.includes("admin")) return "admin";
-    if (email.endsWith("@teacher.cse.edu") || (email.endsWith("@cse.edu") && !email.includes("student") && !email.includes("staff") && !email.includes("employee"))) return "teacher";
-    if (email.endsWith("@employee.cse.edu") || email.endsWith("@staff.cse.edu")) return "employee";
+    if (email.endsWith("@teacher.cse.edu") || (email.endsWith("@cse.edu") && !email.includes("student") && !email.includes("admin"))) return "teacher";
     if (email.endsWith("@student.cse.edu")) return "student";
 
     return "student";
@@ -527,9 +525,9 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
         window.history.pushState(null, "", item.href);
       }
 
-      // 5. Scroll to top for paginated student dashboard or scroll to element
+      // 5. Scroll to top for paginated student and admin dashboard or scroll to element
       if (typeof window !== "undefined") {
-        if (pathname === "/dashboard/student") {
+        if (pathname === "/dashboard/student" || pathname === "/dashboard/admin") {
           window.scrollTo({ top: 0, behavior: "smooth" });
           if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
           scrollTimeoutRef.current = setTimeout(() => {
@@ -576,27 +574,7 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
     switch (role) {
       case "admin":
         return [
-          { name: "Overview", href: "/dashboard/admin", icon: LayoutDashboard },
-          { name: "Institutional Analytics", href: "/dashboard/admin#analytics", icon: BarChart3 },
-          { name: "Semester Results", href: "/dashboard/admin#results", icon: Award },
-          { name: "Support & Complaints", href: "/dashboard/admin#support-complaints", icon: LifeBuoy },
-          { name: "Student Approvals", href: "/dashboard/admin#pending", icon: UserCheck },
-          { name: "Faculty Approvals", href: "/dashboard/admin#faculty", icon: Presentation },
-          { name: "Class Routine", href: "/dashboard/admin#routine", icon: Calendar },
-          { name: "Curriculum Matrix (1-8)", href: "/dashboard/admin#courses", icon: BookOpen },
-          { name: "Notice Dispatcher", href: "/dashboard/admin#notices", icon: Bell },
-          { name: "Department Staff", href: "/dashboard/admin#directory", icon: Users },
-        ];
-      case "employee":
-        return [
-          { name: "Staff Desk", href: "/dashboard/employee", icon: LayoutDashboard },
-          { name: "Notice Board", href: "/dashboard/employee#notices", icon: Bell },
-          { name: "Fleet & Ticket Analytics", href: "/dashboard/employee#analytics", icon: BarChart3 },
-          { name: "Shift Check-in", href: "/dashboard/employee#shift", icon: Clock },
-          { name: "Lab Infrastructure", href: "/dashboard/employee#inventory", icon: Layers },
-          { name: "Maintenance Tasks", href: "/dashboard/employee#tasks", icon: Wrench },
-          { name: "Lab Timetable", href: "/dashboard/employee#schedule", icon: Calendar },
-          { name: "Staff Profile", href: "/dashboard/employee#profile", icon: User },
+          { name: "Admin Command Desk", href: "/dashboard/admin", icon: ShieldCheck },
         ];
       case "student":
       default:
@@ -616,11 +594,9 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
   const getRoleBadge = () => {
     switch (role) {
       case "admin":
-        return { label: "Department Admin", bg: "bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 ring-purple-200 dark:ring-purple-800" };
+        return { label: "Department Admin", bg: "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 ring-indigo-200 dark:ring-indigo-800" };
       case "teacher":
         return { label: "Faculty Member", bg: "bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 ring-sky-200 dark:ring-sky-800" };
-      case "employee":
-        return { label: "Staff / Officer", bg: "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 ring-emerald-200 dark:ring-emerald-800" };
       case "student":
       default:
         return { label: "Student", bg: "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 ring-indigo-200 dark:ring-indigo-800" };
@@ -632,14 +608,12 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
   const displayName = profile?.name || user?.name || (
     role === "admin" ? "System Administrator" :
     role === "teacher" ? "Faculty Member" :
-    role === "employee" ? "Staff Officer" :
     "Student"
   );
 
   const displayEmail = profile?.email || user?.email || (
     role === "admin" ? "admin@cse.edu" :
     role === "teacher" ? "faculty@cse.edu" :
-    role === "employee" ? "staff@cse.edu" :
     "student@student.cse.edu"
   );
 
@@ -732,7 +706,7 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
                   </div>
                 )}
                 <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full ring-2 ring-white dark:ring-slate-900 ${
-                  role === "admin" || role === "teacher" || role === "employee" || user?.status === "approved" || studentProfile?.status === "approved"
+                  role === "admin" || role === "teacher" || user?.status === "approved" || studentProfile?.status === "approved"
                     ? "bg-emerald-500" 
                     : "bg-amber-500"
                 }`} />
@@ -774,11 +748,11 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
                   </span>
                 )}
                 <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full ${
-                  role === "admin" || role === "teacher" || role === "employee" || user?.status === "approved" || studentProfile?.status === "approved"
+                  role === "admin" || role === "teacher" || user?.status === "approved" || studentProfile?.status === "approved"
                     ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400" 
                     : "bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400"
                 }`}>
-                  {role === "admin" || role === "teacher" || role === "employee" || user?.status === "approved" || studentProfile?.status === "approved" ? "Active" : "Pending"}
+                  {role === "admin" || role === "teacher" || user?.status === "approved" || studentProfile?.status === "approved" ? "Active" : "Pending"}
                 </span>
               </div>
             </div>
@@ -807,221 +781,125 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
                   </div>
                 </Link>
 
-                {/* Active Workspace Module Navigation */}
-                <div>
-                  <div className="px-2 pb-2 flex items-center justify-between">
-                    <span className="text-[10px] font-extrabold tracking-widest text-indigo-600 dark:text-indigo-400 uppercase">
-                      ACTIVE WORKSPACE
-                    </span>
-                    <span className="text-[10px] font-mono font-extrabold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-200 dark:ring-indigo-800">
+                {/* Active Course Status Chip */}
+                <div className="p-3 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/70 dark:border-indigo-800/60 flex items-center justify-between shadow-2xs">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 animate-pulse" />
+                    <span className="text-xs font-black font-mono text-indigo-700 dark:text-indigo-300 truncate">
                       {activeCourseCode}
                     </span>
                   </div>
-                  <div className="space-y-1">
-                    {courseWorkspaceModules.map((module) => {
-                      const Icon = module.icon;
-                      const isActive = currentTab === module.id;
-                      const moduleHref = `/dashboard/teacher/courses/${encodeURIComponent(activeCourseCode)}?tab=${module.id}`;
-
-                      return (
-                        <Link
-                          key={module.id}
-                          href={moduleHref}
-                          onClick={() => setIsOpen(false)}
-                          className={`
-                            group relative flex items-center justify-between p-2.5 rounded-2xl transition-all duration-200 cursor-pointer border
-                            ${isActive 
-                              ? "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold border-indigo-200/80 dark:border-indigo-800/60 shadow-xs" 
-                              : "text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 border-transparent hover:border-slate-200/60 dark:hover:border-white/5"}
-                          `}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                            <div className={`p-2 rounded-xl transition-all duration-200 shrink-0 ${
-                              isActive 
-                                ? "bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 shadow-xs" 
-                                : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 group-hover:bg-indigo-50 dark:group-hover:bg-indigo-950/40 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"
-                            }`}>
-                              <Icon className="w-4 h-4" />
-                            </div>
-                            <div className="flex flex-col min-w-0 flex-1 text-left">
-                              <span className={`text-xs truncate leading-tight ${
-                                isActive 
-                                  ? "font-bold text-indigo-600 dark:text-indigo-400" 
-                                  : "font-semibold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"
-                              }`}>
-                                {module.name}
-                              </span>
-                              {module.description && (
-                                <span className={`text-[10px] truncate leading-tight mt-0.5 ${
-                                  isActive 
-                                    ? "font-medium text-indigo-500/90 dark:text-indigo-300/90" 
-                                    : "font-normal text-slate-400 dark:text-slate-500"
-                                }`}>
-                                  {module.description}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0 ml-1.5">
-                            {module.badge && (
-                              <span className={`text-[9.5px] font-extrabold px-2 py-0.5 rounded-full transition-colors ${
-                                isActive 
-                                  ? "bg-indigo-600 text-white shadow-xs" 
-                                  : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 ring-1 ring-slate-200/60 dark:ring-white/5 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/60 group-hover:text-indigo-600 dark:group-hover:text-indigo-300"
-                              }`}>
-                                {module.badge}
-                              </span>
-                            )}
-                            {isActive && (
-                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 shrink-0 animate-pulse" />
-                            )}
-                          </div>
-                        </Link>
-                      );
-                    })}
-                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
+                    Teaching Course
+                  </span>
                 </div>
 
-                {/* Other Courses Switcher (if teacher has >1 course) */}
-                {assignedCourses.filter((c) => c.code !== activeCourseCode).length > 0 && (
-                  <div>
-                    <div className="px-2 pt-2 pb-1.5 text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase">
+                {/* Other Courses Switcher */}
+                <div>
+                  <div className="px-2 pt-1 pb-1.5 flex items-center justify-between">
+                    <span className="text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase">
                       OTHER ASSIGNED COURSES
-                    </div>
-                    <div className="space-y-1">
-                      {assignedCourses
+                    </span>
+                    <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-full">
+                      {assignedCourses.filter((c) => c.code !== activeCourseCode).length} Courses
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {assignedCourses.filter((c) => c.code !== activeCourseCode).length > 0 ? (
+                      assignedCourses
                         .filter((c) => c.code !== activeCourseCode)
                         .map((c) => (
                           <Link
                             key={c.code}
                             href={`/dashboard/teacher/courses/${encodeURIComponent(c.code)}`}
                             onClick={() => setIsOpen(false)}
-                            className="flex items-center justify-between p-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-300 transition group border border-transparent hover:border-indigo-100 dark:hover:border-indigo-900/40"
+                            className="w-full text-left flex items-center justify-between p-2.5 rounded-xl bg-slate-50/70 hover:bg-indigo-50/80 dark:bg-slate-800/50 dark:hover:bg-indigo-950/50 border border-slate-100 dark:border-white/5 hover:border-indigo-200 dark:hover:border-indigo-800/80 transition group cursor-pointer shadow-xs"
                           >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-700 shrink-0">
-                                {c.code}
-                              </span>
-                              <span className="truncate text-[11px]">{c.title}</span>
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg font-mono font-black text-[10px] shadow-xs bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
+                                {c.code.split(" ")[1] || c.code.split("-")[1] || c.code.slice(0, 4)}
+                              </div>
+                              <div className="flex flex-col min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-bold text-xs truncate text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-300">
+                                    {c.code}
+                                  </span>
+                                  {c.semester && (
+                                    <span className="text-[9px] font-semibold px-1 rounded bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400">
+                                      Sem {c.semester}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate font-medium">
+                                  {c.title}
+                                </span>
+                              </div>
                             </div>
-                            <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                            <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:translate-x-0.5 transition shrink-0" />
                           </Link>
-                        ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Shortcuts Back to Main Hub Sections */}
-                <div>
-                  <div className="px-2 pt-2 pb-1.5 text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase">
-                    FACULTY HUB JUMPS
-                  </div>
-                  <div className="space-y-1">
-                    {[
-                      { name: "All Assigned Courses", href: "/dashboard/teacher#assigned-courses", icon: BookOpen },
-                      { name: "My Routine Schedule", href: "/dashboard/teacher#routine", icon: Clock },
-                      { name: "Workload Analytics", href: "/dashboard/teacher#analytics", icon: BarChart3 },
-                      { name: "Department Notices", href: "/dashboard/teacher#notices", icon: Bell },
-                      { name: "Faculty Profile & Settings", href: "/dashboard/teacher#profile-settings", icon: User },
-                    ].map((item) => {
-                      const Icon = item.icon;
-                      return (
-                        <Link
-                          key={item.name}
-                          href={item.href}
-                          onClick={() => setIsOpen(false)}
-                          className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
-                        >
-                          <Icon className="w-3.5 h-3.5 text-slate-400" />
-                          <span>{item.name}</span>
-                        </Link>
-                      );
-                    })}
+                        ))
+                    ) : (
+                      <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-white/5 text-center text-xs text-slate-400 dark:text-slate-500">
+                        No other courses assigned
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
             ) : (
               /* SUB-VIEW B: ROOT TEACHER DASHBOARD (/dashboard/teacher) */
               <div className="space-y-5">
-                {/* Faculty Main Sections */}
+                {/* Faculty Main Dashboard Quick Link */}
                 <div>
-                  <div className="px-2 pb-2 flex items-center justify-between">
-                    <span className="text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase">
-                      TEACHER WORKSPACE
+                  <Link
+                    href="/dashboard/teacher"
+                    onClick={() => {
+                      setIsOpen(false);
+                      if (pathname === "/dashboard/teacher" && typeof window !== "undefined") {
+                        window.history.pushState(null, "", "/dashboard/teacher");
+                        window.dispatchEvent(
+                          new CustomEvent("dashboard-change-page", {
+                            detail: { sectionId: "profile" },
+                          })
+                        );
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                      }
+                    }}
+                    className={`group flex items-center justify-between p-2.5 rounded-2xl transition-all duration-200 cursor-pointer border ${
+                      pathname === "/dashboard/teacher"
+                        ? "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold border-indigo-200/80 dark:border-indigo-800/60 shadow-xs"
+                        : "text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 border-transparent hover:border-slate-200/60 dark:hover:border-white/5"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div className={`p-2 rounded-xl transition-all duration-200 shrink-0 ${
+                        pathname === "/dashboard/teacher"
+                          ? "bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 shadow-xs"
+                          : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 group-hover:bg-indigo-50 dark:group-hover:bg-indigo-950/40 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"
+                      }`}>
+                        <LayoutDashboard className="w-4 h-4" />
+                      </div>
+                      <div className="flex flex-col min-w-0 flex-1 text-left">
+                        <span className="text-xs font-bold leading-tight">
+                          Faculty Dashboard
+                        </span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate leading-tight mt-0.5">
+                          Teaching & Routine Hub
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-[9.5px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-100/80 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400">
+                      Active
                     </span>
-                    <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-full">
-                      {assignedCourses.length} Courses Active
-                    </span>
-                  </div>
-                  <div className="space-y-1">
-                    {teacherNavItems.map((item) => {
-                      const Icon = item.icon;
-                      const isActive = activeSection === item.scrollTarget;
-
-                      return (
-                        <a
-                          key={item.name}
-                          href={item.href}
-                          onClick={(e) => handleNavClick(e, item)}
-                          className={`
-                            group relative flex items-center justify-between p-2.5 rounded-2xl transition-all duration-200 cursor-pointer border
-                            ${isActive 
-                              ? "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold border-indigo-200/80 dark:border-indigo-800/60 shadow-xs" 
-                              : "text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 border-transparent hover:border-slate-200/60 dark:hover:border-white/5"}
-                          `}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                            <div className={`p-2 rounded-xl transition-all duration-200 shrink-0 ${
-                              isActive 
-                                ? "bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 shadow-xs" 
-                                : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 group-hover:bg-indigo-50 dark:group-hover:bg-indigo-950/40 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"
-                            }`}>
-                              <Icon className="w-4 h-4" />
-                            </div>
-                            <div className="flex flex-col min-w-0 flex-1 text-left">
-                              <span className={`text-xs truncate leading-tight ${
-                                isActive 
-                                  ? "font-bold text-indigo-600 dark:text-indigo-400" 
-                                  : "font-semibold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"
-                              }`}>
-                                {item.name}
-                              </span>
-                              {item.description && (
-                                <span className={`text-[10px] truncate leading-tight mt-0.5 ${
-                                  isActive 
-                                    ? "font-medium text-indigo-500/90 dark:text-indigo-300/90" 
-                                    : "font-normal text-slate-400 dark:text-slate-500"
-                                }`}>
-                                  {item.description}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0 ml-1.5">
-                            {item.badge && (
-                              <span className={`text-[9.5px] font-extrabold px-2 py-0.5 rounded-full transition-colors ${
-                                isActive 
-                                  ? "bg-indigo-600 text-white shadow-xs" 
-                                  : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 ring-1 ring-slate-200/60 dark:ring-white/5 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/60 group-hover:text-indigo-600 dark:group-hover:text-indigo-300"
-                              }`}>
-                                {item.badge}
-                              </span>
-                            )}
-                            {isActive && (
-                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 shrink-0 animate-pulse" />
-                            )}
-                          </div>
-                        </a>
-                      );
-                    })}
-                  </div>
+                  </Link>
                 </div>
 
                 {/* Course Workspaces Direct Jump Section */}
                 <div>
                   <div className="px-2 pb-2 flex items-center justify-between">
                     <span className="text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase">
-                      COURSE WORKSPACES
+                      ASSIGNED COURSE WORKSPACES
                     </span>
                     <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-full">
                       {assignedCourses.length} Active
@@ -1311,20 +1189,24 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
                     ? pathname === itemPath && currentHash === itemHash
                     : pathname === item.href && (!currentHash || currentHash === "#");
 
+                  const activeColorClass = "bg-indigo-600 text-white shadow-md shadow-indigo-200/60 dark:shadow-indigo-900/40";
+
                   return (
                     <Link
                       key={item.name}
                       href={item.href}
                       onClick={(e) => handleNavClick(e, item)}
                       className={`
-                        flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer
+                        flex items-center justify-between px-3.5 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer
                         ${isActive 
-                          ? "bg-indigo-600 text-white shadow-md shadow-indigo-200/60 dark:shadow-indigo-900/40" 
+                          ? activeColorClass 
                           : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"}
                       `}
                     >
-                      <Icon className={`w-4 h-4 ${isActive ? "text-white" : "text-slate-400 dark:text-slate-400"}`} />
-                      <span>{item.name}</span>
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-white" : "text-slate-400 dark:text-slate-400"}`} />
+                        <span className="truncate">{item.name}</span>
+                      </div>
                     </Link>
                   );
                 })}

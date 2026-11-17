@@ -27,8 +27,6 @@ export const auth = betterAuth({
       specialization: { type: "string", required: false },
       officeRoom: { type: "string", required: false },
       joiningDate: { type: "string", required: false },
-      employeeId: { type: "string", required: false },
-      department: { type: "string", required: false },
     },
   },
   plugins: [
@@ -60,10 +58,8 @@ export const auth = betterAuth({
             role = "student";
           } else if (user.email === "admin@cse.edu") {
             role = "admin";
-          } else if (user.email.endsWith("@teacher.cse.edu") || (user.email.endsWith("@cse.edu") && !user.email.includes("staff"))) {
+          } else if (user.email.endsWith("@teacher.cse.edu") || (user.email.endsWith("@cse.edu") && !user.email.includes("student") && !user.email.includes("admin"))) {
             role = "teacher";
-          } else if (user.email.endsWith("@employee.cse.edu") || user.email.endsWith("@staff.cse.edu")) {
-            role = "employee";
           }
 
           const status = (role === "student" || role === "teacher") ? "pending" : "approved";
@@ -124,29 +120,6 @@ export const auth = betterAuth({
                     officeRoom: user.officeRoom || "",
                     joiningDate: user.joiningDate || "",
                     status: user.status || "pending",
-                    updatedAt: now,
-                  },
-                  $setOnInsert: {
-                    createdAt: now,
-                  },
-                },
-                { upsert: true }
-              );
-            } else if (role === "employee") {
-              const employeesCollection = db.collection("employees");
-              await employeesCollection.updateOne(
-                { email: user.email },
-                {
-                  $set: {
-                    userId,
-                    name: user.name,
-                    email: user.email,
-                    employeeId: user.employeeId || "",
-                    phone: user.phone || "",
-                    department: user.department || "",
-                    designation: user.designation || "",
-                    joiningDate: user.joiningDate || "",
-                    status: user.status || "approved",
                     updatedAt: now,
                   },
                   $setOnInsert: {

@@ -592,7 +592,7 @@ export default function StudentAssignmentsSection({
   return (
     <div
       id="assignments"
-      className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6"
+      className="p-8 rounded-[2rem] bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/90 dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6"
     >
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -656,17 +656,17 @@ export default function StudentAssignmentsSection({
 
       {/* Main Two Section Switcher Tabs: Continuous Tasks vs Grades & Marks */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-b border-slate-200/80 dark:border-slate-800 pb-3">
-        <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 dark:bg-slate-800/90 rounded-2xl text-xs font-bold text-slate-600 dark:text-slate-300">
+        <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 dark:bg-slate-800/90 border border-slate-200/60 dark:border-white/5 rounded-2xl text-xs font-bold text-slate-600 dark:text-slate-300">
           <button
             type="button"
             onClick={() => setActiveSectionView("tasks")}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl transition cursor-pointer ${
               activeSectionView === "tasks"
-                ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm"
+                ? "bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 shadow-xs font-black"
                 : "hover:text-slate-900 dark:hover:text-white"
             }`}
           >
-            <FileText className="w-4 h-4" />
+            <FileText className="w-4 h-4 text-indigo-500" />
             <span>Tasks & Submissions ({assignments.length})</span>
           </button>
 
@@ -675,7 +675,7 @@ export default function StudentAssignmentsSection({
             onClick={() => setActiveSectionView("results")}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl transition cursor-pointer ${
               activeSectionView === "results"
-                ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm"
+                ? "bg-white dark:bg-slate-700 text-emerald-700 dark:text-emerald-300 shadow-xs font-black"
                 : "hover:text-slate-900 dark:hover:text-white"
             }`}
           >
@@ -691,7 +691,7 @@ export default function StudentAssignmentsSection({
               value={selectedCourse}
               onChange={(e) => setSelectedCourse(e.target.value)}
               aria-label="Filter assignments by course"
-              className="px-3.5 py-2 rounded-xl bg-slate-100/90 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 outline-none focus:border-indigo-500 cursor-pointer"
+              className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/90 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-2xs outline-none focus:border-indigo-500 cursor-pointer"
             >
               <option value="all">All Semester {studentSemester} Courses</option>
               {semesterCourses.map((c) => (
@@ -916,24 +916,37 @@ export default function StudentAssignmentsSection({
       {activeSectionView === "results" && (
         <div className="space-y-6">
           {/* Results Section Banner */}
-          <div className="p-5 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-slate-900/50 to-indigo-950/40 border border-emerald-500/20 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[11px] font-bold text-emerald-400">
-                <Award className="w-3.5 h-3.5 text-emerald-400" />
+          <div className="relative overflow-hidden p-6 sm:p-7 rounded-3xl bg-gradient-to-r from-emerald-50/90 via-teal-50/40 to-indigo-50/80 dark:from-emerald-950/30 dark:via-slate-900/60 dark:to-indigo-950/30 backdrop-blur-xl border border-emerald-200/80 dark:border-emerald-500/20 shadow-md shadow-emerald-950/5 dark:shadow-none flex flex-col md:flex-row md:items-center justify-between gap-6 transition-all">
+            {/* Subtle decorative background glow accents */}
+            <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-br from-emerald-400/20 to-teal-400/10 dark:from-emerald-500/15 dark:to-teal-500/10 rounded-full blur-3xl pointer-events-none -mr-16 -mt-16" />
+            <div className="absolute bottom-0 left-1/4 w-72 h-72 bg-gradient-to-tr from-indigo-400/15 to-sky-400/10 dark:from-indigo-500/15 dark:to-sky-500/10 rounded-full blur-3xl pointer-events-none -mb-16" />
+
+            <div className="relative z-10 space-y-2.5">
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/95 dark:bg-emerald-950/70 border border-emerald-300/80 dark:border-emerald-500/30 text-xs font-bold text-emerald-800 dark:text-emerald-300 shadow-2xs backdrop-blur-xs">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <Award className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                 <span>Course-Wise Academic Performance & Continuous Assessment</span>
               </div>
-              <h3 className="font-extrabold text-base text-slate-900 dark:text-white flex items-center gap-2">
-                <span>Semester {studentSemester || "Enrolled"} Continuous Assessment Grade Sheet</span>
+              <h3 className="font-black text-xl sm:text-2xl text-slate-900 dark:text-white tracking-tight flex flex-wrap items-center gap-2">
+                <span>Semester</span>
+                <span className="px-2.5 py-0.5 rounded-xl bg-emerald-100/90 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/80 text-base sm:text-lg">
+                  {studentSemester || "Enrolled"}
+                </span>
+                <span>Continuous Assessment Grade Sheet</span>
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xl">
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 max-w-xl leading-relaxed font-normal">
                 Official marks awarded by course teachers categorized strictly by course, with continuous assessment grade point averages (GPA) and faculty remarks.
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="relative z-10 flex flex-wrap items-center gap-2.5 shrink-0">
               {studentRoll && (
-                <div className="px-3 py-1.5 rounded-xl bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400 shadow-xs">
-                  Roll: {studentRoll}
+                <div className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white/95 dark:bg-indigo-950/70 border border-indigo-200/90 dark:border-indigo-800/80 text-xs font-mono font-black text-indigo-700 dark:text-indigo-300 shadow-2xs backdrop-blur-xs">
+                  <span className="text-[10px] uppercase font-bold text-indigo-400 dark:text-indigo-400">Roll:</span>
+                  <span>{studentRoll}</span>
                 </div>
               )}
 
@@ -941,7 +954,7 @@ export default function StudentAssignmentsSection({
                 type="button"
                 onClick={exportStudentGradesCSV}
                 disabled={gradedResults.length === 0}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/25 dark:shadow-emerald-950/40 transition-all hover:scale-105 active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 title="Download your continuous assessment transcript in CSV format"
               >
                 <FileSpreadsheet className="w-4 h-4" />
@@ -953,73 +966,73 @@ export default function StudentAssignmentsSection({
                 onClick={() => {
                   if (typeof window !== "undefined") window.print();
                 }}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200/90 dark:border-slate-700 shadow-2xs transition-all active:scale-95 cursor-pointer"
                 title="Print your continuous assessment grade sheet"
               >
-                <Printer className="w-4 h-4 text-slate-500" />
+                <Printer className="w-4 h-4 text-slate-600 dark:text-slate-400" />
                 <span className="hidden sm:inline">Print</span>
               </button>
             </div>
           </div>
 
           {/* Academic Continuous Assessment Overview Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className="p-4 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 shadow-xs flex items-center justify-between">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+            <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-indigo-50/70 via-white to-white dark:from-indigo-950/40 dark:via-slate-850 dark:to-slate-850 border border-indigo-100/90 dark:border-indigo-900/50 shadow-xs hover:shadow-md transition-all flex items-center justify-between group">
               <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Continuous GPA</span>
-                <span className="text-xl font-black text-slate-900 dark:text-white mt-0.5 block">
+                <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider block">Continuous GPA</span>
+                <span className="text-2xl font-black text-slate-900 dark:text-white mt-1 block tracking-tight">
                   {overallContinuousGPA ? `${overallContinuousGPA} / 4.00` : "Pending"}
                 </span>
-                <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 mt-0.5">
                   {coursesWithGrades.length > 0 ? `${coursesWithGrades.length} Courses Weighted` : "Awaiting Evaluation"}
                 </span>
               </div>
-              <div className="p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+              <div className="p-3 rounded-2xl bg-indigo-100/80 dark:bg-indigo-950/80 border border-indigo-200/60 dark:border-indigo-800/60 text-indigo-600 dark:text-indigo-400 shadow-2xs group-hover:scale-110 transition-transform">
                 <GraduationCap className="w-5 h-5" />
               </div>
             </div>
 
-            <div className="p-4 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 shadow-xs flex items-center justify-between">
+            <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-emerald-50/70 via-white to-white dark:from-emerald-950/40 dark:via-slate-850 dark:to-slate-850 border border-emerald-100/90 dark:border-emerald-900/50 shadow-xs hover:shadow-md transition-all flex items-center justify-between group">
               <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Marks Earned</span>
-                <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 mt-0.5 block">
+                <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider block">Total Marks Earned</span>
+                <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1 block tracking-tight">
                   {totalCumulativeMarksObtained} <span className="text-xs text-slate-400 font-bold">/ {totalCumulativeMaxMarks || 0}</span>
                 </span>
-                <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mt-0.5 block">
                   {totalCumulativePercentage}% Overall Average
                 </span>
               </div>
-              <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
+              <div className="p-3 rounded-2xl bg-emerald-100/80 dark:bg-emerald-950/80 border border-emerald-200/60 dark:border-emerald-800/60 text-emerald-600 dark:text-emerald-400 shadow-2xs group-hover:scale-110 transition-transform">
                 <Award className="w-5 h-5" />
               </div>
             </div>
 
-            <div className="p-4 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 shadow-xs flex items-center justify-between">
+            <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-sky-50/70 via-white to-white dark:from-sky-950/40 dark:via-slate-850 dark:to-slate-850 border border-sky-100/90 dark:border-sky-900/50 shadow-xs hover:shadow-md transition-all flex items-center justify-between group">
               <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Courses Graded</span>
-                <span className="text-xl font-black text-slate-900 dark:text-white mt-0.5 block">
+                <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400 uppercase tracking-wider block">Courses Graded</span>
+                <span className="text-2xl font-black text-slate-900 dark:text-white mt-1 block tracking-tight">
                   {coursesWithGrades.length} <span className="text-xs text-slate-400 font-bold">/ {courseWiseData.length}</span>
                 </span>
-                <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mt-0.5 block">
                   {gradedCount} evaluated tasks
                 </span>
               </div>
-              <div className="p-2.5 rounded-xl bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400">
+              <div className="p-3 rounded-2xl bg-sky-100/80 dark:bg-sky-950/80 border border-sky-200/60 dark:border-sky-800/60 text-sky-600 dark:text-sky-400 shadow-2xs group-hover:scale-110 transition-transform">
                 <BookOpen className="w-5 h-5" />
               </div>
             </div>
 
-            <div className="p-4 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 shadow-xs flex items-center justify-between">
+            <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-amber-50/70 via-white to-white dark:from-amber-950/40 dark:via-slate-850 dark:to-slate-850 border border-amber-100/90 dark:border-amber-900/50 shadow-xs hover:shadow-md transition-all flex items-center justify-between group">
               <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Work Deliverables</span>
-                <span className="text-xl font-black text-slate-900 dark:text-white mt-0.5 block">
+                <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider block">Work Deliverables</span>
+                <span className="text-2xl font-black text-slate-900 dark:text-white mt-1 block tracking-tight">
                   {submittedCount} <span className="text-xs text-slate-400 font-bold">/ {assignments.length}</span>
                 </span>
-                <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mt-0.5 block">
                   {pendingCount === 0 ? "All coursework submitted" : `${pendingCount} tasks awaiting submission`}
                 </span>
               </div>
-              <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400">
+              <div className="p-3 rounded-2xl bg-amber-100/80 dark:bg-amber-950/80 border border-amber-200/60 dark:border-amber-800/60 text-amber-600 dark:text-amber-400 shadow-2xs group-hover:scale-110 transition-transform">
                 <CheckCircle2 className="w-5 h-5" />
               </div>
             </div>
@@ -1035,14 +1048,14 @@ export default function StudentAssignmentsSection({
                 </span>
 
                 {/* Scope Switcher: Graded Only vs All Registered Courses */}
-                <div className="flex items-center gap-1 p-0.5 bg-slate-100 dark:bg-slate-800 rounded-xl text-[11px] font-bold">
+                <div className="flex items-center gap-1 p-1 bg-slate-100/90 dark:bg-slate-800/90 border border-slate-200/60 dark:border-white/5 rounded-xl text-[11px] font-bold">
                   <button
                     type="button"
                     onClick={() => setResultsScope("graded-only")}
-                    className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
                       resultsScope === "graded-only"
-                        ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs"
-                        : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                        ? "bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 shadow-xs font-black"
+                        : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
                     }`}
                   >
                     Courses with Marks ({coursesWithGrades.length})
@@ -1050,10 +1063,10 @@ export default function StudentAssignmentsSection({
                   <button
                     type="button"
                     onClick={() => setResultsScope("all-courses")}
-                    className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
                       resultsScope === "all-courses"
-                        ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs"
-                        : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                        ? "bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 shadow-xs font-black"
+                        : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-200"
                     }`}
                   >
                     All Curriculum Courses ({courseWiseData.length})
@@ -1077,10 +1090,10 @@ export default function StudentAssignmentsSection({
               <button
                 type="button"
                 onClick={() => setSelectedCourse("all")}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer shrink-0 ${
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition whitespace-nowrap cursor-pointer shrink-0 ${
                   selectedCourse === "all"
-                    ? "bg-indigo-600 text-white shadow-xs"
-                    : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300"
+                    ? "bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-xs"
+                    : "bg-white dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/80 text-slate-700 dark:text-slate-300 hover:border-indigo-300 hover:bg-indigo-50/40 shadow-2xs"
                 }`}
               >
                 All Courses ({displayedResultCourses.length})
@@ -1095,10 +1108,10 @@ export default function StudentAssignmentsSection({
                       key={c.key}
                       type="button"
                       onClick={() => setSelectedCourse(isSelected ? "all" : c.code)}
-                      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer shrink-0 border ${
+                      className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer shrink-0 border ${
                         isSelected
-                          ? "bg-indigo-50 dark:bg-indigo-950/70 border-indigo-400 dark:border-indigo-600 text-indigo-600 dark:text-indigo-300 shadow-xs"
-                          : "bg-white dark:bg-slate-800/80 border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-300 hover:border-indigo-300"
+                          ? "bg-indigo-50 dark:bg-indigo-950/70 border-indigo-400 dark:border-indigo-600 text-indigo-700 dark:text-indigo-300 shadow-xs"
+                          : "bg-white dark:bg-slate-800/90 border-slate-200/90 dark:border-slate-700/80 text-slate-700 dark:text-slate-300 hover:border-indigo-300 hover:bg-indigo-50/30 shadow-2xs"
                       }`}
                     >
                       <span>{c.code}</span>
