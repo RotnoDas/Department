@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
 
 // Comprehensive, 100% accurate knowledge base of the PUST CSE Department & Web Platform
 const SYSTEM_INSTRUCTION = `You are the official Academic & Support AI Assistant of the Department of Computer Science & Engineering (CSE) at Pabna University of Science and Technology (PUST) (https://cse.pust.ac.bd).
@@ -544,9 +545,151 @@ function generateInteractionMeta(text, query) {
   return { followUps, actionLinks };
 }
 
+// Helper: Extract requested semester number (1..8) from query
+function extractSemesterFromQuery(query = "") {
+  const normalized = String(query || "")
+    .toLowerCase()
+    .replace(/[১-৮]/g, (d) => String("০১২৩৪৫৬৭৮৯".indexOf(d)));
+  const m1 = normalized.match(/\b(?:semester|sem|term|সেমিস্টার)[\s\-:#]*([1-8])\b/);
+  if (m1) return Number(m1[1]);
+  const m2 = normalized.match(/\b([1-8])(?:st|nd|rd|th)\s*(?:semester|sem|term|সেমিস্টার)\b/);
+  if (m2) return Number(m2[1]);
+  const wordMap = {
+    first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8,
+    one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8
+  };
+  for (const [w, num] of Object.entries(wordMap)) {
+    if (new RegExp(`\\b(?:${w}\\s+(?:semester|sem|term)|(?:semester|sem|term)\\s+${w})\\b`, "i").test(normalized)) {
+      return num;
+    }
+  }
+  return null;
+}
+
+// Helper: Fetch live website context & student semester results from MongoDB
+async function buildLiveDatabaseContext(query = "", userEmail = null) {
+  try {
+    const q = String(query || "").toLowerCase();
+    const semNum = extractSemesterFromQuery(query);
+    const isResultQuery =
+      q.includes("result") ||
+      q.includes("cgpa") ||
+      q.includes("sgpa") ||
+      q.includes("gpa") ||
+      q.includes("grade") ||
+      q.includes("mark") ||
+      q.includes("transcript") ||
+      q.includes("রেজাল্ট") ||
+      q.includes("ফলাফল") ||
+      (semNum !== null && (q.includes("my") || q.includes("tell me") || q.includes("about") || Boolean(userEmail)));
+
+    let studentDoc = null;
+    let studentResults = [];
+
+    if (userEmail) {
+      const cleanEmail = String(userEmail).trim().toLowerCase();
+      studentDoc = await db.collection("students").findOne({
+        email: { $in: [cleanEmail, String(userEmail).trim()] }
+      });
+    }
+
+    if (studentDoc) {
+      studentResults = await db
+        .collection("semester_results")
+        .find({
+          $or: [
+            { studentEmail: String(studentDoc.email || "").toLowerCase() },
+            { studentId: String(studentDoc.studentId || "").trim() }
+          ],
+          status: "published"
+        })
+        .sort({ semester: 1 })
+        .toArray();
+    }
+
+    const [teachers, notices] = await Promise.all([
+      db.collection("teachers").find({}).limit(15).toArray().catch(() => []),
+      db.collection("notices").find({}).sort({ createdAt: -1 }).limit(8).toArray().catch(() => [])
+    ]);
+
+    let directMultivisionalReply = null;
+
+    if (studentDoc && studentResults.length > 0 && isResultQuery) {
+      if (semNum !== null) {
+        const semDoc = studentResults.find((r) => Number(r.semester) === semNum);
+        if (semDoc) {
+          const courses = semDoc.courses || [];
+          const courseLines = courses
+            .map(
+              (c) =>
+                `- **${c.courseCode} (${c.courseTitle}, ${c.credits} Cr):** **${c.marks ?? "N/A"}/100** [Att: ${c.attendanceMarks ?? "N/A"}/10, CA: ${c.caMarks ?? "N/A"}, Final: ${c.finalMarks ?? "N/A"}] → **Grade ${c.grade} (${Number(c.gradePoint || 0).toFixed(2)} GP)**`
+            )
+            .join("\n");
+          const prevSem = studentResults.find((r) => Number(r.semester) === semNum - 1);
+          const delta = prevSem ? Number((Number(semDoc.sgpa) - Number(prevSem.sgpa)).toFixed(2)) : null;
+
+          directMultivisionalReply = `### 🎓 Semester ${semNum} (${semDoc.semesterLabel || `Semester ${semNum}`}) — Multivisional Result Analysis
+
+- **Student:** **${studentDoc.name}** (ID: \`${studentDoc.studentId}\`)
+- **Semester ${semNum} SGPA:** **${Number(semDoc.sgpa || 0).toFixed(2)} / 4.00**${delta !== null ? ` (${delta >= 0 ? `+${delta.toFixed(2)}` : delta.toFixed(2)} vs. Sem ${semNum - 1})` : ""}
+- **Cumulative CGPA (Up to Sem ${semNum}):** **${Number(semDoc.cgpa || 0).toFixed(2)} / 4.00** (${semDoc.academicStanding || "Official Standing"})
+- **Yearly GPA (YGPA):** **${Number(semDoc.ygpa || semDoc.sgpa || 0).toFixed(2)} / 4.00**
+- **Credits Earned:** **${semDoc.earnedCredits ?? semDoc.totalCredits} / ${semDoc.totalCredits} Credits** (${courses.length} Courses)
+
+#### 📚 Course-by-Course Breakdown
+${courseLines}
+
+👉 Open the [Student Portal](/dashboard/student) for your interactive 8-Semester Trajectory Curve and full Academic AI Advisor.`;
+        }
+      } else {
+        const semSummary = studentResults
+          .map(
+            (s) =>
+              `- **Semester ${s.semester}:** SGPA **${Number(s.sgpa || 0).toFixed(2)}** | CGPA **${Number(s.cgpa || 0).toFixed(2)}** | Credits: ${s.earnedCredits ?? s.totalCredits}/${s.totalCredits}`
+          )
+          .join("\n");
+        const latest = studentResults[studentResults.length - 1];
+        directMultivisionalReply = `### 📊 Complete Academic Result Summary for **${studentDoc.name}** (\`${studentDoc.studentId}\`)
+
+- **Current Overall CGPA:** **${Number(latest.cgpa || 0).toFixed(2)} / 4.00** (${latest.academicStanding || "Official Standing"})
+- **Published Semesters:** **${studentResults.length} Semesters**
+
+#### Semester-by-Semester Progression:
+${semSummary}
+
+👉 Ask me *"Tell me about Semester 6 result"* (or any semester 1–${studentResults.length}) for a full course-by-course marks breakdown!`;
+      }
+    }
+
+    const livePromptAddendum = `
+=======================================================
+9. LIVE WEBSITE DATABASE SNAPSHOT
+=======================================================
+- Active Faculty (${teachers.length}): ${teachers.map((t) => `${t.name} (${t.designation || "Faculty"}, Office: ${t.office || t.officeRoom || "CSE"})`).join("; ")}
+- Recent Official Notices: ${notices.map((n) => `[${n.courseCode || n.category || "Notice"}] ${n.title}`).join(" | ")}
+${
+  studentDoc
+    ? `- Logged-in Student: ${studentDoc.name} (ID: ${studentDoc.studentId}, Semester: ${studentDoc.semester})
+- Student Published Results: ${studentResults
+        .map(
+          (r) =>
+            `Sem ${r.semester}: SGPA=${r.sgpa}, CGPA=${r.cgpa}, YGPA=${r.ygpa}, Credits=${r.earnedCredits}/${r.totalCredits}, Courses=[${(r.courses || [])
+              .map((c) => `${c.courseCode}:${c.marks}/100(${c.grade},${c.gradePoint})`)
+              .join(", ")}]`
+        )
+        .join(" || ")}`
+    : ""
+}`;
+
+    return { directMultivisionalReply, livePromptAddendum };
+  } catch (e) {
+    return { directMultivisionalReply: null, livePromptAddendum: "" };
+  }
+}
+
 export async function POST(req) {
   try {
-    const { message, history = [] } = await req.json();
+    const { message, history = [], userEmail = null } = await req.json();
 
     if (!message || !message.trim()) {
       return NextResponse.json(
@@ -557,6 +700,20 @@ export async function POST(req) {
 
     const apiKey = process.env.GEMINI_API_KEY;
     const isBangla = isBengaliText(message);
+    const { directMultivisionalReply, livePromptAddendum } = await buildLiveDatabaseContext(message, userEmail);
+
+    // If we matched an exact student semester result query from MongoDB, return the rich multivisional breakdown immediately
+    if (directMultivisionalReply) {
+      const meta = generateInteractionMeta(directMultivisionalReply, message);
+      return NextResponse.json({
+        success: true,
+        reply: directMultivisionalReply,
+        model: "PUST CSE Multivisional Desk",
+        isGeminiLive: true,
+        followUps: meta.followUps,
+        actionLinks: meta.actionLinks,
+      });
+    }
 
     // If GEMINI_API_KEY is available, call Google Gemini REST API
     if (apiKey && apiKey.trim()) {
@@ -576,18 +733,18 @@ export async function POST(req) {
 
       // Add user prompt with explicit language enforcement
       const finalPrompt = isBangla
-        ? `${message}\n\n[INSTRUCTION: The user is asking in Bengali (বাংলা). You MUST answer completely, fluently, and accurately in Bengali (বাংলায় উত্তর দিন). Base all information strictly on the PUST CSE curriculum and features.]`
-        : `${message}\n\n[INSTRUCTION: Base all information strictly on the official PUST CSE curriculum, rules, and portals provided in the system instruction.]`;
+        ? `${message}\n\n[INSTRUCTION: The user is asking in Bengali (বাংলা). You MUST answer completely, fluently, and accurately in Bengali (বাংলায় উত্তর দিন). Base all information strictly on the PUST CSE curriculum, live database snapshot, and features.]`
+        : `${message}\n\n[INSTRUCTION: Base all information strictly on the official PUST CSE curriculum, live database snapshot, rules, and portals provided in the system instruction.]`;
 
       contents.push({
         role: "user",
         parts: [{ text: finalPrompt }],
       });
 
-      // Priority list of Gemini models: fast, instant-response models to prevent latency
       const modelsToTry = [
-        "gemini-3.6-flash",
-        "gemini-3.5-flash"
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash"
       ];
       let geminiResponseText = null;
 
@@ -607,7 +764,7 @@ export async function POST(req) {
               signal: controller.signal,
               body: JSON.stringify({
                 system_instruction: {
-                  parts: [{ text: SYSTEM_INSTRUCTION }],
+                  parts: [{ text: SYSTEM_INSTRUCTION + livePromptAddendum }],
                 },
                 contents,
                 generationConfig: {

@@ -794,6 +794,27 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
                   </span>
                 </div>
 
+                {/* Give Course Notice Quick Action inside course workspace */}
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsOpen(false);
+                      if (typeof window !== "undefined") {
+                        window.dispatchEvent(new CustomEvent("open-course-notice", { detail: { courseCode: activeCourseCode } }));
+                      }
+                    }}
+                    className="w-full flex items-center justify-between p-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs shadow-sm shadow-indigo-600/20 transition-all cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="p-1.5 rounded-xl bg-white/20 text-white shrink-0">
+                        <Bell className="w-3.5 h-3.5" />
+                      </div>
+                      <span className="truncate">Notice for {activeCourseCode}</span>
+                    </div>
+                  </button>
+                </div>
+
                 {/* Other Courses Switcher */}
                 <div>
                   <div className="px-2 pt-1 pb-1.5 flex items-center justify-between">
@@ -893,6 +914,34 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
                       Active
                     </span>
                   </Link>
+                </div>
+
+                {/* Give Course Notice Quick Action in Sidebar */}
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsOpen(false);
+                      if (typeof window !== "undefined") {
+                        if (pathname !== "/dashboard/teacher") {
+                          window.location.href = "/dashboard/teacher#notices";
+                        } else {
+                          window.dispatchEvent(new CustomEvent("open-course-notice"));
+                        }
+                      }
+                    }}
+                    className="w-full flex items-center justify-between p-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs shadow-sm shadow-indigo-600/20 transition-all cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="p-1.5 rounded-xl bg-white/20 text-white shrink-0">
+                        <Bell className="w-4 h-4" />
+                      </div>
+                      <div className="flex flex-col text-left">
+                        <span className="text-xs font-bold leading-tight">Give Course Notice</span>
+                        <span className="text-[10px] text-indigo-100 font-normal leading-tight mt-0.5">Instant student broadcast</span>
+                      </div>
+                    </div>
+                  </button>
                 </div>
 
                 {/* Course Workspaces Direct Jump Section */}

@@ -436,6 +436,7 @@ Feel free to ask in **English** or **বাংলা**, or tap the 🎙️ **Mic
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: textToSend,
+          userEmail: user?.email || null,
           history: messages.slice(-6).map((m) => ({
             role: m.role === "assistant" ? "model" : "user",
             text: m.text,

@@ -1092,7 +1092,7 @@ export default function StudentAssignmentsSection({
                 onClick={() => setSelectedCourse("all")}
                 className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition whitespace-nowrap cursor-pointer shrink-0 ${
                   selectedCourse === "all"
-                    ? "bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-xs"
+                    ? "bg-indigo-600 text-white shadow-xs"
                     : "bg-white dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/80 text-slate-700 dark:text-slate-300 hover:border-indigo-300 hover:bg-indigo-50/40 shadow-2xs"
                 }`}
               >

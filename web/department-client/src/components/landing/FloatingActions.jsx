@@ -148,7 +148,7 @@ export function FloatingActions() {
               title="Scroll to top"
               className="relative flex items-center justify-center h-11 w-11 rounded-full bg-white/90 dark:bg-slate-800/90 backdrop-blur-2xl border border-indigo-100 dark:border-slate-700 shadow-[0_8px_25px_rgba(0,0,0,0.12)] hover:shadow-[0_12px_35px_rgba(99,102,241,0.35)] hover:border-indigo-500/50 transition-all duration-300 hover:-translate-y-1 overflow-hidden cursor-pointer group"
             >
-              <div className="absolute inset-0 bg-gradient-to-t from-indigo-600 to-violet-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+              <div className="absolute inset-0 bg-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
               <ArrowUp className="relative z-10 h-5 w-5 text-slate-600 dark:text-slate-300 group-hover:text-white transition-colors duration-300" strokeWidth={2.5} />
             </button>
           </motion.div>
@@ -204,12 +204,12 @@ export function FloatingActions() {
             className={`relative flex items-center justify-center h-16 w-16 rounded-full transition-all duration-300 ${
               isChatOpen
                 ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xl cursor-pointer hover:scale-105"
-                : "bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 shadow-[0_12px_35px_rgba(99,102,241,0.5)] hover:shadow-[0_18px_50px_rgba(99,102,241,0.7)] text-white cursor-grab active:cursor-grabbing hover:scale-105"
+                : "bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-600/30 text-white cursor-grab active:cursor-grabbing hover:scale-105"
             }`}
           >
-            {/* Inner Sheen Glow when closed */}
+            {/* Inner Sheen when closed */}
             {!isChatOpen && (
-              <div className="absolute inset-1 rounded-full bg-gradient-to-br from-white/25 to-transparent pointer-events-none" />
+              <div className="absolute inset-1 rounded-full bg-white/10 pointer-events-none" />
             )}
 
             <AnimatePresence mode="wait">

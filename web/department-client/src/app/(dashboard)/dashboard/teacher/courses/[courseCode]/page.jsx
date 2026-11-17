@@ -582,13 +582,23 @@ export default function TeacherCourseWorkspacePage() {
     }
   }, [courseCode, fetchCourseDetails, fetchCourseMaterials, fetchCourseAssignments, fetchCourseNotices, fetchCourseClassTests, fetchTeacherCourses]);
 
-  // Listen for global notice refresh events
+  // Listen for global notice refresh events & open-course-notice triggers
   useEffect(() => {
     const handleRefreshNotices = () => {
       fetchCourseNotices();
     };
+    const handleOpenNotice = () => {
+      setEditingNotice(null);
+      setShowNoticeModal(true);
+    };
+
     window.addEventListener("refresh-notices", handleRefreshNotices);
-    return () => window.removeEventListener("refresh-notices", handleRefreshNotices);
+    window.addEventListener("open-course-notice", handleOpenNotice);
+
+    return () => {
+      window.removeEventListener("refresh-notices", handleRefreshNotices);
+      window.removeEventListener("open-course-notice", handleOpenNotice);
+    };
   }, [fetchCourseNotices]);
 
   useEffect(() => {
@@ -2125,7 +2135,7 @@ export default function TeacherCourseWorkspacePage() {
             <button
               type="button"
               onClick={handleCreateNotice}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-all hover:scale-105 active:scale-95 cursor-pointer"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold shadow-sm shadow-indigo-600/20 transition-all cursor-pointer"
               title="Broadcast course notice to students of this course"
             >
               <Bell className="w-3.5 h-3.5" />
@@ -2241,7 +2251,7 @@ export default function TeacherCourseWorkspacePage() {
                 type="button"
                 onClick={() => handleStartLiveSession()}
                 disabled={isStartingLive}
-                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-xl shadow-emerald-600/30 transition-all hover:scale-105 active:scale-95 cursor-pointer border border-emerald-400/30 disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-xs shadow-md shadow-emerald-600/20 transition-all cursor-pointer disabled:opacity-50"
               >
                 <Zap className="w-4 h-4 text-amber-300" />
                 <span>{isStartingLive ? "Opening Window..." : "Launch 10m Student Check-In"}</span>
@@ -2681,7 +2691,7 @@ export default function TeacherCourseWorkspacePage() {
                   <button
                     type="button"
                     onClick={handleCreateNotice}
-                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold shadow-sm shadow-indigo-600/20 transition-all cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Give Course Notice</span>
@@ -2724,7 +2734,7 @@ export default function TeacherCourseWorkspacePage() {
                     <button
                       type="button"
                       onClick={handleCreateNotice}
-                      className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
+                      className="mt-2 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold shadow-sm shadow-indigo-600/20 transition-all cursor-pointer"
                     >
                       <Plus className="w-4 h-4" />
                       <span>Give First Course Notice</span>
@@ -2822,7 +2832,7 @@ export default function TeacherCourseWorkspacePage() {
                     type="button"
                     onClick={() => handleStartLiveSession(todaySlotTiming.slotDoc?._id)}
                     disabled={isStartingLive}
-                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-md shadow-emerald-600/25 transition-all hover:scale-102 active:scale-98 cursor-pointer disabled:opacity-50"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white text-xs font-bold shadow-sm shadow-emerald-600/20 transition-all cursor-pointer disabled:opacity-50"
                     title={todaySlotTiming.reason}
                   >
                     <Zap className="w-4 h-4 text-amber-300" />

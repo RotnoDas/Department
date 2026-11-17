@@ -87,7 +87,7 @@ export default function NotFound() {
 
           <Link
             href="/"
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-sm font-bold transition-all shadow-lg shadow-indigo-500/25 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-sm font-bold transition-all shadow-sm shadow-indigo-600/20 cursor-pointer"
           >
             <Home className="w-4 h-4" />
             <span>Return Home</span>

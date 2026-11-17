@@ -282,14 +282,22 @@ export default function TeacherDashboardPage() {
       }
     };
 
+    const handleOpenNotice = (e) => {
+      setEditingCourseNotice(null);
+      setDefaultNoticeCourse(e?.detail?.courseCode || "");
+      setIsCourseNoticeModalOpen(true);
+    };
+
     window.addEventListener("hashchange", handleHash);
     window.addEventListener("popstate", handleHash);
     window.addEventListener("dashboard-change-page", handleChangePage);
+    window.addEventListener("open-course-notice", handleOpenNotice);
 
     return () => {
       window.removeEventListener("hashchange", handleHash);
       window.removeEventListener("popstate", handleHash);
       window.removeEventListener("dashboard-change-page", handleChangePage);
+      window.removeEventListener("open-course-notice", handleOpenNotice);
     };
   }, []);
 
@@ -894,8 +902,23 @@ export default function TeacherDashboardPage() {
             </div>
           </div>
 
-          {/* Previous / Next Quick Stepper Buttons */}
-          <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+          {/* Quick Actions & Previous / Next Quick Stepper Buttons */}
+          <div className="flex items-center gap-2.5 self-end sm:self-center shrink-0 flex-wrap sm:flex-nowrap">
+            {/* Prominent Quick Give Course Notice Button (Always Accessible Across All Pages) */}
+            <button
+              type="button"
+              onClick={() => {
+                setEditingCourseNotice(null);
+                setDefaultNoticeCourse("");
+                setIsCourseNoticeModalOpen(true);
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs shadow-sm shadow-indigo-600/20 transition-all cursor-pointer"
+              title="Broadcast a course notice directly to enrolled students"
+            >
+              <Bell className="w-3.5 h-3.5" />
+              <span>Give Course Notice</span>
+            </button>
+
             <button
               type="button"
               onClick={() => prevPageObj && goToPage(prevPageObj.id)}
@@ -1033,27 +1056,14 @@ export default function TeacherDashboardPage() {
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingCourseNotice(null);
-                      setDefaultNoticeCourse("");
-                      setIsCourseNoticeModalOpen(true);
-                    }}
-                    className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-600/25 transition-all hover:scale-105 active:scale-95 cursor-pointer flex-1"
-                    title="Publish Course Notice for Enrolled Students"
-                  >
-                    <Bell className="w-4 h-4" />
-                    <span>Give Course Notice</span>
-                  </button>
+                <div className="flex items-center gap-2.5">
                   <button
                     type="button"
                     onClick={() => {
                       goToPage("profile-settings");
                       setIsEditing(true);
                     }}
-                    className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 border border-slate-200/80 dark:border-white/10 font-bold text-xs transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-xs flex-1"
+                    className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 border border-slate-200/80 dark:border-white/10 font-bold text-xs transition-all hover:scale-[1.02] active:scale-95 cursor-pointer shadow-xs"
                   >
                     <Edit3 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                     <span>Edit Profile Data</span>
@@ -1865,8 +1875,8 @@ export default function TeacherDashboardPage() {
                   setDefaultNoticeCourse("");
                   setIsCourseNoticeModalOpen(true);
                 }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-sm shadow-indigo-600/30 transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                title="Broadcast notice to students of any course"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold shadow-sm shadow-indigo-600/20 transition-all cursor-pointer"
+                title="Broadcast notice to students of any assigned course"
               >
                 <Bell className="w-3.5 h-3.5" />
                 <span>Give Course Notice</span>
@@ -1999,11 +2009,11 @@ export default function TeacherDashboardPage() {
                             setDefaultNoticeCourse(course.code);
                             setIsCourseNoticeModalOpen(true);
                           }}
-                          className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-700/60 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs font-bold transition-colors cursor-pointer"
-                          title="Broadcast course notice"
+                          className="group/notice inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-600 text-indigo-700 dark:text-indigo-300 hover:text-white dark:hover:text-white border border-indigo-200/80 dark:border-indigo-800/60 text-xs font-bold transition-all duration-200 hover:shadow-sm hover:scale-105 active:scale-95 cursor-pointer"
+                          title={`Broadcast notice directly to students enrolled in ${course.code}`}
                         >
-                          <Bell className="w-3.5 h-3.5" />
-                          <span>Notice</span>
+                          <Bell className="w-3.5 h-3.5 transition-transform group-hover/notice:rotate-12" />
+                          <span>Give Notice</span>
                         </button>
 
                         {/* Enter Workspace Direct Link */}

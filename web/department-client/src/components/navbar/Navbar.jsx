@@ -292,7 +292,7 @@ export function Navbar() {
               {/* Go to Dashboard CTA */}
               <Link
                 href={getDashboardPath()}
-                className="inline-flex items-center gap-2 font-bold text-xs sm:text-sm tracking-wide text-white bg-gradient-to-r from-indigo-600 via-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 shadow-md shadow-indigo-200/50 dark:shadow-indigo-950/40 px-3 sm:px-4.5 h-9 sm:h-10.5 rounded-xl transition-all hover:scale-105 active:scale-95 group"
+                className="inline-flex items-center gap-2 font-bold text-xs sm:text-sm tracking-wide text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm shadow-indigo-600/20 px-3 sm:px-4.5 h-9 sm:h-10.5 rounded-xl transition-all hover:scale-105 active:scale-95 group"
               >
                 <LayoutDashboard className="w-4 h-4 text-indigo-100 transition-transform group-hover:rotate-12" />
                 <span className="hidden sm:inline">{getDashboardLabel()}</span>

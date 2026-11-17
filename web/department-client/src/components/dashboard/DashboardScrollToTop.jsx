@@ -47,7 +47,7 @@ export function DashboardScrollToTop() {
             className="pointer-events-auto relative group"
           >
             {/* Soft background glow */}
-            <div className="absolute -inset-1 rounded-full bg-gradient-to-b from-indigo-500 to-purple-600 opacity-0 group-hover:opacity-40 blur-md transition-opacity duration-500"></div>
+            <div className="absolute -inset-1 rounded-full bg-indigo-600/30 opacity-0 group-hover:opacity-40 blur-md transition-opacity duration-500"></div>
 
             <button
               type="button"
@@ -56,8 +56,8 @@ export function DashboardScrollToTop() {
               title="Move to top"
               aria-label="Scroll to top of dashboard"
             >
-              {/* Hover Background Gradient */}
-              <div className="absolute inset-0 bg-gradient-to-t from-indigo-600 to-violet-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+              {/* Hover Background */}
+              <div className="absolute inset-0 bg-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
 
               {/* Floating Arrow */}
               <motion.div
