@@ -1,17 +1,17 @@
 "use client";
 
 import React from "react";
-import { Sparkles } from "lucide-react";
+import { GraduationCap } from "lucide-react";
 
 /**
- * Reusable Loading Fallback Component
- * Features glowing aura, triple counter-rotating rings, center pulse icon,
- * gradient animated text, and staggered bouncing indicators.
+ * Formal, Academic Loading Fallback Component
+ * Simple, elegant spinner with university graduation emblem, clean typography,
+ * and a refined indeterminate progress line. Designed for formal academic portals.
  *
  * @param {string} text - Primary loading headline (defaults to "Loading...")
  * @param {string} subtext - Optional secondary explanatory subtitle
  * @param {boolean} fullScreen - Centers within full viewport/container height
- * @param {"sm" | "md" | "lg"} size - Visual size scaling
+ * @param {"sm" | "md" | "lg"} size - Visual size scaling (default: "md")
  */
 export default function Loading({ 
   text = "Loading...", 
@@ -21,93 +21,79 @@ export default function Loading({
 }) {
   const sizeConfig = {
     sm: {
-      ringBox: "h-20 w-20",
-      ring1: "border-t-[3px] border-r-[3px]",
-      ring2: "inset-2 border-b-[3px] border-l-[3px]",
-      ring3: "inset-4 border-t-[2.5px]",
-      icon: "h-5 w-5",
-      textClass: "text-sm",
-      dot: "w-2 h-2",
-      mt: "mt-6",
+      outerBox: "h-11 w-11",
+      icon: "h-4 w-4",
+      innerBadge: "p-2",
+      textClass: "text-xs font-semibold",
+      subtextClass: "text-[11px]",
+      barTrack: "w-28 h-0.5 mt-2.5",
+      spacing: "mt-3",
     },
     md: {
-      ringBox: "h-32 w-32",
-      ring1: "border-t-[5px] border-r-[5px]",
-      ring2: "inset-3 border-b-[5px] border-l-[5px]",
-      ring3: "inset-6 border-t-[4px]",
-      icon: "h-8 w-8",
-      textClass: "text-lg md:text-xl",
-      dot: "w-2.5 h-2.5",
-      mt: "mt-8",
+      outerBox: "h-16 w-16",
+      icon: "h-6 w-6",
+      innerBadge: "p-3",
+      textClass: "text-sm sm:text-base font-semibold",
+      subtextClass: "text-xs",
+      barTrack: "w-36 sm:w-44 h-1 mt-3",
+      spacing: "mt-4",
     },
     lg: {
-      ringBox: "h-44 w-44",
-      ring1: "border-t-[6px] border-r-[6px]",
-      ring2: "inset-4 border-b-[6px] border-l-[6px]",
-      ring3: "inset-8 border-t-[5px]",
-      icon: "h-11 w-11",
-      textClass: "text-2xl md:text-3xl",
-      dot: "w-3 h-3",
-      mt: "mt-10",
+      outerBox: "h-20 w-20",
+      icon: "h-8 w-8",
+      innerBadge: "p-4",
+      textClass: "text-base sm:text-lg font-semibold",
+      subtextClass: "text-xs sm:text-sm",
+      barTrack: "w-48 sm:w-56 h-1 mt-4",
+      spacing: "mt-5",
     },
-  }[size] || sizeConfig.md;
+  }[size] || {
+    outerBox: "h-16 w-16",
+    icon: "h-6 w-6",
+    innerBadge: "p-3",
+    textClass: "text-sm sm:text-base font-semibold",
+    subtextClass: "text-xs",
+    barTrack: "w-36 sm:w-44 h-1 mt-3",
+    spacing: "mt-4",
+  };
 
   const content = (
-    <div className="flex flex-col items-center justify-center py-10 w-full animate-in fade-in duration-300 select-none">
+    <div className="flex flex-col items-center justify-center py-8 px-4 w-full select-none animate-in fade-in duration-300">
+      {/* Formal Dual-Track Academic Spinner */}
       <div className="relative flex items-center justify-center">
-        {/* Outer glowing pulsing aura */}
-        <div className="absolute inset-0 rounded-full blur-2xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-sky-400 opacity-30 dark:opacity-40 animate-pulse scale-150 pointer-events-none"></div>
+        {/* Soft, dignified institutional glow (pure subtle indigo tone, no multi-color aura) */}
+        <div className="absolute inset-0 rounded-full bg-indigo-500/10 dark:bg-indigo-400/10 blur-xl scale-125 pointer-events-none" />
 
-        {/* Concentric Spinning Rings */}
-        <div className={`relative flex ${sizeConfig.ringBox} items-center justify-center`}>
-          {/* Ring 1 - Primary Indigo (clockwise 3s) */}
-          <div 
-            className={`absolute inset-0 rounded-full ${sizeConfig.ring1} border-indigo-600 dark:border-indigo-400 border-opacity-70 animate-[spin_3s_linear_infinite]`}
-          ></div>
+        {/* Circular Spinner System */}
+        <div className={`relative flex ${sizeConfig.outerBox} items-center justify-center`}>
+          {/* Subtle static circular track */}
+          <div className="absolute inset-0 rounded-full border-2 border-slate-200/90 dark:border-slate-800" />
 
-          {/* Ring 2 - Secondary Purple (counter-clockwise 2s) */}
-          <div 
-            className={`absolute ${sizeConfig.ring2} rounded-full border-purple-600 dark:border-purple-400 border-opacity-80 animate-[spin_2s_linear_infinite_reverse]`}
-          ></div>
+          {/* Active precision spinning arc */}
+          <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-indigo-600 dark:border-t-indigo-400 border-r-indigo-600/40 dark:border-r-indigo-400/40 animate-spin" />
 
-          {/* Ring 3 - Sky Accent (clockwise 1.5s) */}
-          <div 
-            className={`absolute ${sizeConfig.ring3} rounded-full border-sky-500 dark:border-sky-400 animate-[spin_1.5s_linear_infinite]`}
-          ></div>
-
-          {/* Center glowing badge with icon */}
-          <div className="bg-white/90 dark:bg-slate-900/90 rounded-full p-2.5 shadow-lg border border-slate-200/80 dark:border-white/10 backdrop-blur-md">
-            <Sparkles className={`${sizeConfig.icon} text-indigo-600 dark:text-indigo-400 animate-pulse`} />
+          {/* Center Academic Emblem Badge */}
+          <div className={`relative bg-white dark:bg-slate-900 rounded-full ${sizeConfig.innerBadge} shadow-xs border border-slate-200/90 dark:border-slate-800 flex items-center justify-center`}>
+            <GraduationCap className={`${sizeConfig.icon} text-indigo-600 dark:text-indigo-400 transition-colors animate-pulse`} />
           </div>
         </div>
       </div>
 
-      {/* Loading Headline & Bouncing Dots */}
-      <div className={`${sizeConfig.mt} flex flex-col items-center z-10 relative text-center px-4`}>
-        <h3 className={`${sizeConfig.textClass} font-black tracking-widest uppercase bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 via-purple-600 to-sky-500 dark:from-indigo-400 dark:via-purple-400 dark:to-sky-400 drop-shadow-sm`}>
+      {/* Formal Headline & Subtitle */}
+      <div className={`${sizeConfig.spacing} flex flex-col items-center text-center max-w-sm`}>
+        <h3 className={`${sizeConfig.textClass} text-slate-800 dark:text-slate-100 tracking-tight`}>
           {text}
         </h3>
 
         {subtext && (
-          <p className="text-xs md:text-sm font-medium text-slate-500 dark:text-slate-400 mt-1.5 max-w-sm">
+          <p className={`${sizeConfig.subtextClass} text-slate-500 dark:text-slate-400 mt-1 leading-relaxed`}>
             {subtext}
           </p>
         )}
 
-        {/* Three staggered bouncing dots */}
-        <div className="flex gap-2 mt-3.5">
-          <div 
-            className={`${sizeConfig.dot} rounded-full bg-indigo-600 dark:bg-indigo-400 animate-bounce shadow-md`}
-            style={{ animationDelay: "0ms" }}
-          ></div>
-          <div 
-            className={`${sizeConfig.dot} rounded-full bg-purple-600 dark:bg-purple-400 animate-bounce shadow-md`}
-            style={{ animationDelay: "150ms" }}
-          ></div>
-          <div 
-            className={`${sizeConfig.dot} rounded-full bg-sky-500 dark:bg-sky-400 animate-bounce shadow-md`}
-            style={{ animationDelay: "300ms" }}
-          ></div>
+        {/* Refined Indeterminate Progress Line */}
+        <div className={`${sizeConfig.barTrack} bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden relative`}>
+          <div className="animate-formal-progress absolute inset-y-0 rounded-full bg-indigo-600 dark:bg-indigo-400" />
         </div>
       </div>
     </div>
@@ -115,7 +101,7 @@ export default function Loading({
 
   if (fullScreen) {
     return (
-      <div className="min-h-[70vh] flex items-center justify-center w-full">
+      <div className="min-h-[60vh] flex items-center justify-center w-full">
         {content}
       </div>
     );

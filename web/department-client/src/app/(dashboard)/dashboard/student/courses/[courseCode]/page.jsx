@@ -27,6 +27,7 @@ import {
   RefreshCw,
   Award,
   ChevronRight,
+  ChevronLeft,
   ChevronDown,
   Paperclip,
   FileCheck,
@@ -135,6 +136,91 @@ const getGradeBadge = (score, max) => {
   };
 };
 
+// Course Workspace 9-Page Paginated Sections mapping
+export const COURSE_WORKSPACE_PAGES = [
+  {
+    pageNum: 1,
+    id: "notices",
+    title: "Course Notices & Announcements",
+    shortLabel: "Notices",
+    description: "Official teacher notices, schedule announcements & circulars",
+    badge: "Notices",
+    icon: Bell,
+  },
+  {
+    pageNum: 2,
+    id: "materials",
+    title: "Study Materials & Lecture Slides",
+    shortLabel: "Materials",
+    description: "Course slides, lecture notes, syllabus, and reference handouts",
+    badge: "Materials",
+    icon: BookOpen,
+  },
+  {
+    pageNum: 3,
+    id: "assignments",
+    title: "Continuous Tasks & Submissions",
+    shortLabel: "Tasks & Marks",
+    description: "Homework tasks, lab reports, solution uploads and submission status",
+    badge: "Tasks",
+    icon: FileText,
+  },
+  {
+    pageNum: 4,
+    id: "class-tests",
+    title: "Class Tests (CT) & Offline Marks",
+    shortLabel: "Class Tests",
+    description: "Continuous class test scores, feedback, and performance tracking",
+    badge: "CT Marks",
+    icon: Award,
+  },
+  {
+    pageNum: 5,
+    id: "continuous-evaluation",
+    title: "Continuous Assessment (20% / 30%)",
+    shortLabel: "Scorecard",
+    description: "Official continuous result breakdown, best CT calculation & grading",
+    badge: "Evaluation",
+    icon: Sparkles,
+  },
+  {
+    pageNum: 6,
+    id: "attendance",
+    title: "Course Attendance & Presence",
+    shortLabel: "Attendance",
+    description: "Lecture attendance percentage, eligibility status & presence logs",
+    badge: "Attendance",
+    icon: UserCheck,
+  },
+  {
+    pageNum: 7,
+    id: "schedule",
+    title: "Course Routine & Schedule",
+    shortLabel: "Routine",
+    description: "Weekly lecture timetable, classroom numbers, and faculty schedule",
+    badge: "Routine",
+    icon: Calendar,
+  },
+  {
+    pageNum: 8,
+    id: "messages",
+    title: "Teacher-Student Course Chat",
+    shortLabel: "Teacher Chat",
+    description: "Direct real-time communication with assigned course instructor",
+    badge: "Chat",
+    icon: MessageSquare,
+  },
+  {
+    pageNum: 9,
+    id: "ai-study",
+    title: "AI Note Summary & Quiz Generator",
+    shortLabel: "AI Study",
+    description: "AI notes, summarization, and interactive quiz generator from slides",
+    badge: "AI Study",
+    icon: Brain,
+  },
+];
+
 export default function StudentCourseWorkspacePage() {
   const params = useParams();
   const router = useRouter();
@@ -148,7 +234,7 @@ export default function StudentCourseWorkspacePage() {
   const urlTab = searchParams?.get("tab");
   const validTabs = useMemo(() => ["notices", "materials", "assignments", "class-tests", "continuous-evaluation", "attendance", "schedule", "messages", "ai-study"], []);
 
-  // Active Tab: "notices" | "materials" | "assignments" | "class-tests" | "continuous-evaluation" | "attendance" | "schedule" | "messages" | "ai-study"
+  // Active Tab / Page: 9 distinct pages mapped 1:1 with tabs and sidebar
   const [activeTab, setActiveTab] = useState(() =>
     urlTab && validTabs.includes(urlTab) ? urlTab : "notices"
   );
@@ -160,14 +246,20 @@ export default function StudentCourseWorkspacePage() {
     }
   }, [urlTab, validTabs, activeTab]);
 
-  const handleTabChange = useCallback((tabId) => {
-    setActiveTab(tabId);
+  const goToPage = useCallback((pageId) => {
+    setActiveTab(pageId);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
-      url.searchParams.set("tab", tabId);
+      url.searchParams.set("tab", pageId);
       window.history.replaceState(null, "", url.toString());
+      const el = document.getElementById("course-workspace-content");
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
     }
   }, []);
+
+  const handleTabChange = goToPage;
 
   // Student Profile State
   const [studentProfile, setStudentProfile] = useState(null);
@@ -651,6 +743,39 @@ export default function StudentCourseWorkspacePage() {
     );
   }, [course]);
 
+  // Page count & metrics helper for pagination items
+  const getPageCount = (pageId) => {
+    switch (pageId) {
+      case "notices":
+        return `${notices.length} Published`;
+      case "materials":
+        return `${materials.length} Files`;
+      case "assignments":
+        return `${assignments.length} Tasks`;
+      case "class-tests":
+        return `${classTests.length} Tests`;
+      case "continuous-evaluation":
+        return continuousEvaluation?.summary?.continuousMarks !== undefined && continuousEvaluation?.summary?.continuousMarks !== null
+          ? `${continuousEvaluation.summary.continuousMarks}/${isLabCourse ? 30 : 20}`
+          : (isLabCourse ? "30%" : "20%");
+      case "attendance":
+        return `${courseStats.attendancePct}%`;
+      case "schedule":
+        return `${routineSlots.length} Slots`;
+      case "messages":
+        return unreadMessagesCount > 0 ? `${unreadMessagesCount} New` : "Chat";
+      case "ai-study":
+        return "AI Study";
+      default:
+        return "";
+    }
+  };
+
+  const currentIdx = COURSE_WORKSPACE_PAGES.findIndex((p) => p.id === activeTab);
+  const activePageObj = COURSE_WORKSPACE_PAGES[currentIdx >= 0 ? currentIdx : 0];
+  const prevPageObj = currentIdx > 0 ? COURSE_WORKSPACE_PAGES[currentIdx - 1] : null;
+  const nextPageObj = currentIdx >= 0 && currentIdx < COURSE_WORKSPACE_PAGES.length - 1 ? COURSE_WORKSPACE_PAGES[currentIdx + 1] : null;
+
   if (isLoadingCourse && !course) {
     return (
       <Loading
@@ -730,43 +855,44 @@ export default function StudentCourseWorkspacePage() {
       </div>
 
       {/* ── COURSE WORKSPACE HERO CARD ──────────────────────────────── */}
-      <div className="relative overflow-hidden rounded-[2.5rem] bg-slate-900 text-white p-7 sm:p-9 shadow-xl border border-slate-800">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+      <div className="relative overflow-hidden rounded-[2.5rem] bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl text-slate-900 dark:text-white p-7 sm:p-9 shadow-sm border border-slate-200/90 dark:border-white/10 transition-colors">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/[0.05] dark:bg-indigo-600/15 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+        <div className="absolute bottom-0 left-1/3 w-80 h-80 bg-sky-500/[0.04] dark:bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative z-10 space-y-6">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
             <div className="space-y-3 max-w-2xl">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="px-3 py-1 rounded-xl bg-indigo-500/20 text-indigo-300 font-mono font-black text-xs border border-indigo-400/30">
+                <span className="px-3 py-1 rounded-xl bg-indigo-50 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 font-mono font-black text-xs border border-indigo-200/80 dark:border-indigo-400/30 shadow-xs">
                   {courseCode}
                 </span>
-                <span className="px-3 py-1 rounded-xl bg-white/10 text-slate-200 font-bold text-xs border border-white/10">
+                <span className="px-3 py-1 rounded-xl bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-200 font-bold text-xs border border-slate-200/80 dark:border-white/10">
                   {course?.credits || 3.0} Credits
                 </span>
-                <span className="px-3 py-1 rounded-xl bg-white/10 text-slate-200 font-bold text-xs border border-white/10">
+                <span className="px-3 py-1 rounded-xl bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-200 font-bold text-xs border border-slate-200/80 dark:border-white/10">
                   Semester {course?.semesterNum || currentSemesterNum}
                 </span>
                 <span className={`px-3 py-1 rounded-xl text-xs font-bold border ${
                   isLabCourse
-                    ? "bg-amber-500/20 text-amber-300 border-amber-400/30"
-                    : "bg-indigo-500/20 text-indigo-300 border-indigo-400/30"
+                    ? "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-400/25 dark:text-amber-100 dark:border-amber-300/40"
+                    : "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-500/20 dark:text-indigo-300 dark:border-indigo-400/30"
                 }`}>
                   {isLabCourse ? "Sessional / Lab" : "Theory Core"}
                 </span>
               </div>
 
-              <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight">
+              <h1 className="text-2xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight">
                 {course?.title || `${courseCode} Course Module`}
               </h1>
 
-              <div className="flex items-center gap-4 text-xs text-slate-300 flex-wrap">
+              <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-300 flex-wrap font-medium">
                 <span className="flex items-center gap-1.5">
-                  <User className="w-3.5 h-3.5 text-indigo-400" />
+                  <User className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                   <span>Course Faculty: {routineSlots[0]?.teacherName || "Assigned Department Faculty"}</span>
                 </span>
-                <span className="text-slate-600">•</span>
+                <span className="text-slate-300 dark:text-slate-600">•</span>
                 <span className="flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-indigo-400" />
+                  <MapPin className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                   <span>Classroom: {routineSlots[0]?.roomNo || (isLabCourse ? "AI & Hardware Lab" : `Room ${400 + currentSemesterNum}`)}</span>
                 </span>
               </div>
@@ -774,112 +900,112 @@ export default function StudentCourseWorkspacePage() {
 
             <div className="flex flex-col sm:flex-row items-stretch gap-3">
               {/* Attendance Status Banner */}
-              <div className="p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md space-y-2 min-w-[210px]">
-              <div className="flex items-center justify-between text-xs text-slate-300">
-                <span className="font-bold">My Attendance Rate</span>
-                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                  courseStats.totalHeld === 0
-                    ? "bg-slate-500/20 text-slate-300 border border-slate-400/30"
-                    : courseStats.isCollegiate
-                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-400/30"
-                    : courseStats.isNonCollegiate
-                    ? "bg-amber-500/20 text-amber-300 border border-amber-400/30"
-                    : "bg-rose-500/20 text-rose-300 border border-rose-400/30"
-                }`}>
-                  {courseStats.totalHeld === 0
-                    ? "No Sessions Held"
-                    : courseStats.isCollegiate
-                    ? "Collegiate (Eligible)"
-                    : courseStats.isNonCollegiate
-                    ? "Non-Collegiate"
-                    : "Discollegiate"}
-                </span>
-              </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-black text-white">{courseStats.attendancePct}%</span>
-                <span className="text-xs text-slate-400">
-                  {courseStats.targetClasses
-                    ? `(${courseStats.attended} of ${courseStats.targetClasses} target)`
-                    : `(${courseStats.attended} of ${courseStats.totalHeld} held)`}
-                </span>
-              </div>
-              <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
-                <div
-                  className="h-full bg-indigo-500 rounded-full transition-all duration-500"
-                  style={{ width: `${courseStats.attendancePct}%` }}
-                />
-              </div>
-            </div>
-
-            {/* Continuous Assessment Hero Card (30% for Sessional, 20% for Theory) */}
-            <div
-              onClick={() => handleTabChange("continuous-evaluation")}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleTabChange("continuous-evaluation"); }}
-              className="p-4 rounded-2xl bg-indigo-950/40 hover:bg-indigo-950/70 border border-indigo-400/30 hover:border-indigo-400/60 backdrop-blur-md space-y-2 min-w-[220px] cursor-pointer transition group"
-              title="Click to view detailed Continuous Assessment Breakdown"
-            >
-              <div className="flex items-center justify-between text-xs text-slate-300">
-                <span className="font-bold flex items-center gap-1.5 text-indigo-300">
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>{isLabCourse ? "Sessional (30%)" : "Theory (20%)"}</span>
-                </span>
-                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
-                  {isLabCourse ? "All Tasks (30%)" : "Best 2 Tasks (20%)"}
-                </span>
-              </div>
-              <div className="flex items-baseline justify-between gap-2">
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-3xl font-black text-white">
-                    {continuousEvaluation?.summary?.continuousMarks !== undefined && continuousEvaluation?.summary?.continuousMarks !== null
-                      ? continuousEvaluation.summary.continuousMarks
-                      : "—"}
+              <div className="p-4 rounded-2xl bg-slate-50/90 dark:bg-white/5 border border-slate-200/80 dark:border-white/10 space-y-2 min-w-[210px] shadow-xs">
+                <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-300">
+                  <span className="font-bold">My Attendance Rate</span>
+                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                    courseStats.totalHeld === 0
+                      ? "bg-slate-200/80 text-slate-700 border border-slate-300 dark:bg-slate-500/20 dark:text-slate-300 dark:border-slate-400/30"
+                      : courseStats.isCollegiate
+                      ? "bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-400/30"
+                      : courseStats.isNonCollegiate
+                      ? "bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-400/30"
+                      : "bg-rose-100 text-rose-800 border border-rose-300 dark:bg-rose-500/20 dark:text-rose-300 dark:border-rose-400/30"
+                  }`}>
+                    {courseStats.totalHeld === 0
+                      ? "No Sessions Held"
+                      : courseStats.isCollegiate
+                      ? "Collegiate (Eligible)"
+                      : courseStats.isNonCollegiate
+                      ? "Non-Collegiate"
+                      : "Discollegiate"}
                   </span>
-                  <span className="text-xs text-indigo-300 font-bold">/ {isLabCourse ? "30" : "20"}</span>
                 </div>
-                <span className={`text-xs font-black px-2.5 py-1 rounded-xl border ${
-                  continuousEvaluation?.summary?.letterGrade === "A+" || continuousEvaluation?.summary?.letterGrade === "A"
-                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-400/40"
-                    : "bg-indigo-500/20 text-indigo-300 border-indigo-400/40"
-                }`}>
-                  {continuousEvaluation?.summary?.letterGrade || "Ungraded"}
-                </span>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-black text-slate-900 dark:text-white">{courseStats.attendancePct}%</span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                    {courseStats.targetClasses
+                      ? `(${courseStats.attended} of ${courseStats.targetClasses} target)`
+                      : `(${courseStats.attended} of ${courseStats.totalHeld} held)`}
+                  </span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-white/10 overflow-hidden">
+                  <div
+                    className="h-full bg-indigo-600 dark:bg-indigo-400 rounded-full transition-all duration-500"
+                    style={{ width: `${courseStats.attendancePct}%` }}
+                  />
+                </div>
               </div>
-              <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
-                <div
-                  className="h-full bg-indigo-400 rounded-full transition-all duration-500"
-                  style={{
-                    width: `${Math.min(100, Math.max(0, ((continuousEvaluation?.summary?.continuousMarks || 0) / (isLabCourse ? 30 : 20)) * 100))}%`,
-                  }}
-                />
-              </div>
-              <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
-                <span>{isLabCourse ? "All CT + Tasks Combined" : "Best 2 of CT + Tasks"}</span>
-                <span className="text-indigo-300 group-hover:underline flex items-center gap-0.5 font-bold">
-                  Scorecard <ChevronRight className="w-3 h-3" />
-                </span>
+
+              {/* Continuous Assessment Hero Card (30% for Sessional, 20% for Theory) */}
+              <div
+                onClick={() => handleTabChange("continuous-evaluation")}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleTabChange("continuous-evaluation"); }}
+                className="p-4 rounded-2xl bg-slate-50/90 hover:bg-slate-100/90 dark:bg-indigo-950/40 dark:hover:bg-indigo-950/70 border border-slate-200/80 hover:border-indigo-300 dark:border-indigo-400/30 dark:hover:border-indigo-400/60 space-y-2 min-w-[220px] cursor-pointer transition group shadow-xs"
+                title="Click to view detailed Continuous Assessment Breakdown"
+              >
+                <div className="flex items-center justify-between text-xs text-slate-700 dark:text-slate-300">
+                  <span className="font-bold flex items-center gap-1.5 text-slate-800 dark:text-indigo-300">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500 dark:text-indigo-400" />
+                    <span>{isLabCourse ? "Sessional (30%)" : "Theory (20%)"}</span>
+                  </span>
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-200/80 dark:bg-indigo-500/30 text-slate-700 dark:text-indigo-200 border border-slate-300/80 dark:border-indigo-400/30">
+                    {isLabCourse ? "All Tasks (30%)" : "Best 2 Tasks (20%)"}
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between gap-2">
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-3xl font-black text-slate-900 dark:text-white">
+                      {continuousEvaluation?.summary?.continuousMarks !== undefined && continuousEvaluation?.summary?.continuousMarks !== null
+                        ? continuousEvaluation.summary.continuousMarks
+                        : "—"}
+                    </span>
+                    <span className="text-xs text-slate-500 dark:text-indigo-300 font-bold">/ {isLabCourse ? "30" : "20"}</span>
+                  </div>
+                  <span className={`text-xs font-black px-2.5 py-1 rounded-xl border ${
+                    continuousEvaluation?.summary?.letterGrade === "A+" || continuousEvaluation?.summary?.letterGrade === "A"
+                      ? "bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-400/40"
+                      : "bg-slate-100 text-slate-700 border-slate-200 dark:bg-indigo-500/20 dark:text-indigo-300 dark:border-indigo-400/40"
+                  }`}>
+                    {continuousEvaluation?.summary?.letterGrade || "Ungraded"}
+                  </span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-white/10 overflow-hidden">
+                  <div
+                    className="h-full bg-indigo-600 dark:bg-indigo-400 rounded-full transition-all duration-500"
+                    style={{
+                      width: `${Math.min(100, Math.max(0, ((continuousEvaluation?.summary?.continuousMarks || 0) / (isLabCourse ? 30 : 20)) * 100))}%`,
+                    }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 pt-0.5">
+                  <span>{isLabCourse ? "All CT + Tasks Combined" : "Best 2 of CT + Tasks"}</span>
+                  <span className="text-indigo-600 dark:text-indigo-300 group-hover:underline flex items-center gap-0.5 font-bold">
+                    Scorecard <ChevronRight className="w-3 h-3" />
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
           </div>
 
           {/* Interactive Metric Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-6 border-t border-white/10">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-6 border-t border-slate-200/80 dark:border-white/10">
             {/* Card 1: Notices */}
             <div
               onClick={() => handleTabChange("notices")}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleTabChange("notices"); }}
-              className="p-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-indigo-400/60 transition-all cursor-pointer space-y-1 text-left"
+              className="p-3.5 rounded-2xl bg-slate-50/90 hover:bg-white dark:bg-white/5 dark:hover:bg-white/10 border border-slate-200/80 hover:border-indigo-300/80 dark:border-white/10 dark:hover:border-indigo-400/60 shadow-xs transition-all cursor-pointer space-y-1 text-left"
             >
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Notices</span>
-                <Bell className="w-3.5 h-3.5 text-indigo-300" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Notices</span>
+                <Bell className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-300" />
               </div>
-              <div className="text-2xl font-black text-white">{courseStats.noticesCount}</div>
-              <span className="text-[10px] text-indigo-300 font-medium block truncate">Teacher Updates</span>
+              <div className="text-2xl font-black text-slate-900 dark:text-white">{courseStats.noticesCount}</div>
+              <span className="text-[10px] text-slate-500 dark:text-indigo-300 font-medium block truncate">Teacher Updates</span>
             </div>
 
             {/* Card 2: Materials */}
@@ -888,14 +1014,14 @@ export default function StudentCourseWorkspacePage() {
               role="button"
               tabIndex={0}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleTabChange("materials"); }}
-              className="p-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-indigo-400/60 transition-all cursor-pointer space-y-1 text-left"
+              className="p-3.5 rounded-2xl bg-slate-50/90 hover:bg-white dark:bg-white/5 dark:hover:bg-white/10 border border-slate-200/80 hover:border-indigo-300/80 dark:border-white/10 dark:hover:border-indigo-400/60 shadow-xs transition-all cursor-pointer space-y-1 text-left"
             >
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Materials</span>
-                <BookOpen className="w-3.5 h-3.5 text-indigo-300" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Materials</span>
+                <BookOpen className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-300" />
               </div>
-              <div className="text-2xl font-black text-white">{courseStats.materialsCount}</div>
-              <span className="text-[10px] text-indigo-300 font-medium block truncate">Slides & Files</span>
+              <div className="text-2xl font-black text-slate-900 dark:text-white">{courseStats.materialsCount}</div>
+              <span className="text-[10px] text-slate-500 dark:text-indigo-300 font-medium block truncate">Slides & Files</span>
             </div>
 
             {/* Card 3: Assignments */}
@@ -904,14 +1030,14 @@ export default function StudentCourseWorkspacePage() {
               role="button"
               tabIndex={0}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleTabChange("assignments"); }}
-              className="p-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-indigo-400/60 transition-all cursor-pointer space-y-1 text-left"
+              className="p-3.5 rounded-2xl bg-slate-50/90 hover:bg-white dark:bg-white/5 dark:hover:bg-white/10 border border-slate-200/80 hover:border-indigo-300/80 dark:border-white/10 dark:hover:border-indigo-400/60 shadow-xs transition-all cursor-pointer space-y-1 text-left"
             >
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Tasks</span>
-                <FileText className="w-3.5 h-3.5 text-indigo-300" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Tasks</span>
+                <FileText className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-300" />
               </div>
-              <div className="text-2xl font-black text-white">{courseStats.assignmentsCount}</div>
-              <span className="text-[10px] text-indigo-300 font-medium block truncate">
+              <div className="text-2xl font-black text-slate-900 dark:text-white">{courseStats.assignmentsCount}</div>
+              <span className="text-[10px] text-slate-500 dark:text-indigo-300 font-medium block truncate">
                 {courseStats.submittedCount} Submitted
               </span>
             </div>
@@ -922,14 +1048,14 @@ export default function StudentCourseWorkspacePage() {
               role="button"
               tabIndex={0}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleTabChange("class-tests"); }}
-              className="p-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-indigo-400/60 transition-all cursor-pointer space-y-1 text-left"
+              className="p-3.5 rounded-2xl bg-slate-50/90 hover:bg-white dark:bg-white/5 dark:hover:bg-white/10 border border-slate-200/80 hover:border-indigo-300/80 dark:border-white/10 dark:hover:border-indigo-400/60 shadow-xs transition-all cursor-pointer space-y-1 text-left"
             >
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Class Tests</span>
-                <Award className="w-3.5 h-3.5 text-indigo-300" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Class Tests</span>
+                <Award className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-300" />
               </div>
-              <div className="text-2xl font-black text-white">{courseStats.classTestsCount}</div>
-              <span className="text-[10px] text-indigo-300 font-medium block truncate">
+              <div className="text-2xl font-black text-slate-900 dark:text-white">{courseStats.classTestsCount}</div>
+              <span className="text-[10px] text-slate-500 dark:text-indigo-300 font-medium block truncate">
                 {courseStats.ctAveragePct !== null ? `${courseStats.ctAveragePct}% Avg Score` : "Offline Tests"}
               </span>
             </div>
@@ -940,14 +1066,14 @@ export default function StudentCourseWorkspacePage() {
               role="button"
               tabIndex={0}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleTabChange("attendance"); }}
-              className="p-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-indigo-400/60 transition-all cursor-pointer space-y-1 text-left"
+              className="p-3.5 rounded-2xl bg-slate-50/90 hover:bg-white dark:bg-white/5 dark:hover:bg-white/10 border border-slate-200/80 hover:border-indigo-300/80 dark:border-white/10 dark:hover:border-indigo-400/60 shadow-xs transition-all cursor-pointer space-y-1 text-left"
             >
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Attendance</span>
-                <UserCheck className="w-3.5 h-3.5 text-indigo-300" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Attendance</span>
+                <UserCheck className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-300" />
               </div>
-              <div className="text-2xl font-black text-white">{courseStats.attendancePct}%</div>
-              <span className="text-[10px] text-indigo-300 font-medium block truncate">
+              <div className="text-2xl font-black text-slate-900 dark:text-white">{courseStats.attendancePct}%</div>
+              <span className="text-[10px] text-slate-500 dark:text-indigo-300 font-medium block truncate">
                 {courseStats.attended} of {courseStats.targetClasses ? `${courseStats.targetClasses} Target` : `${courseStats.totalHeld} Attended`}
               </span>
             </div>
@@ -958,73 +1084,118 @@ export default function StudentCourseWorkspacePage() {
               role="button"
               tabIndex={0}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleTabChange("schedule"); }}
-              className="p-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-indigo-400/60 transition-all cursor-pointer space-y-1 text-left"
+              className="p-3.5 rounded-2xl bg-slate-50/90 hover:bg-white dark:bg-white/5 dark:hover:bg-white/10 border border-slate-200/80 hover:border-indigo-300/80 dark:border-white/10 dark:hover:border-indigo-400/60 shadow-xs transition-all cursor-pointer space-y-1 text-left"
             >
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Schedule</span>
-                <Calendar className="w-3.5 h-3.5 text-indigo-300" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Schedule</span>
+                <Calendar className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-300" />
               </div>
-              <div className="text-2xl font-black text-white">{routineSlots.length}</div>
-              <span className="text-[10px] text-indigo-300 font-medium block truncate">Weekly Classes</span>
+              <div className="text-2xl font-black text-slate-900 dark:text-white">{routineSlots.length}</div>
+              <span className="text-[10px] text-slate-500 dark:text-indigo-300 font-medium block truncate">Weekly Classes</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* ── COURSE WORKSPACE TABS BAR ───────────────────────────────── */}
-      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-white/10 pb-2 overflow-x-auto scrollbar-none">
-        {[
-          { id: "notices", label: "Course Notices", icon: Bell, count: notices.length },
-          { id: "materials", label: "Study Materials", icon: BookOpen, count: materials.length },
-          { id: "assignments", label: "Continuous Tasks & Marks", icon: FileText, count: assignments.length },
-          { id: "class-tests", label: "Class Tests (CT)", icon: Award, count: classTests.length },
-          {
-            id: "continuous-evaluation",
-            label: isLabCourse ? "Continuous Result (30%)" : "Continuous Result (20%)",
-            icon: Sparkles,
-            count: continuousEvaluation?.summary?.continuousMarks !== undefined && continuousEvaluation?.summary?.continuousMarks !== null
-              ? `${continuousEvaluation.summary.continuousMarks}/${isLabCourse ? 30 : 20}`
-              : (isLabCourse ? "30%" : "20%"),
-          },
-          { id: "attendance", label: "My Attendance", icon: UserCheck, count: `${courseStats.attendancePct}%` },
-          { id: "schedule", label: "Class Schedule", icon: Calendar, count: `${routineSlots.length} Slots` },
-          {
-            id: "messages",
-            label: "Teacher Chat",
-            icon: MessageSquare,
-            count: unreadMessagesCount > 0 ? `${unreadMessagesCount} New` : "Chat",
-          },
-          {
-            id: "ai-study",
-            label: "AI Notes & Quiz",
-            icon: Brain,
-            count: "AI Study",
-          },
-        ].map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
+      {/* ── COURSE WORKSPACE TOP PAGINATION BAR ────────────────────── */}
+      <div id="course-workspace-content" className="bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/90 dark:border-white/10 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-sm space-y-3.5 transition-colors scroll-mt-6">
+        {/* Top Header Row: Section info, Page X of 9, and Quick Stepper Buttons */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100 dark:border-white/10">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-200/60 dark:border-indigo-800/60 shadow-xs">
+              {activePageObj && React.createElement(activePageObj.icon, { className: "w-5 h-5" })}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide uppercase bg-indigo-100/80 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
+                  Page {activePageObj?.pageNum || 1} of {COURSE_WORKSPACE_PAGES.length}
+                </span>
+                <span className="text-xs font-semibold text-slate-400 dark:text-slate-500">•</span>
+                <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 font-mono">
+                  {getPageCount(activePageObj?.id)}
+                </span>
+              </div>
+              <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
+                {activePageObj?.title}
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium line-clamp-1">
+                {activePageObj?.description}
+              </p>
+            </div>
+          </div>
+
+          {/* Stepper Buttons (Previous & Next) */}
+          <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
             <button
-              key={tab.id}
-              onClick={() => handleTabChange(tab.id)}
-              className={`inline-flex items-center gap-2 px-5 py-3 rounded-2xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-                isActive
-                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 scale-[1.02]"
-                  : "bg-white dark:bg-slate-900/70 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-white/10"
+              type="button"
+              onClick={() => prevPageObj && goToPage(prevPageObj.id)}
+              disabled={!prevPageObj}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
+                prevPageObj
+                  ? "bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 border-slate-200/80 dark:border-white/10 shadow-xs cursor-pointer active:scale-95"
+                  : "bg-slate-50 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 border-slate-100 dark:border-white/5 cursor-not-allowed opacity-60"
               }`}
+              title={prevPageObj ? `Go to Page ${prevPageObj.pageNum}: ${prevPageObj.title}` : "First Page"}
             >
-              <Icon className="w-4 h-4" />
-              <span>{tab.label}</span>
-              <span
-                className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
-                  isActive ? "bg-white/20 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500"
-                }`}
-              >
-                {tab.count}
-              </span>
+              <ChevronLeft className="w-4 h-4" />
+              <span className="hidden xs:inline">Previous</span>
             </button>
-          );
-        })}
+
+            <button
+              type="button"
+              onClick={() => nextPageObj && goToPage(nextPageObj.id)}
+              disabled={!nextPageObj}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
+                nextPageObj
+                  ? "bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-600 shadow-xs shadow-indigo-600/20 cursor-pointer active:scale-95"
+                  : "bg-slate-50 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 border-slate-100 dark:border-white/5 cursor-not-allowed opacity-60"
+              }`}
+              title={nextPageObj ? `Go to Page ${nextPageObj.pageNum}: ${nextPageObj.title}` : "Last Page"}
+            >
+              <span className="hidden xs:inline">Next</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* 9 Interactive Step Pills with Numbers, Icons, Labels, and Counts */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-0.5 scrollbar-thin">
+          {COURSE_WORKSPACE_PAGES.map((page) => {
+            const isCurrent = page.id === activeTab;
+            const Icon = page.icon;
+            const countText = getPageCount(page.id);
+            return (
+              <button
+                key={page.id}
+                type="button"
+                onClick={() => goToPage(page.id)}
+                className={`group flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer shrink-0 border ${
+                  isCurrent
+                    ? "bg-indigo-600 text-white border-indigo-600 shadow-sm shadow-indigo-600/30 scale-[1.02]"
+                    : "bg-slate-100/90 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-400 border-slate-200/70 dark:border-white/5"
+                }`}
+                title={`Page ${page.pageNum}: ${page.title}`}
+              >
+                <span className={`inline-flex items-center justify-center w-5 h-5 rounded-lg text-[10px] font-black ${
+                  isCurrent 
+                    ? "bg-white/20 text-white" 
+                    : "bg-slate-200/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/60 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"
+                }`}>
+                  {page.pageNum}
+                </span>
+                <Icon className={`w-3.5 h-3.5 shrink-0 ${isCurrent ? "text-white" : "text-slate-500 dark:text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"}`} />
+                <span>{page.shortLabel}</span>
+                {countText && (
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-semibold ${
+                    isCurrent ? "bg-white/20 text-white" : "bg-slate-200/70 dark:bg-slate-700/80 text-slate-600 dark:text-slate-400"
+                  }`}>
+                    {countText}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* ════════════════════════════════════════════════════════════════
@@ -2419,6 +2590,79 @@ export default function StudentCourseWorkspacePage() {
           />
         </div>
       )}
+
+      {/* ── COURSE WORKSPACE BOTTOM PAGINATION BAR ───────────────────── */}
+      <div className="bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/90 dark:border-white/10 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-sm transition-colors mt-8">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+          {/* Previous Page Button with Label */}
+          <div className="w-full md:w-auto">
+            {prevPageObj ? (
+              <button
+                type="button"
+                onClick={() => goToPage(prevPageObj.id)}
+                className="w-full md:w-auto inline-flex items-center justify-center md:justify-start gap-2.5 px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 border border-slate-200/80 dark:border-white/10 text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+              >
+                <ChevronLeft className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                <div className="text-left">
+                  <span className="block text-[10px] uppercase font-semibold text-slate-400 dark:text-slate-500">
+                    Previous Section (Page {prevPageObj.pageNum})
+                  </span>
+                  <span className="font-bold">{prevPageObj.title}</span>
+                </div>
+              </button>
+            ) : (
+              <div className="text-xs font-semibold text-slate-400 dark:text-slate-500 px-2 py-1 text-center md:text-left">
+                • You are on the First Section (Page 1)
+              </div>
+            )}
+          </div>
+
+          {/* Center Numbered Pills 1 to 9 */}
+          <div className="flex items-center gap-1.5 flex-wrap justify-center">
+            {COURSE_WORKSPACE_PAGES.map((page) => {
+              const isCurrent = page.id === activeTab;
+              return (
+                <button
+                  key={page.id}
+                  type="button"
+                  onClick={() => goToPage(page.id)}
+                  className={`w-8 h-8 rounded-xl text-xs font-black transition-all flex items-center justify-center cursor-pointer border ${
+                    isCurrent
+                      ? "bg-indigo-600 text-white border-indigo-600 shadow-sm shadow-indigo-600/30 scale-105"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-400 border-slate-200/70 dark:border-white/5"
+                  }`}
+                  title={`Page ${page.pageNum}: ${page.title}`}
+                >
+                  {page.pageNum}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Next Page Button with Label */}
+          <div className="w-full md:w-auto">
+            {nextPageObj ? (
+              <button
+                type="button"
+                onClick={() => goToPage(nextPageObj.id)}
+                className="w-full md:w-auto inline-flex items-center justify-center md:justify-end gap-2.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all cursor-pointer shadow-xs shadow-indigo-600/20 active:scale-95"
+              >
+                <div className="text-right">
+                  <span className="block text-[10px] uppercase font-semibold text-indigo-200">
+                    Next Section (Page {nextPageObj.pageNum})
+                  </span>
+                  <span className="font-bold">{nextPageObj.title}</span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-white" />
+              </button>
+            ) : (
+              <div className="text-xs font-semibold text-slate-400 dark:text-slate-500 px-2 py-1 text-center md:text-right">
+                • You are on the Final Section (Page 9)
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* ════════════════════════════════════════════════════════════════
           SUBMISSION MODAL: UPLOAD / EDIT ASSIGNMENT SOLUTION

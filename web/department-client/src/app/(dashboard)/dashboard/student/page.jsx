@@ -46,7 +46,11 @@ import {
   Compass,
   Radio,
   Timer,
-  ChevronRight
+  ChevronRight,
+  ChevronLeft,
+  LayoutDashboard,
+  FileText,
+  Bell
 } from "lucide-react";
 import { FaGithub, FaLinkedin } from "react-icons/fa";
 import toast from "react-hot-toast";
@@ -80,6 +84,91 @@ const ROUTINE_TIME_SLOTS = [
   "02:00 - 03:00",
   "03:00 - 04:00",
   "04:00 - 05:00",
+];
+
+// Student Dashboard Paginated Sections mapped 1:1 with left sidebar navigation items
+export const DASHBOARD_PAGES = [
+  {
+    pageNum: 1,
+    id: "profile",
+    title: "Student Profile",
+    shortLabel: "Profile",
+    description: "Bio, academic status, and enrolled curriculum overview",
+    badge: "Overview",
+    icon: LayoutDashboard,
+  },
+  {
+    pageNum: 2,
+    id: "profile-settings",
+    title: "Profile & Face Biometrics",
+    shortLabel: "Face ID & Bio",
+    description: "Personal contact editor and facial biometric enrollment",
+    badge: "Face ID",
+    icon: GraduationCap,
+  },
+  {
+    pageNum: 3,
+    id: "analytics",
+    title: "Academic Analytics",
+    shortLabel: "Analytics",
+    description: "Attendance percentage, routine workload & exam eligibility",
+    badge: "Analytics",
+    icon: BarChart3,
+  },
+  {
+    pageNum: 4,
+    id: "attendance",
+    title: "Smart Face Attendance",
+    shortLabel: "Attendance",
+    description: "Campus geofence check-in and attendance history",
+    badge: "10m GPS",
+    icon: UserCheck,
+  },
+  {
+    pageNum: 5,
+    id: "routine",
+    title: "Class Routine & Timetable",
+    shortLabel: "Routine",
+    description: "Semester weekly timetable, classrooms and schedule",
+    badge: "Timetable",
+    icon: Calendar,
+  },
+  {
+    pageNum: 6,
+    id: "materials",
+    title: "Course Study Materials",
+    shortLabel: "Materials",
+    description: "Lecture slides, handouts, and curriculum syllabus files",
+    badge: "Files",
+    icon: BookOpen,
+  },
+  {
+    pageNum: 7,
+    id: "assignments",
+    title: "Tasks & Assignments",
+    shortLabel: "Assignments",
+    description: "Coursework submissions, CT marks and project deadlines",
+    badge: "Tasks",
+    icon: FileText,
+  },
+  {
+    pageNum: 8,
+    id: "results",
+    title: "Academic Results",
+    shortLabel: "Results",
+    description: "Official semester grade sheets, SGPA/CGPA and forecasts",
+    badge: "CGPA",
+    icon: Award,
+  },
+  {
+    pageNum: 9,
+    id: "notices",
+    title: "Department Notice Board",
+    shortLabel: "Notices",
+    description: "Official academic circulars, emergency announcements & alerts",
+    badge: "Notices",
+    icon: Bell,
+  },
 ];
 
 // Strict Geofence Targets: University Campus & Personal/Authorized Coordinate
@@ -164,22 +253,64 @@ export default function StudentDashboardPage() {
   const expandAllSections = () => setCollapsedSections({ profile: false, analytics: false, attendance: false, routine: false, materials: false, assignments: false, results: false, notices: false });
   const allCollapsed = Object.values(collapsedSections).every(Boolean);
 
+  // Paginated Dashboard Page State (maps 1:1 with 9 left sidebar menu items)
+  const [currentPage, setCurrentPage] = useState("profile");
+
+  const goToPage = (pageId, syncSidebar = true) => {
+    const target = DASHBOARD_PAGES.find((p) => p.id === pageId);
+    if (!target) return;
+    setCurrentPage(pageId);
+    if (typeof window !== "undefined") {
+      const newUrl = pageId === "profile" ? "/dashboard/student" : `/dashboard/student#${pageId}`;
+      window.history.pushState(null, "", newUrl);
+      if (syncSidebar) {
+        window.dispatchEvent(
+          new CustomEvent("dashboard-sync-sidebar", {
+            detail: { sectionId: pageId },
+          })
+        );
+      }
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
+  // Sync initial page from URL hash on mount
   useEffect(() => {
-    const handleHash = () => {
-      const hash = window.location.hash.replace("#", "");
-      if (!hash) return;
-      if (hash === "profile-settings" || hash === "profile") setCollapsedSections((p) => ({ ...p, profile: false }));
-      if (hash === "analytics") setCollapsedSections((p) => ({ ...p, analytics: false }));
-      if (hash === "attendance") setCollapsedSections((p) => ({ ...p, attendance: false }));
-      if (hash === "routine" || hash === "courses") setCollapsedSections((p) => ({ ...p, routine: false }));
-      if (hash === "materials") setCollapsedSections((p) => ({ ...p, materials: false }));
-      if (hash === "assignments") setCollapsedSections((p) => ({ ...p, assignments: false }));
-      if (hash === "results") setCollapsedSections((p) => ({ ...p, results: false }));
-      if (hash === "notices") setCollapsedSections((p) => ({ ...p, notices: false }));
+    if (typeof window !== "undefined") {
+      const hash = window.location.hash.replace("#", "").trim();
+      if (hash && DASHBOARD_PAGES.some((p) => p.id === hash)) {
+        setCurrentPage(hash);
+      }
+    }
+  }, []);
+
+  // Listen for sidebar page changes, hash updates, and popstate browser navigation
+  useEffect(() => {
+    const handlePageChange = (e) => {
+      if (e?.detail?.sectionId && DASHBOARD_PAGES.some((p) => p.id === e.detail.sectionId)) {
+        setCurrentPage(e.detail.sectionId);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
     };
-    handleHash();
+
+    const handleHash = () => {
+      const hash = window.location.hash.replace("#", "").trim();
+      if (hash && DASHBOARD_PAGES.some((p) => p.id === hash)) {
+        setCurrentPage(hash);
+      } else if (!hash) {
+        setCurrentPage("profile");
+      }
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
+    window.addEventListener("dashboard-change-page", handlePageChange);
     window.addEventListener("hashchange", handleHash);
-    return () => window.removeEventListener("hashchange", handleHash);
+    window.addEventListener("popstate", handleHash);
+    return () => {
+      window.removeEventListener("dashboard-change-page", handlePageChange);
+      window.removeEventListener("hashchange", handleHash);
+      window.removeEventListener("popstate", handleHash);
+    };
   }, []);
 
   // Profile Edit State
@@ -780,150 +911,325 @@ export default function StudentDashboardPage() {
 
   const displayImage = formData.image || profile?.image || user?.image || null;
 
-  return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      {/* Student Profile Hero Card */}
-      <div id="profile" className="p-7 sm:p-8 rounded-[2rem] bg-gradient-to-r from-indigo-900 via-purple-900 to-slate-900 text-white shadow-xl relative overflow-hidden scroll-mt-6 border border-white/10">
-        {/* Decorative background glow */}
-        <div className="absolute -right-20 -top-20 w-80 h-80 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -left-20 -bottom-20 w-80 h-80 bg-purple-500/20 rounded-full blur-3xl pointer-events-none" />
+  const currentIdx = DASHBOARD_PAGES.findIndex((p) => p.id === currentPage);
+  const activePageObj = DASHBOARD_PAGES[currentIdx >= 0 ? currentIdx : 0];
+  const prevPageObj = currentIdx > 0 ? DASHBOARD_PAGES[currentIdx - 1] : null;
+  const nextPageObj = currentIdx >= 0 && currentIdx < DASHBOARD_PAGES.length - 1 ? DASHBOARD_PAGES[currentIdx + 1] : null;
 
-        <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
-          <div className="flex items-center gap-5">
-            <div className="relative group shrink-0">
-              <div className="h-20 w-20 sm:h-22 sm:w-22 rounded-3xl bg-white/10 backdrop-blur-md flex items-center justify-center text-indigo-300 font-extrabold text-3xl border border-white/20 shadow-inner overflow-hidden ring-2 ring-white/10">
-                {displayImage ? (
-                  <img src={displayImage} alt={activeName} className="h-full w-full object-cover" />
-                ) : (
-                  activeName ? activeName.charAt(0).toUpperCase() : "S"
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsEditing(true);
-                  setTimeout(() => {
-                    fileInputRef.current?.click();
-                    const el = document.getElementById("profile-settings");
-                    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-                  }, 60);
-                }}
-                title="Change Profile Picture"
-                className="absolute -bottom-1 -right-1 p-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg border border-white/30 transition-transform active:scale-95 cursor-pointer group-hover:scale-110"
-              >
-                <Camera className="w-3.5 h-3.5" />
-              </button>
+  return (
+    <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-500">
+      {/* ── Top Dashboard Pagination & Section Stepper Bar ── */}
+      <div className="bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/90 dark:border-white/10 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-sm space-y-3.5 transition-colors">
+        {/* Top Header Row: Active Section Title, Page Count, and Navigation Buttons */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100 dark:border-white/10">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-200/60 dark:border-indigo-800/60 shadow-xs">
+              {activePageObj && React.createElement(activePageObj.icon, { className: "w-5 h-5" })}
             </div>
-            <div className="space-y-1">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 text-xs font-semibold text-indigo-200 backdrop-blur-md mb-1 border border-indigo-400/20">
-                <GraduationCap className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Undergraduate CSE Student</span>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide uppercase bg-indigo-100/80 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
+                  Page {activePageObj?.pageNum || 1} of {DASHBOARD_PAGES.length}
+                </span>
+                <span className="text-xs font-semibold text-slate-400 dark:text-slate-500">•</span>
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 hidden sm:inline">
+                  {activePageObj?.badge}
+                </span>
               </div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-                {activeName}
-              </h1>
-              <p className="text-xs text-indigo-200/80 font-medium flex items-center gap-2 flex-wrap">
-                <span>Roll: {activeRoll}</span>
-                <span>•</span>
-                <span>Batch {activeBatch}</span>
-                <span>•</span>
-                <span>Semester {activeSemester}</span>
-                <span>•</span>
-                <span>Session {activeSession}</span>
+              <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight">
+                {activePageObj?.title}
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium line-clamp-1">
+                {activePageObj?.description}
               </p>
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row lg:flex-col gap-3 w-full lg:w-auto">
-            <div className="flex flex-col gap-2 text-xs font-medium text-slate-300 bg-white/5 p-4 rounded-2xl border border-white/10 backdrop-blur-sm flex-1">
-              <span className="flex items-center gap-2 truncate">
-                <Mail className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                <span className="truncate">{user?.email}</span>
-              </span>
-              <span className="flex items-center gap-2">
-                <Phone className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                <span>{activePhone}</span>
-              </span>
-              <span className="flex items-center gap-2">
-                <MapPin className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                <span className="truncate">{activeAddress}</span>
-              </span>
-            </div>
+          {/* Previous / Next Quick Stepper Buttons */}
+          <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+            <button
+              type="button"
+              onClick={() => prevPageObj && goToPage(prevPageObj.id)}
+              disabled={!prevPageObj}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
+                prevPageObj
+                  ? "bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 border-slate-200/80 dark:border-white/10 shadow-xs cursor-pointer active:scale-95"
+                  : "bg-slate-50 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 border-slate-100 dark:border-white/5 cursor-not-allowed opacity-60"
+              }`}
+              title={prevPageObj ? `Go to Page ${prevPageObj.pageNum}: ${prevPageObj.title}` : "First Page"}
+            >
+              <ChevronLeft className="w-4 h-4" />
+              <span className="hidden xs:inline">Previous</span>
+            </button>
 
-            <div className="flex items-center gap-2">
-              <DashboardCollapseControls
-                onCollapseAll={collapseAllSections}
-                onExpandAll={expandAllSections}
-                allCollapsed={allCollapsed}
-              />
-              <button
-                onClick={() => {
-                  setIsEditing(!isEditing);
-                  const el = document.getElementById("profile-settings");
-                  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-                }}
-                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/20 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-sm"
-              >
-                <Edit3 className="w-4 h-4 text-indigo-300" />
-                <span>{isEditing ? "Close Profile Editor" : "Edit Profile Data"}</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => nextPageObj && goToPage(nextPageObj.id)}
+              disabled={!nextPageObj}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
+                nextPageObj
+                  ? "bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-600 shadow-xs shadow-indigo-600/20 cursor-pointer active:scale-95"
+                  : "bg-slate-50 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 border-slate-100 dark:border-white/5 cursor-not-allowed opacity-60"
+              }`}
+              title={nextPageObj ? `Go to Page ${nextPageObj.pageNum}: ${nextPageObj.title}` : "Last Page"}
+            >
+              <span className="hidden xs:inline">Next</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
+        </div>
+
+        {/* 9 Section Step Pills (mapped exactly to left sidebar items) */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-0.5 scrollbar-thin">
+          {DASHBOARD_PAGES.map((page) => {
+            const isCurrent = page.id === currentPage;
+            const Icon = page.icon;
+            return (
+              <button
+                key={page.id}
+                type="button"
+                onClick={() => goToPage(page.id)}
+                className={`group flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer shrink-0 border ${
+                  isCurrent
+                    ? "bg-indigo-600 text-white border-indigo-600 shadow-sm shadow-indigo-600/30 scale-[1.02]"
+                    : "bg-slate-100/90 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-400 border-slate-200/70 dark:border-white/5"
+                }`}
+                title={`Page ${page.pageNum}: ${page.title}`}
+              >
+                <span className={`inline-flex items-center justify-center w-5 h-5 rounded-lg text-[10px] font-black ${
+                  isCurrent 
+                    ? "bg-white/20 text-white" 
+                    : "bg-slate-200/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/60 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"
+                }`}>
+                  {page.pageNum}
+                </span>
+                <Icon className={`w-3.5 h-3.5 shrink-0 ${isCurrent ? "text-white" : "text-slate-500 dark:text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"}`} />
+                <span>{page.shortLabel}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Account Verification Gate / Status Banner */}
-      {isPending ? (
-        <div className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-amber-200/80 dark:border-amber-800/60 shadow-lg space-y-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-start gap-4">
-              <div className="h-12 w-12 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                <AlertCircle className="w-6 h-6" />
-              </div>
-              <div className="space-y-1">
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/60 text-[11px] font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider">
-                  <Clock className="w-3 h-3" />
-                  <span>Awaiting Administrator Approval</span>
+      {/* ── Page 1: Student Profile & Enrolled Semester Overview ── */}
+      {currentPage === "profile" && (
+        <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-300">
+          {/* Student Profile Hero Card */}
+          <div id="profile" className="p-7 sm:p-8 rounded-[2rem] bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl text-slate-900 dark:text-white shadow-sm relative overflow-hidden scroll-mt-6 border border-slate-200/90 dark:border-white/10 transition-colors">
+            {/* Decorative background glow */}
+            <div className="absolute -right-20 -top-20 w-80 h-80 bg-indigo-500/[0.05] dark:bg-indigo-500/15 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -left-20 -bottom-20 w-80 h-80 bg-sky-500/[0.04] dark:bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
+
+            <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+              <div className="flex items-center gap-5">
+                <div className="relative group shrink-0">
+                  <div className="h-20 w-20 sm:h-22 sm:w-22 rounded-3xl bg-indigo-50/80 dark:bg-white/10 backdrop-blur-md flex items-center justify-center text-indigo-700 dark:text-indigo-300 font-extrabold text-3xl border border-indigo-200/80 dark:border-white/20 shadow-xs overflow-hidden ring-2 ring-indigo-500/10 dark:ring-white/10">
+                    {displayImage ? (
+                      <img src={displayImage} alt={activeName} className="h-full w-full object-cover" />
+                    ) : (
+                      activeName ? activeName.charAt(0).toUpperCase() : "S"
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      goToPage("profile-settings");
+                      setIsEditing(true);
+                      setTimeout(() => {
+                        fileInputRef.current?.click();
+                      }, 120);
+                    }}
+                    title="Change Profile Picture"
+                    className="absolute -bottom-1 -right-1 p-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/30 transition-transform active:scale-95 cursor-pointer group-hover:scale-110"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Registration Under Review</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium max-w-2xl">
-                  Your registration has been submitted and is currently in the <strong>CSE Department Approval Queue</strong>. Once an administrator verifies and approves your account from the Admin Panel, your full academic profile, course routine, marks, and attendance portals will be unlocked automatically.
+                <div className="space-y-1">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-500/20 text-xs font-semibold text-indigo-700 dark:text-indigo-200 backdrop-blur-md mb-1 border border-indigo-200/80 dark:border-indigo-400/20 shadow-xs">
+                    <GraduationCap className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                    <span>Undergraduate CSE Student</span>
+                  </div>
+                  <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 dark:text-white">
+                    {activeName}
+                  </h1>
+                  <p className="text-xs text-slate-500 dark:text-indigo-200/80 font-medium flex items-center gap-2 flex-wrap">
+                    <span>Roll: {activeRoll}</span>
+                    <span>•</span>
+                    <span>Batch {activeBatch}</span>
+                    <span>•</span>
+                    <span>Semester {activeSemester}</span>
+                    <span>•</span>
+                    <span>Session {activeSession}</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row lg:flex-col gap-3 w-full lg:w-auto">
+                <div className="flex flex-col gap-2 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-50/90 dark:bg-white/5 p-4 rounded-2xl border border-slate-200/80 dark:border-white/10 shadow-xs flex-1">
+                  <span className="flex items-center gap-2 truncate">
+                    <Mail className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                    <span className="truncate">{user?.email}</span>
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <Phone className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                    <span>{activePhone}</span>
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <MapPin className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                    <span className="truncate">{activeAddress}</span>
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      goToPage("profile-settings");
+                      setIsEditing(true);
+                    }}
+                    className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-600/25 transition-all hover:scale-105 active:scale-95 cursor-pointer w-full"
+                  >
+                    <Edit3 className="w-4 h-4 text-white" />
+                    <span>{"Edit Profile & Biometrics"}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Account Verification Gate / Status Banner */}
+          {isPending ? (
+            <div className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-amber-200/80 dark:border-amber-800/60 shadow-lg space-y-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-start gap-4">
+                  <div className="h-12 w-12 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                    <AlertCircle className="w-6 h-6" />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/60 text-[11px] font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider">
+                      <Clock className="w-3 h-3" />
+                      <span>Awaiting Administrator Approval</span>
+                    </div>
+                    <h3 className="text-xl font-bold text-slate-900 dark:text-white">Registration Under Review</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium max-w-2xl">
+                      Your registration has been submitted and is currently in the <strong>CSE Department Approval Queue</strong>. Once an administrator verifies and approves your account from the Admin Panel, your full academic profile, course routine, marks, and attendance portals will be unlocked automatically.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => loadProfile(true)}
+                    disabled={isRefreshing}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-200 dark:shadow-none transition-colors cursor-pointer"
+                  >
+                    <Clock className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
+                    <span>{isRefreshing ? "Checking..." : "Check Approval Status"}</span>
+                  </button>
+                  <button
+                    onClick={handleSignOut}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    <span>Sign Out</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                <span className="text-xs font-bold text-emerald-900 dark:text-emerald-200">Account Approved & Verified by Department Admin</span>
+              </div>
+              <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/60 px-3 py-1 rounded-lg">
+                Active Student
+              </span>
+            </div>
+          )}
+
+          {/* Registered Curriculum & Course Workspaces Quick Launcher */}
+          <div className="p-7 sm:p-8 rounded-[2rem] bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/90 dark:border-white/10 shadow-sm space-y-6 transition-colors">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-white/10">
+              <div>
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5">
+                  <BookOpen className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>Enrolled Curriculum Quick Launcher</span>
+                </div>
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>Semester {enrolledSemester} Course Workspaces</span>
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                  Direct access to all registered course modules, AI study companions, and lecture materials for Semester {enrolledSemester}.
                 </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 px-3 py-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800">
+                  {semesterCredits.toFixed(1)} Total Credits
+                </span>
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-xl">
+                  {semesterCourses.length} Courses
+                </span>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => loadProfile(true)}
-                disabled={isRefreshing}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-200 dark:shadow-none transition-colors cursor-pointer"
-              >
-                <Clock className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
-                <span>{isRefreshing ? "Checking..." : "Check Approval Status"}</span>
-              </button>
-              <button
-                onClick={handleSignOut}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer"
-              >
-                <span>Sign Out</span>
-              </button>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {semesterCourses.map((course) => {
+                const isLab = course.type === "Sessional" || course.type === "Laboratory" || course.title?.toLowerCase().includes("sessional") || course.title?.toLowerCase().includes("lab");
+                return (
+                  <div
+                    key={course.code}
+                    className="group relative flex flex-col justify-between p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-800/40 hover:bg-white dark:hover:bg-slate-800 border border-slate-200/80 dark:border-white/10 hover:border-indigo-300 dark:hover:border-indigo-500/30 shadow-xs hover:shadow-md transition-all duration-200"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-xs font-black tracking-wide border border-indigo-200/60 dark:border-indigo-800/60">
+                          {course.code}
+                        </span>
+                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${
+                          isLab 
+                            ? "bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200/60 dark:border-purple-800/60"
+                            : "bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border border-sky-200/60 dark:border-sky-800/60"
+                        }`}>
+                          {course.credits} Credits • {course.type || (isLab ? "Lab" : "Theory")}
+                        </span>
+                      </div>
+
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-2">
+                          {course.title}
+                        </h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-1 flex items-center gap-1.5">
+                          <User className="w-3 h-3 text-slate-400" />
+                          <span className="truncate">{course.instructor || "Assigned Faculty"}</span>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="pt-4 mt-3 border-t border-slate-200/60 dark:border-white/5 flex items-center justify-between">
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                        {isLab ? "Software/Hardware Lab" : `Room ${400 + Number(enrolledSemester || 1)}`}
+                      </span>
+                      <Link
+                        href={`/dashboard/student/courses/${encodeURIComponent(course.code)}`}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-600 text-indigo-600 dark:text-indigo-400 hover:text-white text-xs font-bold transition-all shadow-xs group-hover:scale-105"
+                      >
+                        <span>Workspace</span>
+                        <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                      </Link>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-        </div>
-      ) : (
-        <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-            <span className="text-xs font-bold text-emerald-900 dark:text-emerald-200">Account Approved & Verified by Department Admin</span>
-          </div>
-          <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/60 px-3 py-1 rounded-lg">
-            Active Student
-          </span>
         </div>
       )}
 
-      {/* Profile Update Section */}
-      <div id="profile-settings" className="p-7 sm:p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
+      {/* ── Page 2: Profile Settings & Face Biometrics ── */}
+      {currentPage === "profile-settings" && (
+        <div className="animate-in fade-in duration-300">
+          <div id="profile-settings" className="p-7 sm:p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-white/10">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5">
@@ -1488,22 +1794,30 @@ export default function StudentDashboardPage() {
         )}
         </CollapsibleBody>
       </div>
-
-      {/* Academic Performance & Routine Workload Visualizations */}
-      <div id="analytics" className="scroll-mt-6">
-        <StudentAnalyticsCharts 
-          enrolledSemester={enrolledSemester} 
-          routineCount={routines.length} 
-          semesterCredits={semesterCredits} 
-          attendanceStats={attendanceStats}
-          attendanceSummary={attendanceSummary}
-          isCollapsed={collapsedSections.analytics}
-          onToggle={() => toggleSection("analytics")}
-        />
       </div>
+      )}
 
-      {/* Attendance & Class Presence Tracking */}
-      <div id="attendance" className="p-7 sm:p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-7 transition-colors scroll-mt-6">
+      {/* ── Page 3: Academic Analytics & Performance ── */}
+      {currentPage === "analytics" && (
+        <div className="animate-in fade-in duration-300">
+          <div id="analytics" className="scroll-mt-6">
+            <StudentAnalyticsCharts 
+              enrolledSemester={enrolledSemester} 
+              routineCount={routines.length} 
+              semesterCredits={semesterCredits} 
+              attendanceStats={attendanceStats}
+              attendanceSummary={attendanceSummary}
+              isCollapsed={collapsedSections.analytics}
+              onToggle={() => toggleSection("analytics")}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ── Page 4: Smart Face Attendance & 10m Geofence ── */}
+      {currentPage === "attendance" && (
+        <div className="animate-in fade-in duration-300">
+          <div id="attendance" className="p-7 sm:p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-7 transition-colors scroll-mt-6">
         {/* Section Top Header */}
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pb-5 border-b border-slate-100 dark:border-white/10">
           <div>
@@ -2042,9 +2356,13 @@ export default function StudentDashboardPage() {
         </div>
         </CollapsibleBody>
       </div>
+      </div>
+      )}
 
-      {/* Routine & Semester Courses (Enrolled Registered Semester) */}
-      <div id="routine" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
+      {/* ── Page 5: Class Routine & Timetable ── */}
+      {currentPage === "routine" && (
+        <div className="animate-in fade-in duration-300">
+          <div id="routine" className="p-8 rounded-[2rem] bg-white/90 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-white/10 shadow-sm space-y-6 transition-colors scroll-mt-6">
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-white/10">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5">
@@ -2439,89 +2757,180 @@ export default function StudentDashboardPage() {
         )}
         </CollapsibleBody>
       </div>
+      </div>
+      )}
 
-      {/* ── Learning Resources & Course Materials ───────────────── */}
-      <div id="materials" className="space-y-3 scroll-mt-6">
-        <div className="flex items-center justify-between px-1">
-          <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Course Notes & Slide Repositories
-          </span>
-          <SectionCollapseToggle
-            isCollapsed={collapsedSections.materials}
-            onToggle={() => toggleSection("materials")}
-            label="Learning Resources"
-            size="sm"
+      {/* ── Page 6: Course Study Materials ── */}
+      {currentPage === "materials" && (
+        <div className="animate-in fade-in duration-300">
+          <div id="materials" className="space-y-3 scroll-mt-6">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Course Notes & Slide Repositories
+              </span>
+              <SectionCollapseToggle
+                isCollapsed={collapsedSections.materials}
+                onToggle={() => toggleSection("materials")}
+                label="Learning Resources"
+                size="sm"
+              />
+            </div>
+            <CollapsibleBody
+              isCollapsed={collapsedSections.materials}
+              onExpand={() => toggleSection("materials")}
+              sectionName="Course Materials & Slide Repositories"
+            >
+              <StudentMaterialsSection
+                student={profile || user}
+                semester={enrolledSemester}
+              />
+            </CollapsibleBody>
+          </div>
+        </div>
+      )}
+
+      {/* ── Page 7: Tasks & Continuous Assessments ── */}
+      {currentPage === "assignments" && (
+        <div className="animate-in fade-in duration-300">
+          <div id="assignments" className="space-y-3 scroll-mt-6">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Continuous Assessments & Homework Tasks
+              </span>
+              <SectionCollapseToggle
+                isCollapsed={collapsedSections.assignments}
+                onToggle={() => toggleSection("assignments")}
+                label="Coursework & Assignments"
+                size="sm"
+              />
+            </div>
+            <CollapsibleBody
+              isCollapsed={collapsedSections.assignments}
+              onExpand={() => toggleSection("assignments")}
+              sectionName="Coursework & Assignments Hub"
+            >
+              <StudentAssignmentsSection
+                student={profile || user}
+                semester={enrolledSemester}
+              />
+            </CollapsibleBody>
+          </div>
+        </div>
+      )}
+
+      {/* ── Page 8: Academic Results & Transcripts ── */}
+      {currentPage === "results" && (
+        <div className="animate-in fade-in duration-300">
+          <div id="results" className="scroll-mt-6">
+            <div className="flex items-center justify-between gap-3 mb-3 px-1">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Official Academic Results & Transcripts
+              </span>
+              <SectionCollapseToggle
+                isCollapsed={collapsedSections.results}
+                onToggle={() => toggleSection("results")}
+                label="Semester Results"
+                size="sm"
+              />
+            </div>
+            <CollapsibleBody
+              isCollapsed={collapsedSections.results}
+              onExpand={() => toggleSection("results")}
+              sectionName="Academic Results & Transcripts"
+            >
+              <StudentResultsSection student={profile || user} />
+            </CollapsibleBody>
+          </div>
+        </div>
+      )}
+
+      {/* ── Page 9: Department Notice Board ── */}
+      {currentPage === "notices" && (
+        <div id="notices" className="scroll-mt-6 animate-in fade-in duration-300">
+          <NoticeBoardSection
+            title="Notice Board"
+            subtitle="Department broadcast & official academic circulars."
+            isCollapsed={collapsedSections.notices}
+            onToggle={() => toggleSection("notices")}
+            userRole="student"
+            studentSemester={enrolledSemester || profile?.semester || user?.semester}
+            studentCourses={semesterCourses}
           />
         </div>
-        <CollapsibleBody
-          isCollapsed={collapsedSections.materials}
-          onExpand={() => toggleSection("materials")}
-          sectionName="Course Materials & Slide Repositories"
-        >
-          <StudentMaterialsSection
-            student={profile || user}
-            semester={enrolledSemester}
-          />
-        </CollapsibleBody>
-      </div>
+      )}
 
-      {/* ── Coursework & Assignments Hub ────────────────────────── */}
-      <div id="assignments" className="space-y-3 scroll-mt-6">
-        <div className="flex items-center justify-between px-1">
-          <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Continuous Assessments & Homework Tasks
-          </span>
-          <SectionCollapseToggle
-            isCollapsed={collapsedSections.assignments}
-            onToggle={() => toggleSection("assignments")}
-            label="Coursework & Assignments"
-            size="sm"
-          />
+      {/* ── Bottom Dashboard Pagination Navigation ── */}
+      <div className="bg-white/95 dark:bg-slate-900/80 backdrop-blur-xl border border-slate-200/90 dark:border-white/10 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-sm transition-colors mt-8">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+          {/* Previous Page Button with Label */}
+          <div className="w-full md:w-auto">
+            {prevPageObj ? (
+              <button
+                type="button"
+                onClick={() => goToPage(prevPageObj.id)}
+                className="w-full md:w-auto inline-flex items-center justify-center md:justify-start gap-2.5 px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 border border-slate-200/80 dark:border-white/10 text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+              >
+                <ChevronLeft className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                <div className="text-left">
+                  <span className="block text-[10px] uppercase font-semibold text-slate-400 dark:text-slate-500">
+                    Previous Section (Page {prevPageObj.pageNum})
+                  </span>
+                  <span className="font-bold">{prevPageObj.title}</span>
+                </div>
+              </button>
+            ) : (
+              <div className="text-xs font-semibold text-slate-400 dark:text-slate-500 px-2 py-1 text-center md:text-left">
+                • You are on the First Section (Page 1)
+              </div>
+            )}
+          </div>
+
+          {/* Center Numbered Pills 1 to 9 */}
+          <div className="flex items-center gap-1.5 flex-wrap justify-center">
+            {DASHBOARD_PAGES.map((page) => {
+              const isCurrent = page.id === currentPage;
+              return (
+                <button
+                  key={page.id}
+                  type="button"
+                  onClick={() => goToPage(page.id)}
+                  className={`w-8 h-8 rounded-xl text-xs font-black transition-all flex items-center justify-center cursor-pointer border ${
+                    isCurrent
+                      ? "bg-indigo-600 text-white border-indigo-600 shadow-sm shadow-indigo-600/30 scale-105"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-400 border-slate-200/70 dark:border-white/5"
+                  }`}
+                  title={`Page ${page.pageNum}: ${page.title}`}
+                >
+                  {page.pageNum}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Next Page Button with Label */}
+          <div className="w-full md:w-auto">
+            {nextPageObj ? (
+              <button
+                type="button"
+                onClick={() => goToPage(nextPageObj.id)}
+                className="w-full md:w-auto inline-flex items-center justify-center md:justify-end gap-2.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all cursor-pointer shadow-xs shadow-indigo-600/20 active:scale-95"
+              >
+                <div className="text-right">
+                  <span className="block text-[10px] uppercase font-semibold text-indigo-200">
+                    Next Section (Page {nextPageObj.pageNum})
+                  </span>
+                  <span className="font-bold">{nextPageObj.title}</span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-white" />
+              </button>
+            ) : (
+              <div className="text-xs font-semibold text-slate-400 dark:text-slate-500 px-2 py-1 text-center md:text-right">
+                • You are on the Final Section (Page 9)
+              </div>
+            )}
+          </div>
         </div>
-        <CollapsibleBody
-          isCollapsed={collapsedSections.assignments}
-          onExpand={() => toggleSection("assignments")}
-          sectionName="Coursework & Assignments Hub"
-        >
-          <StudentAssignmentsSection
-            student={profile || user}
-            semester={enrolledSemester}
-          />
-        </CollapsibleBody>
       </div>
-
-      {/* ── Academic Semester Results & Grade Sheets ────────────────── */}
-      <div id="results" className="scroll-mt-6">
-        <div className="flex items-center justify-between gap-3 mb-3 px-1">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Official Academic Results & Transcripts
-          </span>
-          <SectionCollapseToggle
-            isCollapsed={collapsedSections.results}
-            onToggle={() => toggleSection("results")}
-            label="Semester Results"
-            size="sm"
-          />
-        </div>
-        <CollapsibleBody
-          isCollapsed={collapsedSections.results}
-          onExpand={() => toggleSection("results")}
-          sectionName="Academic Results & Transcripts"
-        >
-          <StudentResultsSection student={profile || user} />
-        </CollapsibleBody>
-      </div>
-
-      {/* Official Notice Board */}
-      <NoticeBoardSection
-        title="Notice Board"
-        subtitle="Department broadcast & official academic circulars."
-        isCollapsed={collapsedSections.notices}
-        onToggle={() => toggleSection("notices")}
-        userRole="student"
-        studentSemester={enrolledSemester || profile?.semester || user?.semester}
-        studentCourses={semesterCourses}
-      />
 
       {/* Live Face Verification & Enrollment Modal */}
       <FaceVerificationModal

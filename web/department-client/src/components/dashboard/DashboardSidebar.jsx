@@ -41,7 +41,9 @@ import {
   BookMarked,
   ChevronRight,
   ExternalLink,
-  ChevronDown
+  ChevronDown,
+  MessageSquare,
+  Brain
 } from "lucide-react";
 
 export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
@@ -442,9 +444,21 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
     return [];
   }, [role, studentNavItems, teacherNavItems]);
 
-  // Active section scroll spy listener (mirroring Navbar.jsx's serial logic with exact viewport checks)
+  // Listen for sync events from paginated student dashboard
   useEffect(() => {
-    if (pathname !== "/dashboard/teacher" && pathname !== "/dashboard/student") {
+    const handleSyncSidebar = (e) => {
+      if (e?.detail?.sectionId) {
+        setActiveSection(e.detail.sectionId);
+        setCurrentHash(e.detail.sectionId === "profile" ? "" : `#${e.detail.sectionId}`);
+      }
+    };
+    window.addEventListener("dashboard-sync-sidebar", handleSyncSidebar);
+    return () => window.removeEventListener("dashboard-sync-sidebar", handleSyncSidebar);
+  }, []);
+
+  // Active section scroll spy listener (for single-page scrolling views like teacher)
+  useEffect(() => {
+    if (pathname !== "/dashboard/teacher") {
       return;
     }
 
@@ -502,17 +516,26 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
       setCurrentHash(hash ? `#${hash}` : "");
       isManualScrollingRef.current = true;
 
-      // 2. Dispatch expansion event for collapsible sections
+      // 2. Dispatch change-page event for paginated student dashboard
+      window.dispatchEvent(new CustomEvent("dashboard-change-page", { detail: { sectionId: targetId } }));
+
+      // 3. Dispatch expansion event for collapsible sections
       window.dispatchEvent(new CustomEvent("dashboard-expand-section", { detail: { id: targetId } }));
 
-      // 3. Update URL silently
+      // 4. Update URL silently
       if (typeof window !== "undefined" && window.history.pushState) {
         window.history.pushState(null, "", item.href);
       }
 
-      // 4. Smooth programmatic GSAP scroll with 70px offset & autoKill: false (identical to Navbar.jsx)
+      // 5. Scroll to top for paginated student dashboard or scroll to element
       if (typeof window !== "undefined") {
-        if (targetId === "profile" && !hash) {
+        if (pathname === "/dashboard/student") {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+          if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+          scrollTimeoutRef.current = setTimeout(() => {
+            isManualScrollingRef.current = false;
+          }, 100);
+        } else if (targetId === "profile" && !hash) {
           gsap.to(window, {
             duration: 0.6,
             scrollTo: { y: 0, autoKill: false },
@@ -633,7 +656,7 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
     ];
   }, [activeCourseCode]);
 
-  // Student course workspace module tabs definition for active course navigation
+  // Student course workspace module tabs definition for active course navigation (9-Page mapping)
   const studentCourseWorkspaceModules = useMemo(() => {
     if (!activeCourseCode) return [];
     return [
@@ -641,8 +664,11 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
       { id: "materials", name: "Study Materials", description: "Lectures, slides & handouts", badge: "Files", icon: BookOpen },
       { id: "assignments", name: "Continuous Tasks", description: "Submissions, marks & feedback", badge: "Tasks", icon: FileText },
       { id: "class-tests", name: "Class Tests (CT)", description: "Offline CT scores & feedback", badge: "Marks", icon: Award },
+      { id: "continuous-evaluation", name: "Continuous Result", description: "Combined 20%/30% evaluation", badge: "Scorecard", icon: Sparkles },
       { id: "attendance", name: "My Attendance", description: "Presence & eligibility", badge: "Stats", icon: UserCheck },
       { id: "schedule", name: "Class Schedule", description: "Timetable & classroom", badge: "Routine", icon: Calendar },
+      { id: "messages", name: "Teacher Chat", description: "Real-time discussion with faculty", badge: "Chat", icon: MessageSquare },
+      { id: "ai-study", name: "AI Notes & Quiz", description: "Slide summarizer & quiz generator", badge: "AI Study", icon: Brain },
     ];
   }, [activeCourseCode]);
 
@@ -1075,216 +1101,130 @@ export function DashboardSidebar({ isOpen, setIsOpen, user, profile }) {
                   </div>
                 </Link>
 
-                {/* Active Student Course Workspace Module Navigation */}
-                <div>
-                  <div className="px-2 pb-2 flex items-center justify-between">
-                    <span className="text-[10px] font-extrabold tracking-widest text-indigo-600 dark:text-indigo-400 uppercase">
-                      COURSE WORKSPACE
-                    </span>
-                    <span className="text-[10px] font-mono font-extrabold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 ring-1 ring-indigo-200 dark:ring-indigo-800">
+                {/* Active Course Status Chip */}
+                <div className="p-3 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/70 dark:border-indigo-800/60 flex items-center justify-between shadow-2xs">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 animate-pulse" />
+                    <span className="text-xs font-black font-mono text-indigo-700 dark:text-indigo-300 truncate">
                       {activeCourseCode}
                     </span>
                   </div>
-                  <div className="space-y-1">
-                    {studentCourseWorkspaceModules.map((module) => {
-                      const Icon = module.icon;
-                      const isActive = currentTab === module.id;
-                      const moduleHref = `/dashboard/student/courses/${encodeURIComponent(activeCourseCode)}?tab=${module.id}`;
-
-                      return (
-                        <Link
-                          key={module.id}
-                          href={moduleHref}
-                          onClick={() => setIsOpen(false)}
-                          className={`
-                            group relative flex items-center justify-between p-2.5 rounded-2xl transition-all duration-200 cursor-pointer border
-                            ${isActive 
-                              ? "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold border-indigo-200/80 dark:border-indigo-800/60 shadow-xs" 
-                              : "text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 border-transparent hover:border-slate-200/60 dark:hover:border-white/5"}
-                          `}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                            <div className={`p-2 rounded-xl transition-all duration-200 shrink-0 ${
-                              isActive 
-                                ? "bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 shadow-xs" 
-                                : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 group-hover:bg-indigo-50 dark:group-hover:bg-indigo-950/40 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"
-                            }`}>
-                              <Icon className="w-4 h-4" />
-                            </div>
-                            <div className="flex flex-col min-w-0 flex-1 text-left">
-                              <span className={`text-xs truncate leading-tight ${
-                                isActive 
-                                  ? "font-bold text-indigo-600 dark:text-indigo-400" 
-                                  : "font-semibold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"
-                              }`}>
-                                {module.name}
-                              </span>
-                              {module.description && (
-                                <span className={`text-[10px] truncate leading-tight mt-0.5 ${
-                                  isActive 
-                                    ? "font-medium text-indigo-500/90 dark:text-indigo-300/90" 
-                                    : "font-normal text-slate-400 dark:text-slate-500"
-                                }`}>
-                                  {module.description}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0 ml-1.5">
-                            {module.badge && (
-                              <span className={`text-[9.5px] font-extrabold px-2 py-0.5 rounded-full transition-colors ${
-                                isActive 
-                                  ? "bg-indigo-600 text-white shadow-xs" 
-                                  : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 ring-1 ring-slate-200/60 dark:ring-white/5 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/60 group-hover:text-indigo-600 dark:group-hover:text-indigo-300"
-                              }`}>
-                                {module.badge}
-                              </span>
-                            )}
-                            {isActive && (
-                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 shrink-0 animate-pulse" />
-                            )}
-                          </div>
-                        </Link>
-                      );
-                    })}
-                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
+                    Active Course
+                  </span>
                 </div>
 
                 {/* Other Semester Curriculum Courses Switcher */}
-                {studentSemesterCourses.filter((c) => c.code !== activeCourseCode).length > 0 && (
-                  <div>
-                    <div className="px-2 pt-2 pb-1.5 text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase">
-                      OTHER SEMESTER COURSES
-                    </div>
-                    <div className="space-y-1">
-                      {studentSemesterCourses
-                        .filter((c) => c.code !== activeCourseCode)
-                        .map((c) => (
-                          <Link
-                            key={c.code}
-                            href={`/dashboard/student/courses/${encodeURIComponent(c.code)}`}
-                            onClick={() => setIsOpen(false)}
-                            className="flex items-center justify-between p-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-300 transition group border border-transparent hover:border-indigo-100 dark:hover:border-indigo-900/40"
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-700 shrink-0">
-                                {c.code}
-                              </span>
-                              <span className="truncate text-[11px]">{c.title}</span>
-                            </div>
-                            <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-transform shrink-0" />
-                          </Link>
-                        ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Shortcuts Back to Student Dashboard Sections */}
                 <div>
-                  <div className="px-2 pt-2 pb-1.5 text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase">
-                    STUDENT HUB JUMPS
+                  <div className="px-2 pt-1 pb-1.5 flex items-center justify-between">
+                    <span className="text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase">
+                      OTHER SEMESTER COURSES
+                    </span>
+                    <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/60 px-2 py-0.5 rounded-full">
+                      {studentSemesterCourses.filter((c) => c.code !== activeCourseCode).length} Courses
+                    </span>
                   </div>
-                  <div className="space-y-1">
-                    {[
-                      { name: "My Routine Schedule", href: "/dashboard/student#routine", icon: Clock },
-                      { name: "Continuous Tasks & Marks", href: "/dashboard/student#assignments", icon: FileText },
-                      { name: "All Study Materials", href: "/dashboard/student#materials", icon: BookOpen },
-                      { name: "Department Notices", href: "/dashboard/student#notices", icon: Bell },
-                      { name: "Academic Analytics", href: "/dashboard/student#analytics", icon: BarChart3 },
-                      { name: "Student Profile", href: "/dashboard/student#profile", icon: User },
-                    ].map((item) => {
-                      const Icon = item.icon;
-                      return (
-                        <Link
-                          key={item.name}
-                          href={item.href}
-                          onClick={() => setIsOpen(false)}
-                          className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
-                        >
-                          <Icon className="w-3.5 h-3.5 text-slate-400" />
-                          <span>{item.name}</span>
-                        </Link>
-                      );
-                    })}
+
+                  <div className="space-y-1.5">
+                    {studentSemesterCourses.filter((c) => c.code !== activeCourseCode).length > 0 ? (
+                      studentSemesterCourses
+                        .filter((c) => c.code !== activeCourseCode)
+                        .map((c) => {
+                          const isLab = c.type === "Sessional" || c.type === "Laboratory" || c.title?.toLowerCase().includes("sessional") || c.title?.toLowerCase().includes("lab");
+                          return (
+                            <Link
+                              key={c.code}
+                              href={`/dashboard/student/courses/${encodeURIComponent(c.code)}`}
+                              onClick={() => setIsOpen(false)}
+                              className="w-full text-left flex items-center justify-between p-2.5 rounded-xl bg-slate-50/70 hover:bg-indigo-50/80 dark:bg-slate-800/50 dark:hover:bg-indigo-950/50 border border-slate-100 dark:border-white/5 hover:border-indigo-200 dark:hover:border-indigo-800/80 transition group cursor-pointer shadow-xs"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg font-mono font-black text-[10px] shadow-xs ${
+                                  isLab
+                                    ? "bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300"
+                                    : "bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300"
+                                }`}>
+                                  {c.code.split(" ")[1] || c.code.slice(0, 4)}
+                                </div>
+                                <div className="flex flex-col min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-bold text-xs truncate text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-300">
+                                      {c.code}
+                                    </span>
+                                    <span className={`text-[9px] font-semibold px-1 rounded ${
+                                      isLab
+                                        ? "bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400"
+                                        : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
+                                    }`}>
+                                      {c.credits} Cr
+                                    </span>
+                                  </div>
+                                  <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate font-medium">
+                                    {c.title}
+                                  </span>
+                                </div>
+                              </div>
+                              <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:translate-x-0.5 transition shrink-0" />
+                            </Link>
+                          );
+                        })
+                    ) : (
+                      <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-dashed border-slate-200 dark:border-slate-700 text-center">
+                        <span className="text-[11px] text-slate-400 font-medium">
+                          No other registered courses this term.
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
             ) : (
               /* SUB-VIEW B: ROOT STUDENT DASHBOARD (/dashboard/student) */
               <div className="space-y-5">
-                {/* Student Main Hub Sections */}
+                {/* Main Dashboard Quick Link */}
                 <div>
-              <div className="px-2 pb-2 flex items-center justify-between">
-                <span className="text-[10px] font-bold tracking-widest text-slate-400 dark:text-slate-500 uppercase">
-                  STUDENT WORKSPACE
-                </span>
-                <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-full">
-                  Semester {studentSemester}
-                </span>
-              </div>
-              <div className="space-y-1">
-                {studentNavItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = activeSection === item.scrollTarget;
-
-                  return (
-                    <a
-                      key={item.name}
-                      href={item.href}
-                      onClick={(e) => handleNavClick(e, item)}
-                      className={`
-                        group relative flex items-center justify-between p-2.5 rounded-2xl transition-all duration-200 cursor-pointer border
-                        ${isActive 
-                          ? "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold border-indigo-200/80 dark:border-indigo-800/60 shadow-xs" 
-                          : "text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 border-transparent hover:border-slate-200/60 dark:hover:border-white/5"}
-                      `}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                        <div className={`p-2 rounded-xl transition-all duration-200 shrink-0 ${
-                          isActive 
-                            ? "bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 shadow-xs" 
-                            : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 group-hover:bg-indigo-50 dark:group-hover:bg-indigo-950/40 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"
-                        }`}>
-                          <Icon className="w-4 h-4" />
-                        </div>
-                        <div className="flex flex-col min-w-0 flex-1 text-left">
-                          <span className={`text-xs truncate leading-tight ${
-                            isActive 
-                              ? "font-bold text-indigo-600 dark:text-indigo-400" 
-                              : "font-semibold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"
-                          }`}>
-                            {item.name}
-                          </span>
-                          {item.description && (
-                            <span className={`text-[10px] truncate leading-tight mt-0.5 ${
-                              isActive 
-                                ? "font-medium text-indigo-500/90 dark:text-indigo-300/90" 
-                                : "font-normal text-slate-400 dark:text-slate-500"
-                            }`}>
-                              {item.description}
-                            </span>
-                          )}
-                        </div>
+                  <Link
+                    href="/dashboard/student"
+                    onClick={() => {
+                      setIsOpen(false);
+                      if (pathname === "/dashboard/student" && typeof window !== "undefined") {
+                        window.history.pushState(null, "", "/dashboard/student");
+                        window.dispatchEvent(
+                          new CustomEvent("dashboard-change-page", {
+                            detail: { sectionId: "profile" },
+                          })
+                        );
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                      }
+                    }}
+                    className={`group flex items-center justify-between p-2.5 rounded-2xl transition-all duration-200 cursor-pointer border ${
+                      pathname === "/dashboard/student"
+                        ? "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold border-indigo-200/80 dark:border-indigo-800/60 shadow-xs"
+                        : "text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 border-transparent hover:border-slate-200/60 dark:hover:border-white/5"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div className={`p-2 rounded-xl transition-all duration-200 shrink-0 ${
+                        pathname === "/dashboard/student"
+                          ? "bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 shadow-xs"
+                          : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 group-hover:bg-indigo-50 dark:group-hover:bg-indigo-950/40 group-hover:text-indigo-600 dark:group-hover:text-indigo-400"
+                      }`}>
+                        <LayoutDashboard className="w-4 h-4" />
                       </div>
-                      <div className="flex items-center gap-1.5 shrink-0 ml-1.5">
-                        {item.badge && (
-                          <span className={`text-[9.5px] font-extrabold px-2 py-0.5 rounded-full transition-colors ${
-                            isActive 
-                              ? "bg-indigo-600 text-white shadow-xs" 
-                              : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 ring-1 ring-slate-200/60 dark:ring-white/5 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/60 group-hover:text-indigo-600 dark:group-hover:text-indigo-300"
-                          }`}>
-                            {item.badge}
-                          </span>
-                        )}
-                        {isActive && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 shrink-0 animate-pulse" />
-                        )}
+                      <div className="flex flex-col min-w-0 flex-1 text-left">
+                        <span className="text-xs font-bold leading-tight">
+                          Student Dashboard
+                        </span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate leading-tight mt-0.5">
+                          Semester {studentSemester} Portal
+                        </span>
                       </div>
-                    </a>
-                  );
-                })}
-              </div>
-            </div>
+                    </div>
+                    <span className="text-[9.5px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-100/80 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400">
+                      Active
+                    </span>
+                  </Link>
+                </div>
 
             {/* Semester Curriculum Direct Course List (Matching Teacher Course Workspaces) */}
             <div>
